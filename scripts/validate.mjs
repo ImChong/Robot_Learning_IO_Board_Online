@@ -195,6 +195,41 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
   return nodes.size;
 }
 
+function checkRegistry(registry) {
+  const where = "projects.json";
+  const groupIds = new Set();
+  for (const [i, group] of (registry.groups ?? []).entries()) {
+    if (!group.id) fail(where, `groups[${i}] 缺少 id`);
+    if (!group.name) fail(where, `groups[${i}] 缺少 name`);
+    if (groupIds.has(group.id)) fail(where, `分组 id 重复："${group.id}"`);
+    groupIds.add(group.id);
+  }
+
+  const ids = new Set();
+  const files = new Set();
+  for (const [i, entry] of (registry.projects ?? []).entries()) {
+    const at = `${where}/projects[${i}]`;
+    if (!entry.id) fail(at, "缺少 id");
+    if (!entry.file) fail(at, "缺少 file");
+    if (!entry.name) fail(at, "缺少 name（项目选择器要先于项目文件渲染，靠的就是这个字段）");
+    if (ids.has(entry.id)) fail(at, `项目 id 重复："${entry.id}"`);
+    if (files.has(entry.file)) fail(at, `项目文件重复引用："${entry.file}"`);
+    ids.add(entry.id);
+    files.add(entry.file);
+    if (entry.group && !groupIds.has(entry.group)) fail(at, `未定义的分组 "${entry.group}"`);
+    if (entry.order != null && typeof entry.order !== "number") fail(at, "order 必须是数字");
+    if (entry.keywords && !Array.isArray(entry.keywords)) fail(at, "keywords 必须是数组");
+    for (const keyword of entry.keywords ?? []) {
+      if (typeof keyword !== "string") fail(at, "keywords 里出现了非字符串");
+    }
+  }
+
+  if (!ids.size) fail(where, "没有注册任何项目");
+  if (registry.defaultProject && !ids.has(registry.defaultProject)) {
+    fail(where, `defaultProject "${registry.defaultProject}" 不在已注册项目里`);
+  }
+}
+
 async function main() {
   const taxonomy = await readJson("taxonomy.json");
   const registry = await readJson("projects.json");
@@ -220,10 +255,23 @@ async function main() {
   let totalNodes = 0;
   let totalRewards = 0;
 
+  checkRegistry(registry);
+
   for (const entry of registry.projects) {
     const project = await readJson(entry.file);
     if (project.id !== entry.id) {
       fail(entry.file, `文件里的 id "${project.id}" 与注册表的 "${entry.id}" 不一致`);
+    }
+    // 注册表冗余了 name/subtitle，好让项目选择器不必先下载每个项目文件；
+    // 冗余就必须校验，否则两处会各自漂移。
+    if (entry.name && project.name && entry.name !== project.name) {
+      fail("projects.json", `${entry.id} 的 name 与项目文件不一致（"${entry.name}" vs "${project.name}"）`);
+    }
+    if (entry.subtitle && project.subtitle && entry.subtitle !== project.subtitle) {
+      fail(
+        "projects.json",
+        `${entry.id} 的 subtitle 与项目文件不一致（"${entry.subtitle}" vs "${project.subtitle}"）`
+      );
     }
     if (!project.verifiedAt) warn(entry.file, "缺少 verifiedAt");
     if (!project.verifiedRef) warn(entry.file, "缺少 verifiedRef");

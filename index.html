@@ -29,7 +29,35 @@
         </span>
       </div>
 
-      <nav class="project-tabs" id="project-tabs" aria-label="项目"></nav>
+      <div class="project-picker">
+        <button
+          class="picker-trigger"
+          id="picker-trigger"
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          title="切换项目（快捷键 P，[ ] 上下一个）"
+        >
+          <span class="picker-current" id="picker-current"></span>
+          <span class="picker-caret" aria-hidden="true">▾</span>
+        </button>
+
+        <div class="picker-panel" id="picker-panel" hidden>
+          <input
+            class="picker-search"
+            id="picker-search"
+            type="search"
+            role="combobox"
+            autocomplete="off"
+            aria-controls="picker-list"
+            aria-expanded="false"
+            placeholder="搜索项目、机器人、算法、机构…"
+            aria-label="搜索项目"
+          />
+          <div class="picker-list" id="picker-list" role="listbox" aria-label="项目列表"></div>
+          <p class="picker-empty" id="picker-empty" hidden>没有匹配的项目</p>
+        </div>
+      </div>
 
       <div class="topbar-actions">
         <a
@@ -43,6 +71,8 @@
         <button class="icon-btn" id="theme-toggle" type="button" title="切换主题">主题</button>
       </div>
     </header>
+
+    <div class="load-bar" id="load-bar" hidden aria-hidden="true"><span></span></div>
 
     <section class="project-head" id="project-head"></section>
 
@@ -74,7 +104,10 @@
         <div class="drawer-empty" id="drawer-empty">
           <h2>模块详情</h2>
           <p>点击左侧任意模块，这里会显示它的维度构成、真机如何获得、以及出处链接。</p>
-          <p class="hint">键盘：<kbd>1</kbd>/<kbd>2</kbd> 切项目，<kbd>T</kbd>/<kbd>D</kbd> 切训练与部署，<kbd>Esc</kbd> 关闭详情。</p>
+          <p class="hint">
+            键盘：<kbd>P</kbd> 打开项目列表，<kbd>[</kbd>/<kbd>]</kbd> 上下一个项目，<kbd>T</kbd>/<kbd>D</kbd>
+            切训练与部署，<kbd>F</kbd> 适应窗口，<kbd>Esc</kbd> 关闭详情。
+          </p>
         </div>
         <div class="drawer-body" id="drawer-body" hidden></div>
       </aside>

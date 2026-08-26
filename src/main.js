@@ -1,7 +1,8 @@
 /** 入口：状态、URL 路由、各视图的装配。 */
 
 import { el, clear } from "./dom.js";
-import { loadAll } from "./data.js";
+import { loadCore } from "./data.js";
+import { createProjectPicker } from "./project-picker.js";
 import { createGraphView } from "./render-graph.js";
 import { renderDetail } from "./render-detail.js";
 import { renderRewards } from "./render-rewards.js";
@@ -15,7 +16,13 @@ const VIEWS = [
 ];
 
 const dom = {
-  projectTabs: document.getElementById("project-tabs"),
+  pickerTrigger: document.getElementById("picker-trigger"),
+  pickerCurrent: document.getElementById("picker-current"),
+  pickerPanel: document.getElementById("picker-panel"),
+  pickerSearch: document.getElementById("picker-search"),
+  pickerList: document.getElementById("picker-list"),
+  pickerEmpty: document.getElementById("picker-empty"),
+  loadBar: document.getElementById("load-bar"),
   projectHead: document.getElementById("project-head"),
   modeSwitch: document.getElementById("mode-switch"),
   viewSwitch: document.getElementById("view-switch"),
@@ -44,11 +51,29 @@ const state = {
   modeId: "train",
   view: "graph",
   nodeId: null,
+  compareId: null,
   filters: { classes: new Set(), availability: new Set(), confidence: new Set() },
 };
 
-let bundle = null;
+let core = null;
 let graphView = null;
+let picker = null;
+let current = null; // 当前项目的完整数据
+let renderToken = 0;
+let pendingLoads = 0;
+
+/* ---------- 加载指示 ---------- */
+
+async function withLoading(promise) {
+  pendingLoads += 1;
+  dom.loadBar.hidden = false;
+  try {
+    return await promise;
+  } finally {
+    pendingLoads -= 1;
+    if (pendingLoads === 0) dom.loadBar.hidden = true;
+  }
+}
 
 /* ---------- URL ---------- */
 
@@ -59,6 +84,7 @@ function readUrl() {
     modeId: params.get("mode"),
     view: params.get("view"),
     nodeId: params.get("n"),
+    compareId: params.get("vs"),
   };
 }
 
@@ -67,7 +93,8 @@ function writeUrl({ replace = false } = {}) {
   params.set("p", state.projectId);
   params.set("mode", state.modeId);
   if (state.view !== "graph") params.set("view", state.view);
-  if (state.nodeId) params.set("n", state.nodeId);
+  if (state.view === "compare" && state.compareId) params.set("vs", state.compareId);
+  if (state.view === "graph" && state.nodeId) params.set("n", state.nodeId);
   const url = `${location.pathname}?${params}`;
   if (replace) history.replaceState(null, "", url);
   else history.pushState(null, "", url);
@@ -75,40 +102,28 @@ function writeUrl({ replace = false } = {}) {
 
 /* ---------- 派生 ---------- */
 
-const project = () => bundle.projectById.get(state.projectId);
-const graph = () => project().modes[state.modeId];
+const graph = () => current.modes[state.modeId];
+
+function defaultCompareId(projectId) {
+  return core.entries.find((entry) => entry.id !== projectId)?.id ?? null;
+}
 
 /* ---------- 顶部 ---------- */
 
-function renderProjectTabs() {
-  clear(dom.projectTabs);
-  for (const [index, item] of bundle.projects.entries()) {
-    dom.projectTabs.append(
-      el("button", {
-        type: "button",
-        class: "project-tab",
-        role: "tab",
-        "aria-selected": String(item.id === state.projectId),
-        text: item.name,
-        title: `${item.subtitle ?? ""}（快捷键 ${index + 1}）`,
-        onClick: () => setProject(item.id),
-      })
-    );
-  }
-}
-
 function renderProjectHead() {
-  const p = project();
   clear(dom.projectHead);
+  const p = current;
+  const group = core.groups.find((g) => g.id === core.entryById.get(p.id)?.group);
 
   const facts = [];
+  if (group) facts.push(["分类", group.name]);
   if (p.robot) {
     facts.push(["机器人", `${p.robot.name} · ${p.robot.dof} DoF`]);
     if (p.robot.trackedBodies) facts.push(["跟踪连杆", `${p.robot.trackedBodies} 个`]);
     if (p.robot.anchor) facts.push(["anchor", p.robot.anchor]);
   }
   if (p.rates) facts.push(["控制频率", `${p.rates.policyHz} Hz / 物理 ${p.rates.physicsHz} Hz`]);
-  if (p.verifiedRef) facts.push(["核对于", `${p.verifiedRef}`]);
+  if (p.verifiedRef) facts.push(["核对于", p.verifiedRef]);
 
   dom.projectHead.append(
     el("h1", { text: p.name }),
@@ -133,7 +148,7 @@ function renderProjectHead() {
 
 function renderModeSwitch() {
   clear(dom.modeSwitch);
-  for (const [modeId, mode] of Object.entries(project().modes)) {
+  for (const [modeId, mode] of Object.entries(current.modes)) {
     dom.modeSwitch.append(
       el("button", {
         type: "button",
@@ -169,30 +184,27 @@ function renderFilters() {
   const present = new Set(graph().nodes.map((n) => n.class).filter(Boolean));
   dom.filters.append(el("span", { class: "filter-label", text: "只看" }));
 
-  for (const cls of bundle.taxonomy.inputClasses) {
+  for (const cls of [...core.taxonomy.inputClasses, ...core.taxonomy.outputClasses]) {
     if (!present.has(cls.id)) continue;
-    dom.filters.append(chip(cls.id, cls.name, cls.color, state.filters.classes, "classes"));
-  }
-  for (const cls of bundle.taxonomy.outputClasses) {
-    if (!present.has(cls.id)) continue;
-    dom.filters.append(chip(cls.id, cls.name, cls.color, state.filters.classes, "classes"));
+    dom.filters.append(chip(cls.id, cls.name, cls.color, state.filters.classes));
   }
 
   dom.filters.append(
-    chip("deploy-hard", "部署困难项", "#e5a765", state.filters.availability, "availability"),
-    chip("train-only", "仅训练可见", "#ff7b72", state.filters.availability, "availability"),
-    chip("inferred", "推断待核", "#9aa4b2", state.filters.confidence, "confidence")
+    chip("deploy-hard", "部署困难项", "#e5a765", state.filters.availability),
+    chip("train-only", "仅训练可见", "#ff7b72", state.filters.availability),
+    chip("inferred", "推断待核", "#9aa4b2", state.filters.confidence)
   );
 
-  const active = [...state.filters.classes, ...state.filters.availability, ...state.filters.confidence];
-  if (active.length) {
+  const active =
+    state.filters.classes.size + state.filters.availability.size + state.filters.confidence.size;
+  if (active) {
     dom.filters.append(
       el("button", { class: "chip", type: "button", text: "清除", onClick: clearFilters })
     );
   }
 }
 
-function chip(id, label, color, set, group) {
+function chip(id, label, color, set) {
   return el(
     "button",
     {
@@ -229,7 +241,7 @@ function applyFilters() {
 /* ---------- 图例 ---------- */
 
 function renderLegend() {
-  const t = bundle.taxonomy;
+  const t = core.taxonomy;
   clear(dom.legend);
 
   dom.legend.append(
@@ -251,17 +263,24 @@ function renderLegend() {
         el("span", { class: "lg-desc", text: ` — ${item.desc}` }),
       ]),
     ]),
-    block("部署可得性（卡片边框）", [
-      { name: "实线边框", desc: "部署可得" },
-      { name: "点线边框", desc: "需要估计链路" },
-      { name: "虚线 + 斜纹底", desc: "仅训练可见，部署时消失" },
-    ], (item) => [
-      el("span", { class: "swatch", style: { background: "transparent", border: "1px solid var(--border-strong)" } }),
-      el("span", {}, [
-        el("span", { class: "lg-name", text: item.name }),
-        el("span", { class: "lg-desc", text: ` — ${item.desc}` }),
-      ]),
-    ]),
+    block(
+      "部署可得性（卡片边框）",
+      [
+        { name: "实线边框", desc: "部署可得" },
+        { name: "点线边框", desc: "需要估计链路" },
+        { name: "虚线 + 斜纹底", desc: "仅训练可见，部署时消失" },
+      ],
+      (item) => [
+        el("span", {
+          class: "swatch",
+          style: { background: "transparent", border: "1px solid var(--border-strong)" },
+        }),
+        el("span", {}, [
+          el("span", { class: "lg-name", text: item.name }),
+          el("span", { class: "lg-desc", text: ` — ${item.desc}` }),
+        ]),
+      ]
+    ),
     block("连线类型", t.edgeKinds, (item) => [
       el("span", { class: "line-sample", style: { color: item.color } }),
       el("span", { class: "lg-name", text: item.name }),
@@ -287,7 +306,7 @@ function block(title, items, renderItem) {
   ]);
 }
 
-/* ---------- 批注 ---------- */
+/* ---------- 批注与页脚 ---------- */
 
 function renderCallouts() {
   clear(dom.callouts);
@@ -295,22 +314,19 @@ function renderCallouts() {
   dom.callouts.hidden = state.view !== "graph" || !items.length;
   for (const item of items) {
     dom.callouts.append(
-      el("div", { class: "callout" }, [
-        el("h3", { text: item.title }),
-        el("p", { text: item.body }),
-      ])
+      el("div", { class: "callout" }, [el("h3", { text: item.title }), el("p", { text: item.body })])
     );
   }
 }
 
-/* ---------- 页脚 ---------- */
-
 function renderFooter() {
   clear(dom.footer);
-  const p = project();
   dom.footer.append(
-    el("span", { text: `${p.name} 数据核对于 ${p.verifiedAt ?? "—"}（${p.verifiedRef ?? "—"}）` }),
-    ...(bundle.registry.references ?? []).map((ref) =>
+    el("span", {
+      text: `${current.name} 数据核对于 ${current.verifiedAt ?? "—"}（${current.verifiedRef ?? "—"}）`,
+    }),
+    el("span", { text: `共收录 ${core.entries.length} 个项目` }),
+    ...(core.registry.references ?? []).map((ref) =>
       el("a", { href: ref.url, target: "_blank", rel: "noopener", text: ref.label })
     ),
     el("a", {
@@ -322,12 +338,38 @@ function renderFooter() {
   );
 }
 
-/* ---------- 视图切换 ---------- */
+/* ---------- 主渲染 ---------- */
 
-function renderAll({ animate = false } = {}) {
-  renderProjectTabs();
+/**
+ * 切项目要等 JSON 加载，所以整条渲染是异步的；用 token 丢弃过期结果，
+ * 避免连续快速切换时旧数据盖掉新数据。
+ */
+async function render({ animate = false } = {}) {
+  const token = ++renderToken;
+
+  // 已缓存的项目不套 withLoading，否则进度条会在同一帧内闪一下。
+  const cached = core.isLoaded(state.projectId);
+  const loader = core.loadProject(state.projectId);
+  let project;
+  try {
+    project = await (cached ? loader : withLoading(loader));
+  } catch (error) {
+    if (token === renderToken) showFatal(error);
+    return;
+  }
+  if (token !== renderToken) return;
+  current = project;
+
+  // 新项目可能没有当前模式，退回它的第一个模式。
+  if (!current.modes[state.modeId]) {
+    state.modeId = Object.keys(current.modes)[0];
+    writeUrl({ replace: true });
+  }
+
+  picker.setCurrent(state.projectId);
   renderProjectHead();
   renderModeSwitch();
+  renderFooter();
 
   const g = graph();
   dom.modeSummary.textContent = g.summary ?? "";
@@ -340,34 +382,59 @@ function renderAll({ animate = false } = {}) {
 
   renderFilters();
   renderCallouts();
-  renderFooter();
 
   if (state.view === "graph") {
     graphView.render(g, { animate });
     applyFilters();
     graphView.select(state.nodeId);
-    renderRewards({
-      container: dom.rewards,
-      graph: g,
-      taxonomy: bundle.taxonomy,
-      project: project(),
-    });
+    renderRewards({ container: dom.rewards, graph: g, taxonomy: core.taxonomy, project: current });
     showDetail(state.nodeId ? g.nodes.find((n) => n.id === state.nodeId) : null);
   } else if (state.view === "compare") {
-    renderCompare({
-      container: dom.compare,
-      projects: bundle.projects,
-      modeId: state.modeId,
-      taxonomy: bundle.taxonomy,
-    });
+    await renderCompareView(token);
   } else {
     renderTable({
       container: dom.tableView,
-      project: project(),
+      project: current,
       modeId: state.modeId,
-      taxonomy: bundle.taxonomy,
+      taxonomy: core.taxonomy,
     });
   }
+}
+
+async function renderCompareView(token) {
+  if (!state.compareId || state.compareId === state.projectId) {
+    state.compareId = defaultCompareId(state.projectId);
+    writeUrl({ replace: true });
+  }
+
+  const common = {
+    container: dom.compare,
+    base: current,
+    modeId: state.modeId,
+    taxonomy: core.taxonomy,
+    entries: core.entries,
+    compareId: state.compareId,
+    onChangeCompare: (id) => {
+      state.compareId = id;
+      writeUrl();
+      render();
+    },
+  };
+
+  if (!state.compareId) {
+    renderCompare({ ...common, other: null });
+    return;
+  }
+
+  if (!core.isLoaded(state.compareId)) {
+    renderCompare({ ...common, other: null, loading: true });
+    const other = await withLoading(core.loadProject(state.compareId)).catch(() => null);
+    if (token !== renderToken) return;
+    renderCompare({ ...common, other });
+    return;
+  }
+
+  renderCompare({ ...common, other: await core.loadProject(state.compareId) });
 }
 
 function showDetail(node) {
@@ -375,7 +442,7 @@ function showDetail(node) {
     emptyEl: dom.drawerEmpty,
     bodyEl: dom.drawerBody,
     node,
-    taxonomy: bundle.taxonomy,
+    taxonomy: core.taxonomy,
     onClose: () => {
       state.nodeId = null;
       graphView.select(null);
@@ -385,54 +452,93 @@ function showDetail(node) {
   });
 }
 
+/* ---------- 状态变更 ---------- */
+
 function setProject(id) {
   if (id === state.projectId) return;
   state.projectId = id;
   state.nodeId = null;
-  if (!project().modes[state.modeId]) state.modeId = Object.keys(project().modes)[0];
+  if (state.compareId === id) state.compareId = defaultCompareId(id);
   writeUrl();
-  renderAll();
+  render();
+}
+
+function stepProject(delta) {
+  const index = core.entries.findIndex((entry) => entry.id === state.projectId);
+  if (index < 0) return;
+  const next = core.entries[(index + delta + core.entries.length) % core.entries.length];
+  setProject(next.id);
 }
 
 function setMode(modeId) {
-  if (modeId === state.modeId) return;
+  // 键盘快捷键可能请求当前项目没有的模式。
+  if (modeId === state.modeId || !current?.modes[modeId]) return;
   state.modeId = modeId;
   // 同 id 的模块在两个模式里指同一件事，保留选中项让读者看清它怎么变。
-  if (state.nodeId && !graph().nodes.some((n) => n.id === state.nodeId)) state.nodeId = null;
+  if (state.nodeId && !current.modes[modeId].nodes.some((n) => n.id === state.nodeId)) {
+    state.nodeId = null;
+  }
   writeUrl();
-  renderAll({ animate: true });
+  render({ animate: state.view === "graph" });
 }
 
 function setView(view) {
   if (view === state.view) return;
   state.view = view;
   writeUrl();
-  renderAll();
+  render();
+}
+
+function showFatal(error) {
+  document.body.append(
+    el("div", { style: { padding: "24px", color: "#ff8a7a" } }, [
+      el("h2", { text: "加载失败" }),
+      el("p", { text: String(error) }),
+      el("p", {
+        text: "本页需要通过 HTTP 打开（data/*.json 用 fetch 加载），直接双击本地文件会被浏览器拦截。",
+      }),
+    ])
+  );
+  console.error(error);
 }
 
 /* ---------- 启动 ---------- */
 
 async function boot() {
-  bundle = await loadAll();
+  core = await withLoading(loadCore());
 
   const url = readUrl();
   state.projectId =
-    (url.projectId && bundle.projectById.has(url.projectId) && url.projectId) ||
-    bundle.registry.defaultProject ||
-    bundle.projects[0].id;
-  state.modeId =
-    (url.modeId && project().modes[url.modeId] && url.modeId) ||
-    bundle.registry.defaultMode ||
-    Object.keys(project().modes)[0];
+    (url.projectId && core.entryById.has(url.projectId) && url.projectId) ||
+    core.registry.defaultProject ||
+    core.entries[0].id;
+  state.modeId = url.modeId || core.registry.defaultMode || "train";
   state.view = VIEWS.some((v) => v.id === url.view) ? url.view : "graph";
   state.nodeId = url.nodeId;
+  state.compareId =
+    url.compareId && core.entryById.has(url.compareId) && url.compareId !== state.projectId
+      ? url.compareId
+      : defaultCompareId(state.projectId);
+
+  picker = createProjectPicker({
+    trigger: dom.pickerTrigger,
+    currentLabel: dom.pickerCurrent,
+    panel: dom.pickerPanel,
+    search: dom.pickerSearch,
+    list: dom.pickerList,
+    empty: dom.pickerEmpty,
+    entries: core.entries,
+    groups: core.groups,
+    onPick: setProject,
+  });
+  picker.setCurrent(state.projectId);
 
   graphView = createGraphView({
     canvas: dom.canvas,
     viewport: dom.viewport,
     svg: dom.edges,
     nodesLayer: dom.nodes,
-    taxonomy: bundle.taxonomy,
+    taxonomy: core.taxonomy,
     onSelect: (node) => {
       state.nodeId = node?.id ?? null;
       showDetail(node);
@@ -441,7 +547,7 @@ async function boot() {
   });
 
   renderLegend();
-  renderAll();
+  await render();
   writeUrl({ replace: true });
 
   dom.fitBtn.addEventListener("click", () => graphView.fit());
@@ -464,23 +570,28 @@ async function boot() {
 
   window.addEventListener("popstate", () => {
     const next = readUrl();
-    if (next.projectId && bundle.projectById.has(next.projectId)) state.projectId = next.projectId;
-    if (next.modeId && project().modes[next.modeId]) state.modeId = next.modeId;
+    if (next.projectId && core.entryById.has(next.projectId)) state.projectId = next.projectId;
+    if (next.modeId) state.modeId = next.modeId;
     state.view = VIEWS.some((v) => v.id === next.view) ? next.view : "graph";
     state.nodeId = next.nodeId;
-    renderAll();
+    state.compareId =
+      next.compareId && core.entryById.has(next.compareId) ? next.compareId : state.compareId;
+    render();
   });
 
   window.addEventListener("keydown", (event) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.target instanceof HTMLInputElement) return;
-    const digit = Number(event.key);
-    if (digit >= 1 && digit <= bundle.projects.length) {
-      setProject(bundle.projects[digit - 1].id);
-      return;
-    }
+    if (event.target instanceof HTMLSelectElement) return;
+    if (picker.isOpen && event.key !== "Escape") return;
+
     const key = event.key.toLowerCase();
-    if (key === "t") setMode("train");
+    if (key === "p" || event.key === "/") {
+      event.preventDefault();
+      picker.open();
+    } else if (event.key === "[") stepProject(-1);
+    else if (event.key === "]") stepProject(1);
+    else if (key === "t") setMode("train");
     else if (key === "d") setMode("deploy");
     else if (key === "f") graphView.fit();
     else if (event.key === "Escape" && state.nodeId) {
@@ -492,13 +603,4 @@ async function boot() {
   });
 }
 
-boot().catch((error) => {
-  document.body.append(
-    el("div", { style: { padding: "24px", color: "#ff8a7a" } }, [
-      el("h2", { text: "加载失败" }),
-      el("p", { text: String(error) }),
-      el("p", { text: "本页需要通过 HTTP 打开（data/*.json 用 fetch 加载），直接双击本地文件会被浏览器拦截。" }),
-    ])
-  );
-  console.error(error);
-});
+boot().catch(showFatal);

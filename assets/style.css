@@ -130,31 +130,156 @@ kbd {
   text-overflow: ellipsis;
 }
 
-.project-tabs {
-  display: flex;
-  gap: 6px;
+/* ---------- 项目选择器 ---------- */
+
+.project-picker {
+  position: relative;
   margin-left: auto;
 }
 
-.project-tab {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-soft);
+.picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 190px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text);
   font: inherit;
-  padding: 5px 14px;
-  border-radius: 999px;
+  padding: 5px 10px 5px 13px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: border-color 0.15s, background 0.15s;
 }
-.project-tab:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-.project-tab[aria-selected="true"] {
-  background: var(--accent-soft);
+.picker-trigger:hover {
   border-color: var(--accent);
-  color: var(--text);
+}
+.picker-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+.picker-current {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+.picker-trigger-name {
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.picker-trigger-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-left: auto;
+}
+.picker-caret {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.picker-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: min(380px, 88vw);
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  z-index: 40;
+}
+
+.picker-search {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+}
+.picker-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.picker-search::placeholder {
+  color: var(--text-faint);
+}
+
+.picker-list {
+  max-height: min(52vh, 380px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.picker-group {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px 3px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  position: sticky;
+  top: 0;
+  background: var(--bg-raised);
+}
+.picker-group small {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  opacity: 0.8;
+}
+
+.picker-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.picker-option.active {
+  background: var(--bg-hover);
+}
+.picker-option.current .picker-name {
+  color: var(--accent);
+}
+.picker-check {
+  width: 12px;
+  flex: 0 0 12px;
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.picker-option-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.picker-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.picker-sub {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+.picker-empty {
+  margin: 6px 8px;
+  font-size: 12.5px;
+  color: var(--text-faint);
 }
 
 .topbar-actions {
@@ -183,6 +308,33 @@ kbd {
   background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--text);
+}
+
+/* ---------- 加载指示 ---------- */
+
+/* 项目文件是按需加载的，切换到没缓存过的项目会有真实延迟，用一条细进度线兜住。 */
+.load-bar {
+  position: sticky;
+  top: 53px;
+  z-index: 25;
+  height: 2px;
+  overflow: hidden;
+  background: var(--border);
+}
+.load-bar span {
+  display: block;
+  height: 100%;
+  width: 32%;
+  background: var(--accent);
+  animation: load-slide 0.9s ease-in-out infinite;
+}
+@keyframes load-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
 }
 
 /* ---------- 项目头 ---------- */
@@ -950,6 +1102,30 @@ kbd {
 }
 
 /* ---------- 对比视图 ---------- */
+
+.cmp-controls {
+  padding: 8px 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.cmp-select {
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.cmp-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
 
 .cmp-table-wrap {
   padding: 12px 20px 0;
