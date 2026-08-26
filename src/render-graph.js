@@ -8,8 +8,16 @@ const TOP_CHANNEL_KINDS = new Set(["obs", "ref", "privileged", "latent"]);
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 1.6;
 const FALLBACK_NODE_H = 66;
+// 小画布上「整张图塞进去」会把卡片压到 0.3 倍，字全糊掉。宁可停在还读得清的
+// 比例上让读者拖，也不给一张看不清的全景——真想看全景，捏合缩小就是。
+// 横屏手机是矮而不是窄，所以两个方向都要判。
+const COMPACT_W = 720;
+const COMPACT_H = 420;
+const MIN_READABLE_SCALE = 0.52;
+// 手指按下到判定为拖动之间的容差：太小则点按会被当成拖动，太大则拖动起步发滞。
+const DRAG_SLOP = 6;
 
-export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, onSelect }) {
+export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, overlay, onSelect }) {
   const view = { x: 0, y: 0, k: 1 };
   let graph = null;
   let layout = null;
@@ -30,63 +38,159 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
     viewport.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
   }
 
+  const clampScale = (k) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, k));
+
+  /** 以画布内的某一点为锚缩放：那一点下面的内容不动。 */
+  function zoomAt(cx, cy, factor) {
+    const next = clampScale(view.k * factor);
+    const ratio = next / view.k;
+    view.x = cx - (cx - view.x) * ratio;
+    view.y = cy - (cy - view.y) * ratio;
+    view.k = next;
+    applyTransform();
+  }
+
+  function zoomBy(factor) {
+    if (!layout) return;
+    const rect = canvas.getBoundingClientRect();
+    zoomAt(rect.width / 2, rect.height / 2, factor);
+  }
+
   canvas.addEventListener(
     "wheel",
     (event) => {
       if (!layout) return;
       event.preventDefault();
       const rect = canvas.getBoundingClientRect();
-      const cx = event.clientX - rect.left;
-      const cy = event.clientY - rect.top;
-      const factor = Math.exp(-event.deltaY * 0.0015);
-      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.k * factor));
-      const ratio = next / view.k;
-      view.x = cx - (cx - view.x) * ratio;
-      view.y = cy - (cy - view.y) * ratio;
-      view.k = next;
-      applyTransform();
+      zoomAt(event.clientX - rect.left, event.clientY - rect.top, Math.exp(-event.deltaY * 0.0015));
     },
     { passive: false }
   );
 
-  let dragging = null;
+  /**
+   * 触摸与鼠标走同一套指针记账：一根手指平移，两根手指同时捏合缩放与平移。
+   * 每次手指增减都以当前视图为基准重新起算，所以放开一根手指不会让画面跳一下。
+   */
+  const pointers = new Map();
+  let gesture = null;
+  let dragMoved = false;
+
+  const centroid = () => {
+    const list = [...pointers.values()];
+    const x = list.reduce((sum, p) => sum + p.x, 0) / list.length;
+    const y = list.reduce((sum, p) => sum + p.y, 0) / list.length;
+    return { x, y };
+  };
+
+  const spread = () => {
+    const list = [...pointers.values()];
+    if (list.length < 2) return 0;
+    return Math.hypot(list[0].x - list[1].x, list[0].y - list[1].y);
+  };
+
+  function rebaseGesture() {
+    if (!pointers.size) {
+      gesture = null;
+      canvas.classList.remove("dragging");
+      return;
+    }
+    const center = centroid();
+    gesture = { cx: center.x, cy: center.y, dist: spread(), ox: view.x, oy: view.y, ok: view.k };
+  }
+
   canvas.addEventListener("pointerdown", (event) => {
-    if (event.target.closest(".node")) return;
-    dragging = { px: event.clientX, py: event.clientY, ox: view.x, oy: view.y };
-    canvas.classList.add("dragging");
-    canvas.setPointerCapture(event.pointerId);
+    if (!layout) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (event.target.closest(".canvas-zoom")) return;
+    if (!pointers.size) dragMoved = false;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    rebaseGesture();
   });
-  canvas.addEventListener("pointermove", (event) => {
-    if (!dragging) return;
-    view.x = dragging.ox + (event.clientX - dragging.px);
-    view.y = dragging.oy + (event.clientY - dragging.py);
+
+  window.addEventListener("pointermove", (event) => {
+    if (!pointers.has(event.pointerId) || !gesture) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    const center = centroid();
+    const pinching = pointers.size > 1 && gesture.dist > 0;
+    // 起手容差只挡单指：两指落下必定是要操作画布，没有「点按」这层歧义。
+    if (!dragMoved) {
+      const slipped = Math.hypot(center.x - gesture.cx, center.y - gesture.cy) >= DRAG_SLOP;
+      if (!pinching && !slipped) return;
+      dragMoved = true;
+      canvas.classList.add("dragging");
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const k = pinching ? clampScale(gesture.ok * (spread() / gesture.dist)) : gesture.ok;
+    const ratio = k / gesture.ok;
+    view.k = k;
+    view.x = center.x - rect.left - (gesture.cx - rect.left - gesture.ox) * ratio;
+    view.y = center.y - rect.top - (gesture.cy - rect.top - gesture.oy) * ratio;
     applyTransform();
   });
-  const endDrag = () => {
-    dragging = null;
-    canvas.classList.remove("dragging");
+
+  const releasePointer = (event) => {
+    if (!pointers.delete(event.pointerId)) return;
+    rebaseGesture();
   };
-  canvas.addEventListener("pointerup", endDrag);
-  canvas.addEventListener("pointercancel", endDrag);
+  window.addEventListener("pointerup", releasePointer);
+  window.addEventListener("pointercancel", releasePointer);
+
+  let lastFitWidth = 0;
 
   function fit() {
     if (!layout) return;
     const rect = canvas.getBoundingClientRect();
     if (!rect.width) return;
+    lastFitWidth = rect.width;
     const padX = 30;
     const padY = 12;
     // 回路通道画在图的上下方，缩放时要把它们的高度一起算进去，否则会被裁掉。
     const contentH = layout.height + margins.top + margins.bottom;
-    const k = Math.min(
-      MAX_SCALE,
-      Math.max(
-        MIN_SCALE,
-        Math.min((rect.width - padX * 2) / layout.width, (rect.height - padY * 2) / contentH)
-      )
-    );
+    const exact = Math.min((rect.width - padX * 2) / layout.width, (rect.height - padY * 2) / contentH);
+    const compact = rect.width < COMPACT_W || rect.height < COMPACT_H;
+    const k = clampScale(compact ? Math.max(exact, MIN_READABLE_SCALE) : exact);
     view.k = k;
-    view.x = (rect.width - layout.width * k) / 2;
+
+    // 横向放不下时贴左边起排，读者从输入侧往右拖——这正是图本身的阅读顺序。
+    // 纵向始终居中：每条泳道的模块都是绕中线排的，贴顶只会看到一片空的回路通道。
+    const contentW = layout.width * k;
+    view.x = contentW <= rect.width - padX * 2 ? (rect.width - contentW) / 2 : padX;
     view.y = (rect.height - contentH * k) / 2 + margins.top * k;
+    applyTransform();
+  }
+
+  /**
+   * 窄屏上详情是贴底的浮层，会盖住画布下半截。量它没被变换过的布局高度而不是
+   * getBoundingClientRect：浮层正在滑入时后者读到的是动画中途的位置。
+   */
+  function overlayInset(rect) {
+    if (!overlay) return 0;
+    const style = getComputedStyle(overlay);
+    if (style.position !== "fixed" || style.visibility === "hidden") return 0;
+    return Math.max(0, rect.bottom - (window.innerHeight - overlay.offsetHeight));
+  }
+
+  /**
+   * 把某个模块挪进可视范围。用平移而不是 scrollIntoView：画布是 overflow:hidden
+   * 的变换容器，让浏览器去滚它会把内容整体推走、和 transform 对不上。
+   */
+  function reveal(id) {
+    const box = layout?.pos.get(id);
+    if (!box) return;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width) return;
+    const pad = 24;
+    const floor = rect.height - overlayInset(rect);
+    const left = view.x + box.x * view.k;
+    const top = view.y + box.y * view.k;
+    const right = left + box.w * view.k;
+    const bottom = top + box.h * view.k;
+    if (left < pad) view.x += pad - left;
+    else if (right > rect.width - pad) view.x -= right - (rect.width - pad);
+    if (top < pad) view.y += pad - top;
+    else if (bottom > floor - pad) view.y -= bottom - (floor - pad);
     applyTransform();
   }
 
@@ -433,6 +537,12 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
   /* ---------- 事件 ---------- */
 
   nodesLayer.addEventListener("click", (event) => {
+    // 从卡片上起手也能拖画布（手机上卡片盖住了大半个画布），代价是拖完那一下
+    // 的 click 要吃掉，否则松手就会顺手选中脚下的模块。
+    const wasDrag = dragMoved;
+    dragMoved = false;
+    // detail 为 0 说明这一下是键盘敲出来的，跟刚才那次拖动无关。
+    if (wasDrag && event.detail > 0) return;
     const target = event.target.closest(".node");
     if (!target) return;
     const id = target.dataset.id;
@@ -441,20 +551,26 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
     onSelect?.(selectedId ? graph.nodes.find((n) => n.id === selectedId) : null);
   });
 
+  // 链路高亮只跟鼠标走：触屏上 pointerover 也会触发，但没有对应的移出事件，
+  // 高亮会一直粘在最后点过的卡片上，把整张图压暗。
   nodesLayer.addEventListener("pointerover", (event) => {
+    if (event.pointerType !== "mouse") return;
     const target = event.target.closest(".node");
     const id = target?.dataset.id ?? null;
     if (id === hoveredId) return;
     hoveredId = id;
     paintHighlight();
   });
-  nodesLayer.addEventListener("pointerleave", () => {
+  nodesLayer.addEventListener("pointerleave", (event) => {
+    if (event.pointerType !== "mouse") return;
     hoveredId = null;
     paintHighlight();
   });
   nodesLayer.addEventListener("focusin", (event) => {
     const target = event.target.closest(".node");
-    if (!target) return;
+    // 只认键盘焦点。触屏点按也会让按钮拿到焦点，但那件事已经由「选中」表达过了，
+    // 再让它驱动高亮，手指移开后压暗效果就摘不掉。
+    if (!target || !target.matches(":focus-visible")) return;
     hoveredId = target.dataset.id;
     paintHighlight();
   });
@@ -463,11 +579,18 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
     paintHighlight();
   });
 
-  window.addEventListener("resize", () => fit());
+  window.addEventListener("resize", () => {
+    // 手机上地址栏收起、软键盘弹出都会触发 resize，但画布宽度没变。这时重排会把
+    // 读者刚调好的平移缩放清掉，所以只在宽度真的变了（转屏、改窗口）时复位。
+    const width = canvas.getBoundingClientRect().width;
+    if (width && Math.abs(width - lastFitWidth) < 1) return;
+    fit();
+  });
 
   return {
     render,
     fit,
+    zoomBy,
     setFilters(next) {
       filters = next;
       paintFilters();
@@ -475,8 +598,10 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
     select(id) {
       selectedId = id;
       paintHighlight();
-      if (!id) return;
-      nodeEls.get(id)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      if (id) reveal(id);
+    },
+    revealSelected() {
+      if (selectedId) reveal(selectedId);
     },
     get selectedId() {
       return selectedId;

@@ -3,12 +3,23 @@
   --col-gap: 92px;
   --row-gap: 14px;
 
+  /* 全站左右内边距。窄屏改小，并且不小于刘海屏横屏时的安全区。 */
+  --pad-base: 20px;
+  --pad-x: max(var(--pad-base), env(safe-area-inset-left), env(safe-area-inset-right));
+  /* 顶栏与工具栏的实测高度，由 main.js 写入；粘性定位的偏移都读这两个值，
+     否则顶栏一换行，下面的东西就会压在它底下。 */
+  --topbar-h: 53px;
+  --toolbar-h: 45px;
+
   --font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui,
     -apple-system, "Segoe UI", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
 }
 
+/* color-scheme 管的是浏览器自己画的那部分：滚动条、下拉列表、输入框内的按钮。
+   不声明的话它们一律按浅色画，深色主题下滚动条会是一条白槽。 */
 html[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0e1117;
   --bg-soft: #151a22;
   --bg-raised: #1a212b;
@@ -25,6 +36,7 @@ html[data-theme="dark"] {
 }
 
 html[data-theme="light"] {
+  color-scheme: light;
   --bg: #f6f7f9;
   --bg-soft: #ffffff;
   --bg-raised: #ffffff;
@@ -94,7 +106,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 10px 20px;
+  padding: 10px var(--pad-x);
   border-bottom: 1px solid var(--border);
   background: var(--bg-soft);
   position: sticky;
@@ -315,7 +327,7 @@ kbd {
 /* 项目文件是按需加载的，切换到没缓存过的项目会有真实延迟，用一条细进度线兜住。 */
 .load-bar {
   position: sticky;
-  top: 53px;
+  top: var(--topbar-h);
   z-index: 25;
   height: 2px;
   overflow: hidden;
@@ -340,7 +352,7 @@ kbd {
 /* ---------- 项目头 ---------- */
 
 .project-head {
-  padding: 12px 20px 8px;
+  padding: 12px var(--pad-x) 8px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px 24px;
@@ -407,12 +419,12 @@ kbd {
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 8px 20px;
+  padding: 8px var(--pad-x);
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   background: var(--bg-soft);
   position: sticky;
-  top: 53px;
+  top: var(--topbar-h);
   z-index: 20;
 }
 
@@ -491,7 +503,7 @@ kbd {
 }
 
 .mode-summary {
-  margin: 10px 20px 0;
+  margin: 10px var(--pad-x) 0;
   max-width: 96ch;
   color: var(--text-soft);
   font-size: 13px;
@@ -500,7 +512,7 @@ kbd {
 /* ---------- 图例 ---------- */
 
 .legend {
-  margin: 12px 20px 0;
+  margin: 12px var(--pad-x) 0;
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -565,7 +577,7 @@ kbd {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
   gap: 16px;
-  padding: 14px 20px 0;
+  padding: 14px var(--pad-x) 0;
   align-items: start;
 }
 
@@ -580,6 +592,11 @@ kbd {
   background-size: 22px 22px;
   overflow: hidden;
   cursor: grab;
+  /* 画布自己接管全部触摸手势：单指平移、双指捏合。交给浏览器的话，手指一动
+     就变成翻页，图根本拖不动。画布高度刻意留有余地，页面照样能从上下滚走。 */
+  touch-action: none;
+  /* 从卡片上起手拖画布时不要顺手把卡片上的字选中。要复制文字有详情与表格两处。 */
+  user-select: none;
 }
 .canvas:focus-visible {
   outline: 2px solid var(--accent);
@@ -613,7 +630,7 @@ kbd {
 
 .canvas-hint {
   position: absolute;
-  right: 10px;
+  left: 10px;
   bottom: 8px;
   font-size: 11px;
   color: var(--text-faint);
@@ -621,6 +638,39 @@ kbd {
   padding: 2px 8px;
   border-radius: 5px;
   pointer-events: none;
+  transition: opacity 0.4s;
+}
+/* 读者一上手就说明他已经知道怎么用了，提示语让位给图。 */
+.canvas-hint.faded {
+  opacity: 0;
+}
+
+.canvas-zoom {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.cz-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--bg-raised) 90%, transparent);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(3px);
+}
+.cz-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
 }
 
 .lane-head {
@@ -651,8 +701,11 @@ kbd {
   cursor: pointer;
   transition: opacity 0.25s, filter 0.25s, box-shadow 0.15s, border-color 0.15s;
 }
-.node:hover {
-  border-color: var(--node-color, var(--accent));
+/* 触屏上 :hover 会在点完之后粘住，读起来像是「这个框被选中了」，所以只给鼠标。 */
+@media (hover: hover) {
+  .node:hover {
+    border-color: var(--node-color, var(--accent));
+  }
 }
 .node:focus-visible {
   outline: 2px solid var(--accent);
@@ -809,7 +862,7 @@ kbd {
   max-height: min(70vh, 720px);
   overflow-y: auto;
   position: sticky;
-  top: 104px;
+  top: calc(var(--topbar-h) + var(--toolbar-h) + 14px);
 }
 .drawer-empty h2 {
   margin: 0 0 8px;
@@ -945,7 +998,7 @@ kbd {
 /* ---------- 批注 ---------- */
 
 .callouts {
-  padding: 18px 20px 0;
+  padding: 18px var(--pad-x) 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 12px;
@@ -970,7 +1023,7 @@ kbd {
 /* ---------- 通用小节 ---------- */
 
 .section-head {
-  padding: 26px 20px 0;
+  padding: 26px var(--pad-x) 0;
 }
 .section-head h2 {
   margin: 0;
@@ -985,7 +1038,7 @@ kbd {
 /* ---------- 奖励面板 ---------- */
 
 .reward-groups {
-  padding: 12px 20px 0;
+  padding: 12px var(--pad-x) 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1171,7 +1224,7 @@ kbd {
   padding-left: 9px;
 }
 .reward-scale-note {
-  padding: 8px 20px 0;
+  padding: 8px var(--pad-x) 0;
   font-size: 12px;
   color: var(--text-faint);
 }
@@ -1179,7 +1232,7 @@ kbd {
 /* ---------- 对比视图 ---------- */
 
 .cmp-controls {
-  padding: 8px 20px 0;
+  padding: 8px var(--pad-x) 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1203,7 +1256,7 @@ kbd {
 }
 
 .cmp-table-wrap {
-  padding: 12px 20px 0;
+  padding: 12px var(--pad-x) 0;
   overflow-x: auto;
 }
 table.cmp {
@@ -1256,8 +1309,18 @@ table.cmp td.prose {
 /* ---------- 表格视图 ---------- */
 
 .tv-wrap {
-  padding: 12px 20px 0;
+  padding: 12px var(--pad-x) 0;
   overflow-x: auto;
+}
+
+/* 表格比屏幕宽是刻意的（列不能合并，合并了就没法逐项核对），但横滑这件事
+   在手机上没有滚动条提示，得用一句话讲出来。宽屏放得下，不显示。 */
+.table-scroll-hint {
+  display: none;
+  margin: 6px 0 0;
+  padding: 0 var(--pad-x);
+  font-size: 11.5px;
+  color: var(--text-faint);
 }
 table.tv {
   border-collapse: collapse;
@@ -1271,11 +1334,14 @@ table.tv td {
   padding: 5px 9px;
   text-align: left;
   vertical-align: top;
+  /* 中文默认可以在任意字之间断行，列一窄就断成一列一个字、行高涨到十几行。
+     keep-all 让列宽跟着词走，宽度不够时由外层横向滚动兜住。 */
+  word-break: keep-all;
 }
 table.tv thead th {
   background: var(--bg-soft);
   position: sticky;
-  top: 0;
+  top: var(--topbar-h);
   font-size: 11.5px;
   color: var(--text-soft);
 }
@@ -1298,7 +1364,7 @@ table.tv caption {
 
 .footer {
   margin-top: 34px;
-  padding: 18px 20px 34px;
+  padding: 18px var(--pad-x) calc(34px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   color: var(--text-faint);
   font-size: 12px;
@@ -1326,22 +1392,297 @@ table.tv caption {
   }
 }
 
+/* ---------- 窄屏（手机竖屏为主） ---------- */
+
 @media (max-width: 720px) {
-  .topbar {
-    flex-wrap: wrap;
-    gap: 10px;
+  :root {
+    --pad-base: 14px;
   }
-  .project-tabs {
-    margin-left: 0;
+
+  /* 顶栏必须保持一行：它是粘性的，换成两行就等于常驻吃掉一屏的 1/6。
+     让位顺序是「副标题 → 仓库链接 → 站名」，项目选择器一直留着，
+     它是这个页面唯一的导航。 */
+  .topbar {
+    gap: 10px;
+    padding: 8px var(--pad-x);
+  }
+  .brand {
+    flex: 0 1 auto;
+    min-width: 0;
+    gap: 8px;
   }
   .brand-text small {
     display: none;
   }
+  .brand-text strong {
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .project-picker {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .picker-trigger {
+    width: 100%;
+    min-width: 0;
+    padding: 7px 10px 7px 12px;
+  }
+  /* 下拉在窄屏上贴着两边铺开，并且用 fixed 脱离顶栏，免得列表被顶栏裁掉。 */
+  .picker-panel {
+    position: fixed;
+    left: var(--pad-x);
+    right: var(--pad-x);
+    top: calc(var(--topbar-h) + 6px);
+    width: auto;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - var(--topbar-h) - 24px);
+    max-height: calc(100dvh - var(--topbar-h) - 24px);
+  }
+  .picker-list {
+    flex: 1;
+    max-height: none;
+  }
+  /* 16px 是 iOS Safari 不自动放大页面的下限，输入框比这小一律触发缩放。 */
+  .picker-search {
+    font-size: 16px;
+    padding: 9px 12px;
+  }
+  .picker-option {
+    padding: 9px 8px;
+  }
+  .picker-name {
+    font-size: 14px;
+  }
+
+  .icon-btn {
+    padding: 7px 11px;
+  }
+
+  /* 工具栏不再粘性：模式、视图、筛选三组加起来至少两行，粘着就把画布挤没了。 */
+  .toolbar {
+    position: static;
+    gap: 8px;
+    padding: 8px var(--pad-x);
+  }
+  .mode-switch {
+    flex: 1 1 calc(50% - 4px);
+  }
+  .mode-btn {
+    flex: 1;
+    padding: 7px 6px;
+    text-align: center;
+    font-size: 12.5px;
+  }
+  .toolbar-right {
+    margin-left: 0;
+    width: 100%;
+    gap: 8px;
+  }
+  /* 筛选按钮横向滑动，而不是折成三四行——它们是次要控件，不该占掉半屏。
+     留在「图例」同一行里，工具栏总高度因此是两行而不是三行。 */
+  .filters {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .filters::-webkit-scrollbar {
+    display: none;
+  }
+  .filter-label,
+  .chip {
+    flex: 0 0 auto;
+  }
+  .chip {
+    padding: 5px 11px;
+    font-size: 12px;
+  }
+  /* 画布右下角已经有缩放与适应窗口，工具栏里那个按钮就是重复的。 */
+  #fit-btn {
+    display: none;
+  }
+
+  /* 项目头到画布之间的每一行都在把节点图往折叠线以下推，所以这里逐项收紧：
+     标题小一号、行距收拢、关键指标改成横滑一行（它本来要占三行）。 */
+  .project-head {
+    padding: 10px var(--pad-x) 6px;
+    gap: 6px 16px;
+  }
+  .project-head h1 {
+    font-size: 19px;
+  }
+  .project-head .ph-tagline,
+  .project-head .ph-diff {
+    font-size: 12.5px;
+  }
+  .project-head .ph-facts {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .project-head .ph-facts::-webkit-scrollbar {
+    display: none;
+  }
+  .fact {
+    flex: 0 0 auto;
+  }
+  .mode-summary {
+    font-size: 12.5px;
+  }
+
+  /* 画布不铺满一屏：它吃掉了全部触摸手势，上下总得留出能滚页面的地方。 */
+  .canvas {
+    height: min(52vh, 460px);
+    height: min(52dvh, 460px);
+    min-height: 300px;
+    border-radius: 10px;
+  }
+  .cz-btn {
+    width: 38px;
+    height: 38px;
+    font-size: 15px;
+  }
+
+  /* 详情在窄屏上改成底部浮层。排在画布下面的话，点一个模块要再滚一屏才看得到，
+     而那一滚正好让人看不见自己点的是哪个框。 */
+  .drawer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    /* top 得显式清掉：宽屏那条规则给了它粘性偏移，而 fixed 盒子同时有 top 和
+       height 时 bottom 会被忽略，浮层就停在半空中。 */
+    top: auto;
+    bottom: 0;
+    z-index: 45;
+    max-height: min(50vh, 400px);
+    max-height: min(50dvh, 400px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--border-strong);
+    border-radius: 14px 14px 0 0;
+    padding: 10px var(--pad-x) calc(16px + env(safe-area-inset-bottom));
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.28);
+    /* 收起时一并 visibility: hidden——详情为空时浮层本身只有把手那么高，
+       只靠 translateY(101%) 挪不出屏幕，会在底边露出一条白。 */
+    visibility: hidden;
+    transform: translateY(101%);
+    transition: transform 0.22s ease-out, visibility 0.22s;
+  }
+  body.detail-open .drawer {
+    visibility: visible;
+    transform: translateY(0);
+  }
+  .drawer::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 0 auto 10px;
+    border-radius: 2px;
+    background: var(--border-strong);
+  }
+  /* 空状态那段是给鼠标和键盘读者的引导，浮层收起时本来就看不见。 */
+  .drawer-empty {
+    display: none;
+  }
+  .dd-close {
+    font-size: 22px;
+    padding: 0 6px;
+  }
+
+  .callouts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reward-group > summary {
+    flex-wrap: wrap;
+    padding: 10px var(--pad-x);
+  }
+  .rg-desc {
+    flex-basis: 100%;
+  }
+  .reward-item {
+    padding: 11px var(--pad-x);
+  }
+  /* 「吃什么 / 正样本 / 网络」这些值本身就长，再挤成两列就每行两三个字。 */
+  .ri-model {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .ri-model dt {
+    margin-top: 5px;
+  }
+  .ri-model dt:first-child {
+    margin-top: 0;
+  }
+
+  .table-scroll-hint {
+    display: block;
+  }
+  /* 表格右侧不留内边距：宽度全给列，横滑到底就是表格的真实边界。 */
+  .tv-wrap,
+  .cmp-table-wrap {
+    padding-right: 0;
+  }
+  table.tv {
+    font-size: 12px;
+  }
+  table.cmp {
+    min-width: 520px;
+  }
+  .cmp-select {
+    font-size: 16px;
+    padding: 7px 10px;
+  }
+}
+
+/* ---------- 极窄屏（360px 一类的小手机） ---------- */
+
+@media (max-width: 420px) {
+  .brand-text {
+    display: none;
+  }
+  /* 仓库链接在页脚还有一份，顶栏这一行先让给项目选择器。 */
+  .topbar-actions .icon-btn[href] {
+    display: none;
+  }
+}
+
+/* ---------- 矮视口（横屏手机、分屏窗口） ---------- */
+
+/* 宽度够而高度不够时，粘性工具栏会常驻吃掉小半个屏幕，让它跟着页面滚走，
+   省下的高度全给画布——横屏本来就是看这张宽图最合适的姿势。 */
+@media (max-height: 620px) {
   .toolbar {
     position: static;
   }
   .canvas {
-    height: 60vh;
+    height: min(78vh, 720px);
+    height: min(78dvh, 720px);
+    min-height: 260px;
+  }
+}
+
+/* ---------- 触屏 ---------- */
+
+/* 认 pointer 而不是 hover：无鼠标的桌面浏览器也会报 hover: none，但它不是手指。 */
+@media (pointer: coarse) {
+  /* 快捷键在没有键盘的设备上不存在，写出来只会占地方。 */
+  .drawer-empty .hint {
+    display: none;
+  }
+  /* 手指的落点比光标粗，点得中才谈得上好用。 */
+  .picker-option,
+  .mode-btn,
+  .icon-btn,
+  .cz-btn {
+    min-height: 36px;
   }
 }
 

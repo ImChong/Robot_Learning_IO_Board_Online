@@ -80,6 +80,10 @@ export function renderCompare({
   }
 
   const pair = [base, other];
+  // 窄屏才显示（样式里控制）：手机上没有滚动条，横向还有内容这件事看不出来。
+  container.append(
+    el("p", { class: "table-scroll-hint", text: "表格比屏幕宽，左右滑动可以看到余下的列。" })
+  );
   container.append(factsTable(pair, modeId));
   container.append(obsTable(pair, modeId, taxonomy));
   if (modeId === "train") {
