@@ -46,16 +46,3 @@ export function nodeColor(node, taxonomy) {
     node.kind
   ] ?? "#7d8794";
 }
-
-/** 一张图里全部观测项的维度合计，按输入类别分组。 */
-export function dimBreakdown(graph) {
-  const byClass = new Map();
-  let total = 0;
-  for (const node of graph.nodes) {
-    if (node.kind !== "obs" || node.dim == null) continue;
-    if (node.availability === "train-only") continue;
-    total += node.dim;
-    byClass.set(node.class ?? "?", (byClass.get(node.class ?? "?") ?? 0) + node.dim);
-  }
-  return { total, byClass };
-}
