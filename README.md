@@ -6,6 +6,8 @@
 
 分类语汇沿用 Robotics Notebooks 的[观测输入五类](https://imchong.github.io/Robotics_Notebooks/detail.html?id=wiki-concepts-humanoid-policy-observation-inputs)与[奖励函数六类](https://imchong.github.io/Robotics_Notebooks/detail.html?id=wiki-concepts-humanoid-policy-reward-functions)划分，并补上参考页目前缺失的输出侧五类。
 
+下一批要接的是 [MimicKit](https://github.com/xbpeng/MimicKit) 方法族的七个方法（DeepMimic、AWR、AMP、ASE、LCP、ADD、SMP）。内容已逐项核对完毕、落在 [PLAN.md](./PLAN.md) 附录 C，**数据文件尚未落地，页面上暂时看不到**。两批放在一起是因为它们互相照亮：现有的真机路线解释「为什么要往观测里减信息、往训练里加噪声」，MimicKit 方法族解释「奖励怎么从手写公式一路走到对抗判别器和冻结的扩散先验」。
+
 ## 本地运行
 
 站点是零构建的静态文件，但数据用 `fetch` 加载，所以需要走 HTTP 而不能直接双击 `index.html`：
@@ -97,7 +99,7 @@ vendor/katex/         本地自带的 KaTeX 0.16.11（MIT），不依赖 CDN
 
 ## 设计与实施计划
 
-见 [PLAN.md](./PLAN.md)，其中附录 A/B 是逐项核对上游实现后的内容基线。
+见 [PLAN.md](./PLAN.md)。附录 A（BeyondMimic）、附录 B（SONIC）对应 `data/` 下已有的两份数据文件；附录 C（MimicKit 七个方法）已核对完成但尚未落成数据文件，是 M5 的输入。
 
 ## 许可
 
