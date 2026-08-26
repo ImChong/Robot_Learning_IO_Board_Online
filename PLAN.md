@@ -88,7 +88,7 @@ MimicKit 引入一类现有五类装不下的输入：ASE 的 64 维技能潜变
 六类沿用：任务与跟踪 / 姿态与稳定 / 步态与接触 / 能效与平滑 / 安全与硬件 / 风格与模仿。
 跟踪系策略的特点是 A 类与 F 类合流（参考跟踪本身就是任务奖励），页面要显式说明这一点，否则读者会疑惑为什么没有独立的「步态相位」项。
 
-六类回答的是「这一项替谁说话」，但 MimicKit 逼出了另一个必须回答的问题：**这一项的数值是谁算出来的**。同样落在 F 类（风格与模仿）里，DeepMimic 的 `pose` 项是一条闭式公式，AMP 的判别器奖励是一个每轮都在变的神经网络输出，SMP 的奖励要跑三步扩散去噪才能得到。把它们画成同一种框会丢掉最关键的信息。因此新增正交字段 `reward_kind`（枚举，见 §4.5）：
+六类回答的是「这一项替谁说话」，但 MimicKit 逼出了另一个必须回答的问题：**这一项的数值是谁算出来的**。同样落在 F 类（风格与模仿）里，DeepMimic 的 `pose` 项是一条闭式公式，AMP 的判别器奖励是一个每轮都在变的神经网络输出，SMP 的奖励要在三个噪声水平上各做一次加噪去噪、拿噪声预测误差当分数。把它们画成同一种框会丢掉最关键的信息。因此新增正交字段 `reward_kind`（枚举，见 §4.5）：
 
 | `reward_kind` | 含义 | 出现在 | 页面表现 |
 |---|---|---|---|
@@ -509,9 +509,9 @@ Robot_Learning_IO_Board/
 | 第一批两个项目的奖励项高度重叠，对比视图可能显得「没差别」 | 页面结论平淡 | 这本身就是结论。对比视图要突出**差异集**（SONIC 多出的 anti_shake / vr_5point / feet_acc / energy）与**观测时序深度**的量级差（单帧 vs 10 帧 × 10 未来帧） |
 | 中文长标签在窄节点里排版困难 | 视觉粗糙 | 节点标签两行截断 + `title`，完整说明放抽屉；维度用等宽数字单独一行 |
 | 学习式奖励「没有公式可看」，读者可能觉得这几张图信息量不如手写奖励的项目 | MimicKit 后三个方法的页面显得空 | 奖励来源卡必须回答四个具体问题：吃什么（指向具体观测节点与维度）、正样本是什么、怎么变成标量（写出 `-2\log(1-D)` 这类真实映射）、有哪些正则项（梯度罚系数、logit 罚系数）。这些都是配置里的真实数字，信息量并不比权重表少 |
-| MimicKit 除 humanoid 外的角色资产不随仓库分发 | 五个角色的关节/DoF 数只能反推，PD 增益无从核对 | 见 §8.6：反推值标 `derived` 并写明依据，不可核对的量留空不写。首版只把 humanoid 画全 |
+| MimicKit 除 humanoid 外的角色资产不随仓库分发 | 五个角色的关节/DoF 数只能反推，PD 增益无从核对 | 见 §8 第 6 条：反推值标 `derived` 并写明依据，不可核对的量留空不写。首版只把 humanoid 画全 |
 | 项目数量涨到 9，同一套泳道布局未必都合适（Go2 四足、SMPL 69 DoF） | 部分图过高或过宽 | 首版统一用 humanoid，把角色差异降级为详情里的对照表；泳道内的「分组节点」（可展开容器）是主要的高度控制手段 |
-| DeepMimic 的实现口径与 2018 年论文口径不一致（相位观测被关掉、改用 3 帧未来参考；奖励从 4 项拆成 5 项） | 读者按论文预期看图会困惑 | 按 §8.3 处理：图以实现为主体，节点 `note` 写明论文口径与差异原因。这一条要写成显式批注气泡，因为 DeepMimic 是这七个方法里名气最大、读者预期最强的一个 |
+| DeepMimic 的实现口径与 2018 年论文口径不一致（最显眼的一处：相位观测在 28 个环境配置里全部关闭，改由 3 帧未来参考承担同一职责） | 读者按论文预期看图会困惑 | 按 §8 第 3 条处理：图以实现为主体，节点 `note` 写明论文口径与差异原因。这一条要写成显式批注气泡，因为 DeepMimic 是这七个方法里名气最大、读者预期最强的一个。论文侧的具体项数与权重本次未逐项核对，写入数据文件前须标 `inferred` 或补核对 |
 
 ---
 
@@ -732,9 +732,9 @@ MimicKit 的观测由三个可组合的函数拼出来，七个方法只是开�
 
 **积木 3：相位观测 `compute_phase_obs`**（同上）—— **七个方法的随仓库配置全部关闭**
 
-`enable_phase_obs: False` 出现在全部 24 个训练环境配置里，无一例外（`view_motion_*` 与 `dof_test_*` 是纯可视化工具环境，不含这些键）。`num_phase_encoding: 4` 仍留在 DeepMimic 与 ADD 系列配置里但不生效。若打开，维度是 1 + 2 × 4 = 9（相位标量 + 4 组倍频 sin/cos 位置编码）。
+`data/envs/` 下共 35 个环境配置，其中 28 个含 `enable_phase_obs` 键，**取值全部是 `False`**，无一例外；余下 7 个是 `view_motion_*` 与 `dof_test_*` 纯可视化工具环境，不含这些键。`num_phase_encoding: 4` 仍留在 DeepMimic 与 ADD 系列配置里但不生效。若打开，维度是 1 + 2 × 4 = 9（相位标量 + 4 组倍频 sin/cos 位置编码）。
 
-**这是 DeepMimic 实现口径与 2018 年论文口径最显眼的一处差异**：论文用相位变量告诉策略「现在该做动作的第几阶段」，而这份实现改用「三帧未来参考」承担同一职责。按 §8.3，图上以实现为主体，节点画成灰色停用态并标注论文口径。这也是 §9 风险表里专门留了一条的原因——DeepMimic 名气最大，读者预期最强。
+**这是 DeepMimic 实现口径与 2018 年论文口径最显眼的一处差异**：论文用相位变量告诉策略「现在该做动作的第几阶段」，而这份实现改用「三帧未来参考」承担同一职责。按 §8 第 3 条，图上以实现为主体，节点画成灰色停用态并标注论文口径。这也是 §9 风险表里专门留了一条的原因——DeepMimic 名气最大，读者预期最强。
 
 #### C.1.4 动作与执行链（所有方法相同）
 
@@ -805,7 +805,7 @@ actor / critic 主干默认 `fc_2layers_1024units` = **[1024, 512] + ReLU**；AS
 
 **成功/失败的终局值都是 0**（`get_reward_succ()` / `get_reward_fail()` 返回 0.0）。源码注释点明了原因：如果动作播完给正奖励，策略会学出「站着不动等时间到」的局部最优。这个细节值得做成批注气泡——它是「奖励设计里最容易踩的坑」的教科书级例子。
 
-#### C.2.3 终止条件（3 类）
+#### C.2.3 终止条件（4 条）
 
 | 条件 | 标记 | 阈值 |
 |---|---|---|
@@ -830,7 +830,18 @@ PPO（`mimickit/learning/ppo_agent.py`）：actor / critic 均 `[1024, 512] + Re
 
 #### C.2.6 参考动作
 
-单段：`data/motions/humanoid/humanoid_spinkick.pkl`。多段：把 `motion_file` 指向 `data/datasets/dataset_humanoid_locomotion.yaml`（约 38 条，`humanoid_run` 权重 3.0，其余 SIE 动作各 1.0）。动作帧格式 `[根位置 3, 根旋转 3（指数映射）, 各关节旋转]`，关节顺序 = XML 深度优先。
+单段：`data/motions/humanoid/humanoid_spinkick.pkl`。多段：把 `motion_file` 指向数据集清单，如 `data/datasets/dataset_humanoid_locomotion.yaml`（**56 条**，`humanoid_run` 权重 3.0、其余各 1.0）。动作帧格式 `[根位置 3, 根旋转 3（指数映射）, 各关节旋转]`，关节顺序 = XML 深度优先。
+
+四份随仓库分发的数据集清单（动作 `.pkl` 本身需另行下载）：
+
+| 清单 | 条数 | 权重分布 | 用于 |
+|---|---|---|---|
+| `dataset_humanoid_locomotion.yaml` | 56 | 3.0 / 1.0 | AMP、ASE、SMP 的任务环境 |
+| `dataset_humanoid_sword_shield.yaml` | 82 | 0.0029–0.062（按时长归一） | ASE 剑盾版 |
+| `dataset_humanoid_sword_shield_locomotion.yaml` | 16 | 全 1.0 | 剑盾版任务环境 |
+| `dataset_go2_locomotion.yaml` | 7 | 5.0 / 1.0 | Go2 四足 |
+
+`weight` 只表达**相对**采样概率：`MotionLib` 加载时会除以总和再交给 `torch.multinomial`，所以剑盾数据集那批小数（7 个不同取值，总和 ≈ 0.957）与另外三份的整数权重在效果上等价。页面上要把这条归一化画进「参考库 → 采样器」的边上，否则读者会试图解读那些小数的绝对大小。
 
 ---
 
@@ -881,11 +892,12 @@ PPO（`mimickit/learning/ppo_agent.py`）：actor / critic 均 `[1024, 512] + Re
 
 #### C.4.3 奖励（1 项，`reward_kind: adversarial`）
 
-环境的 `_update_reward` 是**空实现**——AMP 环境不产生任何任务奖励。总奖励：
+环境的 `_update_reward` 是**空实现**——AMP 环境不产生任何任务奖励，`task_reward_weight` 也是 0。总奖励只剩判别器一项：
 
 ```
-r = task_reward_weight × 0  +  disc_reward_weight × disc_r
-  = 1.0 × 2.0 × ( −log( max(1 − σ(D(s)), 1e-4) ) )
+disc_r = disc_reward_scale × ( −log( max(1 − sigmoid(D(s)), 1e-4) ) )
+r      = task_reward_weight × task_r + disc_reward_weight × disc_r
+       = 0.0 × 0 + 1.0 × disc_r
 ```
 
 | 参数 | 值 |
@@ -900,7 +912,7 @@ r = task_reward_weight × 0  +  disc_reward_weight × disc_r
 
 奖励面板对这一项渲染「来源卡」而非权重条：吃 `disc.obs_window`（1420 维，指向具体节点）、正样本是参考动作库的同窗口片段、映射是 `−2 log(1 − D)`、正则是 logit L2 0.01 + 双侧梯度罚 5。
 
-#### C.4.4 终止条件（2 类，比 DeepMimic 少两条）
+#### C.4.4 终止条件（2 条，比 DeepMimic 少两条）
 
 `pose_termination: False`，且 `_update_done` 里把 `motion_len_term` 全部置 `False`（动作播完不算成功）。只剩：超时 10 s、非法接触（除双脚外任一连杆地面接触力 > 0.1 N）。
 
@@ -908,14 +920,14 @@ r = task_reward_weight × 0  +  disc_reward_weight × disc_r
 
 #### C.4.5 任务变体（AMP + 任务奖励）
 
-`data/agents/amp_task_humanoid_agent.yaml`：`task_reward_weight: 0.5` / `disc_reward_weight: 0.5`，actor lr 降到 5e-5。配套三个任务环境，观测在 140 维之后**追加**任务观测：
+`data/agents/amp_task_humanoid_agent.yaml`：`task_reward_weight: 0.5` / `disc_reward_weight: 0.5`，actor lr 降到 5e-5。配套两个任务环境，观测在 140 维之后**追加**任务观测：
 
-| 任务 | 环境文件 | 任务观测 | 总观测 | 任务奖励 |
-|---|---|---|---|---|
-| `location` | `amp_location_humanoid_env.yaml` | 目标点在朝向局部系的 xy，**2** | 142 | 位置项（见 C.8.4） |
-| `steering` | `amp_steering_humanoid_env.yaml` | 局部目标方向 2 + 目标速度 1 + 局部朝向方向 2，**5** | 145 | 速度 0.7 + 朝向 0.3 |
+| 任务 | 环境文件 | 任务观测 | 总观测 | 任务奖励 | episode |
+|---|---|---|---|---|---|
+| `location` | `amp_location_humanoid_env.yaml` | 目标点在朝向局部系的 xy，**2** | 142 | 位置项（细节见 C.8.4） | 20 s |
+| `steering` | `amp_steering_humanoid_env.yaml` | 局部目标方向 2 + 目标速度 1 + 局部朝向方向 2，**5** | 145 | 速度 0.7 + 朝向 0.3 | 10 s |
 
-两个任务环境都用 `global_obs: False`（任务是相对自身的，绝对朝向没有意义），参考动作池换成 `dataset_humanoid_locomotion.yaml`。剑盾角色另有两套对应配置。
+两个任务环境都用 `global_obs: False`（任务是相对自身的，绝对朝向没有意义），参考动作池换成 `dataset_humanoid_locomotion.yaml`。剑盾角色另有两套对应配置。SMP 复用同样这两个任务环境并多一个 `dodgeball`（C.8.4），所以三个任务环境在数据模型里应当做成**可被多个项目引用的共享片段**，而不是各写一份——这是 `inherits` 之外第二个复用需求，M5.3 时如果发现继承机制覆盖不了，就在 schema 里加一个 `task_presets` 顶层数组。
 
 ---
 
@@ -948,21 +960,23 @@ enc_loss = mean( −z · ẑ )               # 编码器损失
 
 即「让编码器能从动作里认出当初给的是哪个技能」。这构成一条 **z → actor → 环境 → 判别器观测 → 编码器 → 回到 z** 的闭环，是 ASE 图上唯一的环形结构，也是泳道布局需要特殊照顾的地方（`latent` 泳道要放在最左，编码器放在最右，回边从右到左跨整张图）。
 
-#### C.5.3 奖励（3 项来源混合）
+#### C.5.3 奖励（两项生效，任务项置零）
 
 | 来源 | 权重 | `reward_kind` |
 |---|---|---|
-| 判别器（同 AMP，`−2 log(1−D)`） | `disc_reward_weight: 0.5` | `adversarial` |
+| 判别器（形式同 AMP，`−2 log(1−D)`） | `disc_reward_weight: 0.5` | `adversarial` |
 | 编码器互信息 | `enc_reward_weight: 0.5` | `encoder` |
-| 任务 | `task_reward_weight: 0.0` | — |
+| 任务 | `task_reward_weight: 0.0` | 不生效（预训练阶段无任务） |
 
 另有一项**只进损失不进奖励**的多样性正则，画在 `learning` 泳道：
 
 ```
-diversity_loss = ( diversity_tar − mean‖μ(s,z′) − μ(s,z)‖² / (0.5 − 0.5·z′·z) )²
+a_diff         = mean‖ μ(s, z′) − μ(s, z) ‖²      # 两个潜变量下动作均值的差
+z_diff         = 0.5 − 0.5 · (z′ · z)             # 两个潜变量本身的差
+diversity_loss = ( diversity_tar − a_diff / z_diff )²
 ```
 
-`diversity_weight: 0.01`，`diversity_tar: 1.0`，`z′` 是重新采样的潜变量。它要求「潜变量差多少，动作就该差多少」，防止 decoder 忽略 z。数据模型上它不是 RewardTerm 而是一个 `learning` 泳道的节点 + 一条 `kind: "grad"` 的虚线边。
+`diversity_weight: 0.01`，`diversity_tar: 1.0`，`z′` 是重新采样的潜变量。它要求「潜变量差多少，动作就该差多少」，防止策略忽略 z 而退化成单一行为。数据模型上它不是 RewardTerm 而是一个 `learning` 泳道的节点 + 一条 `kind: "grad"` 的虚线边——这个区分很重要：它影响的是梯度，不进入 TD 回报，画成奖励项会误导读者。
 
 #### C.5.4 初始状态：一半参考、一半默认站姿
 
@@ -997,7 +1011,9 @@ diversity_loss = ( diversity_tar − mean‖μ(s,z′) − μ(s,z)‖² / (0.5 �
 | 未来参考 3 帧 × (3 + 6 + 30×6 + 5×3) | 3 × 204 = 612 |
 | **合计** | **849**（`derived`） |
 
-关键连杆：`[left_ankle_roll_link, right_ankle_roll_link, head_link, left_wrist_yaw_link, right_wrist_yaw_link]`。允许接触的连杆是双膝 + 双踝共 6 个（比 humanoid 的双脚宽松）。`zero_center_action: True`。`pose_termination_dist` 仍为 1.0 m，`joint_err_w` 30 项（髋/肩 1.0、肘/膝 0.6、腕/踝 0.5、一个 0 自由度连杆 0.0）。
+关键连杆：`[left_ankle_roll_link, right_ankle_roll_link, head_link, left_wrist_yaw_link, right_wrist_yaw_link]`。允许接触的连杆是双膝 + 双踝 pitch/roll 共 6 个（比 humanoid 的双脚宽松）。`zero_center_action: True`，`pose_termination_dist` 仍为 1.0 m。
+
+`joint_err_w` 30 项的结构正好把 G1 的 29 DoF 拆解得一清二楚：每条腿髋 3 × 1.0 + 膝 0.6 + 踝 2 × 0.5（6 关节 × 2）、腰 3 × 1.0、一个 0 权重的 0 自由度连杆、每条臂肩 3 × 1.0 + 肘 0.6 + 腕 3 × 0.5（7 关节 × 2）。合计 30 关节 / 29 DoF，与附录 A 里 BeyondMimic 对同一台 G1 的拆法（腿 8 + 踝 4 + 腰 3 + 臂 14 = 29）逐项吻合——两个独立项目对同一台机器人的自由度划分完全一致，这让 M6 的跨族对比有了确定的对齐基础。
 
 #### C.6.2 唯一的算法改动
 
@@ -1074,7 +1090,7 @@ actor_loss += lcp_weight × lcp_loss        # lcp_weight = 0.002
 | `steering`（`smp_steering_humanoid_env.yaml`） | 140 + 5 = **145** | `global_obs: False` |
 | `dodgeball`（`smp_dodgeball_humanoid_env.yaml`） | 140 + 6 = **146** | `global_obs: False`，**D 类外部感知的唯一实例** |
 
-先验输入窗口：`num_disc_obs_steps: 10`，`disc_dof_vel_obs: **False**` → 单帧 **114 维**（108 + 根线速度 3 + 根角速度 3，**不含关节速度**），窗口共 **1140 维**。去掉关节速度是 SMP 与 AMP/ASE 判别器观测的唯一维度差异，而且是硬约束——`SMPAgent._check_prior_env_config` 会逐项断言环境配置与先验训练时的配置一致（`global_obs`、`root_height_obs`、`enable_tar_obs`、`num_disc_obs_steps`、`disc_dof_vel_obs`、关键连杆数量、控制频率），不一致直接崩。
+先验输入窗口：`num_disc_obs_steps: 10`，且 `disc_dof_vel_obs` 设为 `False` → 单帧 **114 维**（108 + 根线速度 3 + 根角速度 3，**不含 28 维关节速度**），窗口共 **1140 维**。去掉关节速度是 SMP 与 AMP / ASE 判别器观测的唯一维度差异，而且是硬约束——`SMPAgent._check_prior_env_config` 会逐项断言环境配置与先验训练时的配置一致（`global_obs`、`root_height_obs`、`enable_tar_obs`、`num_disc_obs_steps`、`disc_dof_vel_obs`、关键连杆数量、控制频率），不一致直接崩。
 
 这组断言本身就是页面上一个很好的批注：**「先验和环境必须成套」**，和 SONIC 部署时「encoder 与 decoder 必须成套」（B.7）是同一个工程约束的两种形态。
 
@@ -1094,7 +1110,7 @@ actor_loss += lcp_weight × lcp_loss        # lcp_weight = 0.002
 | 预训练（单段） | batch 512，lr 1e-4，50 000 iters（`tinymdm_single_clip.yaml`，`humanoid_spinkick.pkl`） |
 | 策略训练期间 | `requires_grad = False`，`eval()`，全程冻结 |
 
-多段先验有一处口径不一致要标注：`tinymdm_multi_clip.yaml` 的 `motion_file` 指向 `data/datasets/dataset_humanoid_locomotion.yaml`，但 `smp_task_humanoid_agent.yaml` 引用的预训练权重是 `data/models/smp_priors/smp_prior_lafan.pt`，文档称其为「LaFAN1 先验」。也就是说**随仓库分发的权重与随仓库分发的训练配置不是同一份数据**（前者是 LaFAN1，后者是 humanoid locomotion 数据集）。按 §8.3，节点上写明两者并注明「复现训练需自行确认数据来源」，不擅自认定其中一个。
+多段先验有一处口径不一致要标注：`tinymdm_multi_clip.yaml` 的 `motion_file` 指向 `data/datasets/dataset_humanoid_locomotion.yaml`，但 `smp_task_humanoid_agent.yaml` 引用的预训练权重是 `data/models/smp_priors/smp_prior_lafan.pt`，文档称其为「LaFAN1 先验」。也就是说**随仓库分发的权重与随仓库分发的训练配置不是同一份数据**（前者是 LaFAN1，后者是 humanoid locomotion 数据集）。按 §8 第 3 条，节点上写明两者并注明「复现训练需自行确认数据来源」，不擅自认定其中一个。
 
 两个先验的窗口坐标系也不同：单段先验对应 `smp_humanoid_env.yaml`（`global_obs: True`，世界朝向），多段先验对应 `smp_location_humanoid_env.yaml`（`global_obs: False`，去偏航的局部系）。这是 `_check_prior_env_config` 那组断言真正在防的东西——把两个先验混用会静默地喂进坐标系不同的观测，所以它选择直接崩。
 
@@ -1102,10 +1118,12 @@ actor_loss += lcp_weight × lcp_loss        # lcp_weight = 0.002
 
 #### C.8.3 SDS 奖励（`reward_kind: generative`）
 
+对每个扩散步 t ∈ {22, 15, 8}：给归一化后的观测窗口加上该噪声水平的噪声，让冻结先验去噪并还原出噪声预测，取**噪声预测误差的均方值**作为该档的分数（`ESM_SDS_loss`，返回形状 `(batch, 3)`）。先验越认为这段动作「像它见过的动作」，误差越小。
+
 ```
-sds_losses = prior.ESM_SDS_loss(norm_window, t_lst=[22, 15, 8])   # 三个噪声水平各一个标量
-smp_r = exp( − sds_loss_scale × mean( DiffNormalizer(sds_losses) ) )
-r = task_reward_weight × task_r + smp_reward_weight × smp_r
+sds_losses = prior.ESM_SDS_loss(norm_window, t_lst=[22, 15, 8])   # (batch, 3)
+smp_r      = exp( − sds_loss_scale × mean_over_3( DiffNormalizer(sds_losses) ) ) × smp_reward_scale
+r          = task_reward_weight × task_r + smp_reward_weight × smp_r
 ```
 
 | 参数 | 单段配置 | 任务配置 |
@@ -1115,6 +1133,9 @@ r = task_reward_weight × task_r + smp_reward_weight × smp_r
 | `smp_eval_batch_size` | 4096 | 4096 |
 | `task_reward_weight` / `smp_reward_weight` | 0.0 / 1.0 | 0.5 / 0.5 |
 | `sds_normalizer_samples` | 不设（全程更新） | 1e8 |
+| `smp_reward_scale` | 未设，取默认 1.0 | 同 |
+
+三个扩散步 `[22, 15, 8]`（总步数 T = 50 中的三个噪声水平）各算一个 SDS 损失，用 `DiffNormalizer` 按各自的绝对值滑动均值归一化后取平均，再过 `exp(−6 × ·)`。归一化这一步是必需的：三个噪声水平的损失量级差很多，不归一化的话高噪声那一档会独占奖励。
 
 文档给出的调参优先级是 `smp_reward_weight > sds_loss_scale >= diffusion_steps`，这句话值得原样放进奖励来源卡——它是「这三个数字哪个重要」的作者原话。
 
@@ -1126,9 +1147,11 @@ r = task_reward_weight × task_r + smp_reward_weight × smp_r
 |---|---|---|---|
 | `location` | 目标点在朝向局部系的 xy（**2**，B 类） | `1.0 × exp(−0.5 × ‖Δxy‖²)`（`vel_reward_w` 与 `face_reward_w` 均为 0） | 目标距离 1–10 m，`tar_speed` 1.0，每 5–10 s 换点，`dist_threshold` 0.5，episode 20 s |
 | `steering` | 局部目标方向 2 + 目标速度 1 + 局部朝向方向 2（**5**，B 类） | `0.7 × exp(−0.5 × ‖v_tar − v‖²)`（速度投影为负时置 0）`+ 0.3 × clamp_min(cos θ_face, 0)` | 目标速度 0.5–5 m/s，每 4–7 s 换向，`rand_face_dir: False`（朝向 = 移动方向），episode 20 s |
-| `dodgeball` | 1 个投射物的局部位置 3 + 局部速度 3（**6**，**D 类**） | 躲避奖励；被击中判 `FAIL` | 投射距离 8–10 m，速度 12–15 m/s，瞄准 `torso`，瞄准噪声 0.1，触发时刻 1–4 s，episode 20 s |
+| `dodgeball` | 1 个投射物的局部位置 3 + 局部速度 3（**6**，**D 类**） | `0.9 × (1 − exp(−0.3 × d_min)) + 0.1 × exp(−1.0 × ‖v_xy‖²)`，`d_min` 为到最近投射物的距离；被击中判 `FAIL` | `num_projectiles: 1`，投射距离 8–10 m，速度 12–15 m/s，瞄准 `torso`，瞄准噪声 0.1，触发时刻 1–4 s，episode 20 s |
 
-`steering` 的任务观测里「目标方向」与「朝向方向」是两个独立量，而 `rand_face_dir: False` 让二者恒相等——图上要把这个「配置把两个输入绑成一个」的事实标出来，否则 5 维观测里有 2 维看起来是冗余的。
+`dodgeball` 的奖励值得单独说：权重 0.9 的主项是「离球越远越好」，权重 0.1 的次项是「站着别动」。两项方向相反，靠权重压出「只在必要时移动」的行为。这种「用两个互相拉扯的项定义行为」的写法在真机路线的奖励表里没有对应物（那边的项基本互不冲突），奖励面板要能表达这种对抗关系——最简单的办法是在权重条上用相反的配色，并在分组说明里点出来。
+
+`steering` 的任务观测里「目标方向」与「朝向方向」是两个独立量，而 `rand_face_dir: False` 让二者恒相等——图上要把这个「配置把两个输入绑成一个」的事实标出来，否则 5 维观测里有 2 维看起来是冗余的。这也是 `dim` 与「有效信息量」不一致的一个例子，节点上应当同时给出两个数字。
 
 `dodgeball` 是整个页面里 D 类（外部感知）唯一有内容的节点。它的 `acquisition` 是 `sim-only`（仿真直读投射物状态），真机上要靠视觉——这一点正好用来说明「为什么真机路线的两个项目都是盲式的」。
 
@@ -1177,7 +1200,7 @@ PPO，actor / critic `[1024, 512] + ReLU`，SGD lr 1e-4，固定 std 0.05，`cri
 
 1. **同一台 G1，两种建模。** MimicKit 的 `deepmimic_g1_env` 与 BeyondMimic 的跟踪环境控制的是同一台 29 DoF Unitree G1：前者观测 849 维（含全局根位置、根线速度、3 帧未来参考）、无噪声无随机化、30 Hz；后者观测 160 维（刻意去掉全局位置，另提供 154 维的无状态估计变体）、逐项注入噪声、50 Hz。同一台机器人的观测维度差 5 倍，方向还相反——**动画路线往观测里加信息，真机路线从观测里减信息**。这一条比任何文字都更能说明「sim-to-real 到底约束了什么」。
 
-2. **潜空间接口的两种来源。** ASE 的 64 维技能潜变量与 SONIC 的 64 维 FSQ token 维度相同、位置相同（都拼在本体观测后进 actor），但来源相反：ASE 的 z 是**采样出来的**，语义由编码器的互信息目标事后赋予；SONIC 的 token 是**编码出来的**，语义由三个上游编码器事先约定。一个是「给策略一个随机指令，逼它自己划分技能」，一个是「给策略一个统一接口，让不同上游都能接」。两者在图上是同一个位置的同一个框，`acquisition` 一个是 `sampled` 一个是 `derived`——`acquisition` 字段的价值在这里体现得最充分。
+2. **潜空间接口的两种来源。** ASE 的 64 维技能潜变量与 SONIC 的 64 维 FSQ token 维度相同、位置相同（都拼在本体观测后进 actor），但来源相反：ASE 的 z 是**采样出来的**，语义由编码器的互信息目标事后赋予；SONIC 的 token 是**编码出来的**，语义由三个上游编码器事先约定。一个是「给策略一个随机指令，逼它自己划分技能」，一个是「给策略一个统一接口，让不同上游都能接」。两者在图上是同一个位置、同一个维度的同一个框，唯一的区别就写在 `acquisition` 上：ASE 是 `sampled`，SONIC 是 `estimate`（编码器学出来的）。整个数据模型里没有别的字段能承担这个区分——`acquisition` 的价值在这里体现得最充分。
 
 3. **抖动问题的三条技术路径。** 同一个「动作抖动伤硬件」的问题：BeyondMimic 加奖励项（`action_rate_l2`，−0.1）、SONIC 加奖励项（`anti_shake_ang_vel` −5e-3 与 `feet_acc` −2.5e-6）、LCP 改损失函数（Lipschitz 梯度罚 0.002）。前两者在奖励面板里，后者在 `learning` 泳道里，如果没有 §3.2 的 `reward_kind` 与 §4.4 的 `kind: "grad"` 区分，这三者会被画成看起来无关的东西。把它们并排放在对比视图里，是页面能提供的最实用的一条工程结论。
 
