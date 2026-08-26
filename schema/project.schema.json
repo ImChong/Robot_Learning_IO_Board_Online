@@ -4,13 +4,26 @@
   "title": "Robot Learning IO Board — 项目数据",
   "description": "一个人形 RL 项目的输入/输出/奖励节点图。枚举值的权威定义在 data/taxonomy.json，语义检查在 scripts/validate.mjs。",
   "type": "object",
-  "required": ["id", "name", "modes"],
+  "required": ["id", "name"],
   "additionalProperties": false,
   "properties": {
     "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
     "name": { "type": "string" },
     "subtitle": { "type": "string" },
     "tagline": { "type": "string", "description": "一句话概括这条技术路线的取舍。" },
+    "inherits": {
+      "type": "string",
+      "description": "父项目 id。用于消融式项目（同一份环境配置、只换算法），合并后再校验与渲染。只允许一层，父项目自身不得再有 inherits。"
+    },
+    "diffSummary": {
+      "type": "string",
+      "description": "继承项目必填：一句话说明与父项目的差别，直接渲染在页面顶部。"
+    },
+    "overrides": {
+      "type": "object",
+      "description": "对父项目的补丁。键是 \"modes.<模式 id>\"，值见 $defs/modeOverride。",
+      "additionalProperties": { "$ref": "#/$defs/modeOverride" }
+    },
     "robot": {
       "type": "object",
       "additionalProperties": false,
@@ -48,6 +61,40 @@
     }
   },
   "$defs": {
+    "modeOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "对父项目某个模式的补丁。scalar 字段直接替换；nodes / rewards 按 id 深合并，配套的 + / - 键做增删。",
+      "properties": {
+        "label": { "type": "string" },
+        "summary": { "type": "string" },
+        "facts": {
+          "type": "object",
+          "description": "按 label 覆盖 facts 的 value。父项目没有的 label 会追加到末尾。",
+          "additionalProperties": { "type": "string" }
+        },
+        "nodes": {
+          "type": "object",
+          "description": "按节点 id 做浅合并（只写要改的字段）。",
+          "additionalProperties": { "type": "object" }
+        },
+        "nodes+": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+        "nodes-": { "type": "array", "items": { "type": "string" } },
+        "rewards": {
+          "type": "object",
+          "additionalProperties": { "type": "object" }
+        },
+        "rewards+": { "type": "array", "items": { "$ref": "#/$defs/reward" } },
+        "rewards-": { "type": "array", "items": { "type": "string" } },
+        "edges+": { "type": "array", "items": { "$ref": "#/$defs/edge" } },
+        "edges-": {
+          "type": "array",
+          "description": "要删除的边，写 \"from>to\"。",
+          "items": { "type": "string" }
+        },
+        "callouts": { "type": "array", "items": { "$ref": "#/$defs/callout" } }
+      }
+    },
     "graph": {
       "type": "object",
       "required": ["label", "lanes", "nodes", "edges"],
@@ -114,13 +161,13 @@
         "unit": { "type": "string" },
         "acquisition": {
           "type": "string",
-          "enum": ["direct", "filter", "estimate", "given", "sim-only", "derived", "none"],
+          "enum": ["direct", "filter", "estimate", "given", "sim-only", "derived", "sampled", "none"],
           "description": "真机上这个量怎么拿到。带维度的观测节点必填。"
         },
         "availability": {
           "type": "string",
-          "enum": ["deploy-ok", "deploy-hard", "train-only", "n/a"],
-          "description": "部署可得性。带维度的观测节点必填。"
+          "enum": ["deploy-ok", "deploy-hard", "train-only", "sim-only", "n/a"],
+          "description": "部署可得性。带维度的观测节点必填。train-only 会在第二个模式里消失，sim-only 不会。"
         },
         "noise": { "type": "string", "description": "训练期注入的观测噪声区间。" },
         "freqHz": { "type": "number" },
@@ -139,7 +186,19 @@
         "to": { "type": "string" },
         "kind": {
           "type": "string",
-          "enum": ["ref", "obs", "action", "privileged", "grad", "reward", "feedback", "flow"]
+          "enum": [
+            "ref",
+            "obs",
+            "action",
+            "privileged",
+            "grad",
+            "reward",
+            "feedback",
+            "latent",
+            "disc",
+            "init",
+            "flow"
+          ]
         },
         "style": { "type": "string", "enum": ["solid", "dashed"], "default": "solid" },
         "label": { "type": "string" }
@@ -159,6 +218,35 @@
           "type": "string",
           "enum": ["A", "B", "C", "D", "E", "F"],
           "description": "奖励六类：任务与跟踪 / 姿态与稳定 / 步态与接触 / 能效与平滑 / 安全与硬件 / 风格与模仿。"
+        },
+        "rewardKind": {
+          "type": "string",
+          "enum": ["handcrafted", "task", "adversarial", "encoder", "generative"],
+          "default": "handcrafted",
+          "description": "这一项的数值是谁算出来的。六类回答「替谁说话」，这一维回答「谁算的」。不是 handcrafted / task 时，weight 的语义是该来源在总奖励里的混合系数，信息量在 model 里而不在权重里。"
+        },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "学习式奖励背后的网络。rewardKind 为 adversarial / encoder / generative 时必填。",
+          "properties": {
+            "inputs": {
+              "type": "array",
+              "description": "喂给这个网络的节点 id，校验脚本会检查它们在同一张图里存在。",
+              "items": { "type": "string" }
+            },
+            "positive": { "type": "string", "description": "正样本是什么。" },
+            "negative": { "type": "string", "description": "负样本是什么。" },
+            "net": { "type": "string", "description": "网络规格。" },
+            "regularizers": {
+              "type": "object",
+              "additionalProperties": { "type": ["string", "number"] }
+            },
+            "frozen": {
+              "type": "boolean",
+              "description": "true = 策略训练期间参数冻结（如 SMP 的扩散先验），false = 与策略同步训练（如 AMP 判别器）。"
+            }
+          }
         },
         "label": { "type": "string" },
         "weight": { "type": "number" },

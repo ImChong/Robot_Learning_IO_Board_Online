@@ -6,6 +6,8 @@
  * 注册表 + 当前项目这两份数据。
  */
 
+import { isInherited, mergeProject } from "./inherit.js";
+
 const DATA_BASE = "data/";
 
 async function fetchJson(name) {
@@ -45,7 +47,12 @@ export async function loadCore() {
   const inflight = new Map();
   const entryById = indexBy(entries);
 
-  /** 按 id 取项目完整数据，结果缓存；并发请求同一个项目只发一次。 */
+  /**
+   * 按 id 取项目完整数据，结果缓存；并发请求同一个项目只发一次。
+   *
+   * 消融式项目（带 inherits）会先把父项目取回来再合并。父项目走同一份缓存与
+   * inflight 表，所以「同时切两个共享同一父项目的子项目」不会重复拉父文件。
+   */
   async function loadProject(id) {
     if (cache.has(id)) return cache.get(id);
     if (inflight.has(id)) return inflight.get(id);
@@ -54,10 +61,13 @@ export async function loadCore() {
     if (!entry) throw new Error(`未注册的项目：${id}`);
 
     const promise = fetchJson(entry.file)
-      .then((project) => {
-        cache.set(id, project);
+      .then(async (project) => {
+        const resolved = isInherited(project)
+          ? mergeProject(project, await loadProject(project.inherits))
+          : project;
+        cache.set(id, resolved);
         inflight.delete(id);
-        return project;
+        return resolved;
       })
       .catch((error) => {
         inflight.delete(id);

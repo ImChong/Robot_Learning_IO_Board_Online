@@ -361,6 +361,17 @@ kbd {
   margin: 0;
   max-width: 72ch;
 }
+.project-head .ph-diff {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 5px 5px 0;
+  background: var(--accent-soft);
+  color: var(--text-soft);
+  font-size: 12.5px;
+  max-width: 92ch;
+}
 .project-head .ph-facts {
   display: flex;
   flex-wrap: wrap;
@@ -665,6 +676,31 @@ kbd {
   border-top-style: dotted;
   border-right-style: dotted;
   border-bottom-style: dotted;
+}
+/* 仅仿真存在：真机没有这个通道，但推理时照样在用，所以不像 train-only 那样打斜纹
+   （斜纹在图例里读作「会消失」），只用一条灰色的外框提示「这一格真机上是空的」。 */
+.node.sim-only {
+  border-top-style: dashed;
+  border-right-style: dashed;
+  border-bottom-style: dashed;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-faint) 30%, transparent), var(--shadow);
+}
+/* 消融式项目里被补丁改过的模块。整张图与父项目几乎一样，这圈高亮就是「差别在这」。 */
+.node.touched {
+  border-color: var(--accent);
+}
+.node.touched::after {
+  content: "改动";
+  position: absolute;
+  top: -8px;
+  right: 8px;
+  padding: 0 5px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 .node.dimmed {
   opacity: 0.22;
@@ -1034,6 +1070,43 @@ kbd {
   border: 1px solid var(--border-strong);
   color: var(--text-faint);
   margin-top: 3px;
+}
+/* 学习式奖励：双线左框 + 来源标签，与手写项一眼分开。 */
+.reward-item.learned {
+  border-left: 3px double #ffd166;
+  background: color-mix(in srgb, #ffd166 4%, transparent);
+}
+.ri-kind {
+  display: inline-block;
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 3px;
+  border: 1px double #ffd166;
+  color: var(--text-soft);
+  margin-top: 3px;
+}
+.ri-weight-hint {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.ri-model {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 10px;
+  margin: 0 0 6px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-hover);
+  font-size: 12px;
+}
+.ri-model dt {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.ri-model dd {
+  margin: 0;
+  color: var(--text-soft);
 }
 .ri-weight {
   display: flex;

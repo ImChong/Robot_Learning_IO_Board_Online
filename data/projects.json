@@ -8,8 +8,13 @@
   "groups": [
     {
       "id": "wbt",
-      "name": "全身运动跟踪",
-      "desc": "把参考动作跟踪本身当作任务目标的模仿系路线"
+      "name": "全身运动跟踪（真机路线）",
+      "desc": "把参考动作跟踪本身当作任务目标，且以真机部署为目标的模仿系路线"
+    },
+    {
+      "id": "mimickit",
+      "name": "MimicKit 方法族（动画路线）",
+      "desc": "同一套代码里的七个方法，环境与网络全部共用，差别集中在「奖励从哪来」和「策略额外吃什么」"
     }
   ],
 
@@ -62,6 +67,152 @@
         "CMU",
         "英伟达",
         "2511.07820"
+      ]
+    },
+
+    {
+      "id": "mimickit-deepmimic",
+      "file": "mimickit/deepmimic.json",
+      "name": "DeepMimic",
+      "subtitle": "参考跟踪 + 手写五项奖励的基线",
+      "group": "mimickit",
+      "order": 11,
+      "keywords": [
+        "MimicKit",
+        "Isaac Gym",
+        "PPO",
+        "RSI",
+        "早停",
+        "humanoid",
+        "spinkick",
+        "参考状态初始化",
+        "手写奖励",
+        "SFU",
+        "彭学彬",
+        "TOG 2018",
+        "1804.02717"
+      ]
+    },
+    {
+      "id": "mimickit-awr",
+      "file": "mimickit/awr.json",
+      "name": "AWR",
+      "subtitle": "只换优化器：PPO → 优势加权回归",
+      "group": "mimickit",
+      "order": 12,
+      "keywords": [
+        "MimicKit",
+        "Advantage-Weighted Regression",
+        "优势加权回归",
+        "off-policy",
+        "Isaac Gym",
+        "消融",
+        "SFU",
+        "1910.00177"
+      ]
+    },
+    {
+      "id": "mimickit-amp",
+      "file": "mimickit/amp.json",
+      "name": "AMP",
+      "subtitle": "奖励从手写公式换成判别器",
+      "group": "mimickit",
+      "order": 13,
+      "keywords": [
+        "MimicKit",
+        "Adversarial Motion Priors",
+        "对抗动作先验",
+        "判别器",
+        "GAN",
+        "梯度罚",
+        "回放缓冲",
+        "Isaac Gym",
+        "SFU",
+        "TOG 2021",
+        "2104.02180"
+      ]
+    },
+    {
+      "id": "mimickit-ase",
+      "file": "mimickit/ase.json",
+      "name": "ASE",
+      "subtitle": "加一个 64 维技能潜空间",
+      "group": "mimickit",
+      "order": 14,
+      "keywords": [
+        "MimicKit",
+        "Adversarial Skill Embeddings",
+        "对抗技能嵌入",
+        "潜变量",
+        "latent",
+        "编码器",
+        "互信息",
+        "多样性损失",
+        "剑盾",
+        "NVIDIA",
+        "TOG 2022",
+        "2205.01906"
+      ]
+    },
+    {
+      "id": "mimickit-lcp",
+      "file": "mimickit/lcp.json",
+      "name": "LCP",
+      "subtitle": "一项梯度罚换来真机可用的平滑度",
+      "group": "mimickit",
+      "order": 15,
+      "keywords": [
+        "MimicKit",
+        "Lipschitz-Constrained Policies",
+        "Lipschitz 约束",
+        "平滑",
+        "抖动",
+        "Unitree G1",
+        "GMR",
+        "重定向",
+        "IROS 2025",
+        "2410.11825"
+      ]
+    },
+    {
+      "id": "mimickit-add",
+      "file": "mimickit/add.json",
+      "name": "ADD",
+      "subtitle": "判别器改看「差多少」而不是「像不像」",
+      "group": "mimickit",
+      "order": 16,
+      "keywords": [
+        "MimicKit",
+        "Adversarial Differential Discriminator",
+        "差分判别器",
+        "零向量正样本",
+        "DiffNormalizer",
+        "跟踪误差",
+        "SIGGRAPH Asia 2025",
+        "2505.04961"
+      ]
+    },
+    {
+      "id": "mimickit-smp",
+      "file": "mimickit/smp.json",
+      "name": "SMP",
+      "subtitle": "判别器换成冻结的扩散先验",
+      "group": "mimickit",
+      "order": 17,
+      "keywords": [
+        "MimicKit",
+        "Score-Matching Motion Priors",
+        "扩散模型",
+        "diffusion",
+        "TinyMDM",
+        "DiT",
+        "SDS",
+        "score distillation",
+        "GSI",
+        "生成式状态初始化",
+        "dodgeball",
+        "LaFAN1",
+        "SIGGRAPH 2026"
       ]
     }
   ],

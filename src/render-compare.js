@@ -88,7 +88,7 @@ export function renderCompare({
     container.append(
       el("p", {
         class: "reward-scale-note",
-        text: "部署态没有奖励项对照——奖励只在训练期存在，切到训练态可以看逐项对照。",
+        text: `${modeLabel}没有奖励项对照——奖励只在训练期存在，切到训练态可以看逐项对照。`,
       })
     );
   }

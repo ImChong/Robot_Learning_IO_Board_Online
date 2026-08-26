@@ -2,6 +2,7 @@
 
 import { el, clear } from "./dom.js";
 import { loadCore } from "./data.js";
+import { touchedIds } from "./inherit.js";
 import { createProjectPicker } from "./project-picker.js";
 import { createGraphView } from "./render-graph.js";
 import { renderDetail } from "./render-detail.js";
@@ -104,8 +105,13 @@ function writeUrl({ replace = false } = {}) {
 
 const graph = () => current.modes[state.modeId];
 
+const modeIdAt = (index) => Object.keys(current?.modes ?? {})[index] ?? null;
+
 function defaultCompareId(projectId) {
-  return core.entries.find((entry) => entry.id !== projectId)?.id ?? null;
+  const entry = core.entryById.get(projectId);
+  // 优先选同组的下一个项目：跨族对比有意思，但「先跟自己的邻居比」更常用。
+  const sameGroup = core.entries.find((e) => e.id !== projectId && e.group === entry?.group);
+  return sameGroup?.id ?? core.entries.find((e) => e.id !== projectId)?.id ?? null;
 }
 
 /* ---------- 顶部 ---------- */
@@ -125,10 +131,19 @@ function renderProjectHead() {
   if (p.rates) facts.push(["控制频率", `${p.rates.policyHz} Hz / 物理 ${p.rates.physicsHz} Hz`]);
   if (p.verifiedRef) facts.push(["核对于", p.verifiedRef]);
 
+  const parentName = p.inherits ? core.entryById.get(p.inherits)?.name ?? p.inherits : null;
+
   dom.projectHead.append(
     el("h1", { text: p.name }),
     p.subtitle ? el("span", { class: "ph-sub", text: p.subtitle }) : null,
     p.tagline ? el("p", { class: "ph-tagline", text: p.tagline }) : null,
+    // 消融式项目：先告诉读者「这张图和谁几乎一样、差在哪」，否则他会以为自己没切成功。
+    p.diffSummary
+      ? el("p", { class: "ph-diff" }, [
+          el("b", { text: `与 ${parentName} 的差别：` }),
+          ` ${p.diffSummary}`,
+        ])
+      : null,
     el(
       "div",
       { class: "ph-facts" },
@@ -189,11 +204,21 @@ function renderFilters() {
     dom.filters.append(chip(cls.id, cls.name, cls.color, state.filters.classes));
   }
 
-  dom.filters.append(
-    chip("deploy-hard", "部署困难项", "#e5a765", state.filters.availability),
-    chip("train-only", "仅训练可见", "#ff7b72", state.filters.availability),
-    chip("inferred", "推断待核", "#9aa4b2", state.filters.confidence)
-  );
+  // 可得性筛选按本图实际出现的档位生成——MimicKit 系列没有「部署困难」而有「仅仿真存在」，
+  // 写死三个按钮会在半数项目上给出点不动的死按钮。
+  const AVAIL_CHIPS = {
+    "deploy-hard": "#e5a765",
+    "train-only": "#ff7b72",
+    "sim-only": "#9aa4b2",
+  };
+  const availPresent = new Set(graph().nodes.map((n) => n.availability).filter(Boolean));
+  for (const [id, color] of Object.entries(AVAIL_CHIPS)) {
+    if (!availPresent.has(id)) continue;
+    const name = core.taxonomy.availabilityById.get(id)?.name ?? id;
+    dom.filters.append(chip(id, name, color, state.filters.availability));
+  }
+
+  dom.filters.append(chip("inferred", "推断待核", "#9aa4b2", state.filters.confidence));
 
   const active =
     state.filters.classes.size + state.filters.availability.size + state.filters.confidence.size;
@@ -269,6 +294,7 @@ function renderLegend() {
         { name: "实线边框", desc: "部署可得" },
         { name: "点线边框", desc: "需要估计链路" },
         { name: "虚线 + 斜纹底", desc: "仅训练可见，部署时消失" },
+        { name: "虚线 + 灰色内框", desc: "仅仿真存在：真机无此通道，但推理时照样在用" },
       ],
       (item) => [
         el("span", {
@@ -384,7 +410,7 @@ async function render({ animate = false } = {}) {
   renderCallouts();
 
   if (state.view === "graph") {
-    graphView.render(g, { animate });
+    graphView.render(g, { animate, touchedIds: touchedIds(current) });
     applyFilters();
     graphView.select(state.nodeId);
     renderRewards({ container: dom.rewards, graph: g, taxonomy: core.taxonomy, project: current });
@@ -591,8 +617,10 @@ async function boot() {
       picker.open();
     } else if (event.key === "[") stepProject(-1);
     else if (event.key === "]") stepProject(1);
-    else if (key === "t") setMode("train");
-    else if (key === "d") setMode("deploy");
+    // T / D 按「第一个 / 第二个模式」解释，而不是写死 train / deploy——
+    // 不以真机为目标的项目第二个模式叫「推理态」（test），写死会让 D 在这些项目上失灵。
+    else if (key === "t") setMode(modeIdAt(0));
+    else if (key === "d") setMode(modeIdAt(1));
     else if (key === "f") graphView.fit();
     else if (event.key === "Escape" && state.nodeId) {
       state.nodeId = null;

@@ -1,0 +1,65 @@
+{
+  "id": "mimickit-awr",
+  "name": "AWR",
+  "subtitle": "只换优化器：PPO → 优势加权回归",
+  "tagline": "同一份环境、同一套观测与奖励，唯一的变量是 actor 怎么更新——这一族里最干净的一次对照实验。",
+  "inherits": "mimickit-deepmimic",
+  "diffSummary": "环境配置文件是同一份，观测、动作、奖励、终止条件、参考状态初始化全部逐项相同；唯一的差别是 actor 的更新规则从 PPO 的比率裁剪换成了优势指数加权回归。所以下面这张图里只有「学习信号」一列变了，其余部分与 DeepMimic 完全一致。",
+  "verifiedAt": "2026-08-26",
+  "verifiedRef": "main@2ed1e6c · deepmimic_humanoid_env + awr_agent",
+  "links": {
+    "论文": "https://arxiv.org/abs/1910.00177",
+    "代码": "https://github.com/xbpeng/MimicKit",
+    "方法文档": "https://github.com/xbpeng/MimicKit/blob/main/docs/README_AWR.md",
+    "MimicKit 指南": "https://arxiv.org/abs/2510.13794"
+  },
+
+  "overrides": {
+    "modes.train": {
+      "summary": "环境与 DeepMimic 是同一份 yaml：464 维观测、5 项手写奖励、4 条终止。差别只在 actor 更新——不做比率裁剪，而是把优势指数化成回归权重。",
+      "facts": {
+        "Actor 学习率": "SGD 1e-4（固定，与 DeepMimic 相同）",
+        "Actor 更新规则": "优势加权回归 · temp 1.0 · 权重上限 20"
+      },
+      "nodes": {
+        "l.ppo": {
+          "label": "AWR 更新",
+          "sub": "SGD 1e-4 · temp 1.0",
+          "desc": "不做 PPO 的比率裁剪，而是把归一化优势指数化成回归权重 w = exp(A / temp)，再对采样动作做加权回归。γ 0.99、λ 0.95、action_bound_weight 10.0 与 DeepMimic 逐项相同。",
+          "note": "a_weight_clip = 20.0 把权重上限夹住，防止个别高优势样本主导整批更新——它在 AWR 里扮演的角色相当于 PPO 的 clip。这是本项目相对 DeepMimic 唯一改动的模块。",
+          "source": {
+            "repo": "MimicKit",
+            "path": "data/agents/deepmimic_humanoid_awr_agent.yaml",
+            "symbol": "awr_temp"
+          }
+        }
+      },
+      "callouts": [
+        {
+          "title": "这张图和 DeepMimic 几乎一样，这就是结论",
+          "body": "AWR 与 DeepMimic 共用 data/envs/deepmimic_humanoid_env.yaml，所以观测 464 维、五项奖励的权重与尺度、四条终止条件、参考状态初始化全部逐字相同。页面上唯一带「改动」角标的框是学习信号那一列——把「哪些框属于环境、哪些框属于算法」这件事直接画出来，是节点图相对论文表格的独有优势。"
+        },
+        {
+          "title": "数据文件也只写差异",
+          "body": "这个项目的 JSON 里没有节点列表：它声明 inherits: mimickit-deepmimic，然后用一段 overrides 打补丁。加载时（src/inherit.js）与校验时用的是同一份合并逻辑，所以「校验通过但页面渲染出错」这类漂移不会发生。补丁的目标 id 必须在父项目里真实存在，写错会被校验脚本挡下来，不会静默失效。"
+        },
+        {
+          "title": "为什么 LCP 没有走继承",
+          "body": "LCP 同样是「只改一处算法」的消融，但它随仓库提供的是 G1 配置（30 关节 / 29 自由度 / 849 维观测），与 humanoid 的每一个维度都不同。继承在那里帮不上忙，所以 LCP 写的是全量数据文件。继承只在「同一份环境配置」时才划算。"
+        }
+      ]
+    },
+    "modes.test": {
+      "summary": "--mode test 加载 .pt 权重。推理路径与 DeepMimic 完全一致——更新规则的差别只存在于训练期，跑起来的策略结构一模一样。",
+      "facts": {
+        "相比训练态去掉": "奖励 · 终止 · critic · AWR 更新"
+      },
+      "callouts": [
+        {
+          "title": "推理态与 DeepMimic 逐项相同",
+          "body": "优化器只影响权重怎么被训练出来，不影响策略跑起来需要什么。所以这张图与 DeepMimic 的推理态没有任何差别，也正好说明「换优化器」这类改动的作用范围到哪里为止。"
+        }
+      ]
+    }
+  }
+}
