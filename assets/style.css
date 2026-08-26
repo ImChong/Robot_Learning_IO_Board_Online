@@ -1071,10 +1071,11 @@ kbd {
   color: var(--text-faint);
   margin-top: 3px;
 }
-/* 学习式奖励：双线左框 + 来源标签，与手写项一眼分开。 */
+/* 学习式奖励：双线左框 + 来源标签，与手写项一眼分开。
+   双线需要 ≥4px 才看得出是两条，3px 会退化成一条细线。 */
 .reward-item.learned {
-  border-left: 3px double #ffd166;
-  background: color-mix(in srgb, #ffd166 4%, transparent);
+  border-left: 4px double #ffd166;
+  background: color-mix(in srgb, #ffd166 6%, transparent);
 }
 .ri-kind {
   display: inline-block;
@@ -1101,8 +1102,9 @@ kbd {
   font-size: 12px;
 }
 .ri-model dt {
-  color: var(--text-faint);
+  color: var(--text-soft);
   white-space: nowrap;
+  font-weight: 600;
 }
 .ri-model dd {
   margin: 0;

@@ -133,7 +133,9 @@ function renderProjectHead() {
 
   const parentName = p.inherits ? core.entryById.get(p.inherits)?.name ?? p.inherits : null;
 
-  dom.projectHead.append(
+  // 注意：Node.append() 会把 null 转成字面量 "null" 的文本节点（不像 el() 会跳过），
+  // 所以条件项必须先 filter 再展开。缺 subtitle / tagline 的项目也走这条路。
+  const parts = [
     el("h1", { text: p.name }),
     p.subtitle ? el("span", { class: "ph-sub", text: p.subtitle }) : null,
     p.tagline ? el("p", { class: "ph-tagline", text: p.tagline }) : null,
@@ -157,8 +159,9 @@ function renderProjectHead() {
       Object.entries(p.links ?? {}).map(([label, url]) =>
         el("a", { href: url, target: "_blank", rel: "noopener", text: label })
       )
-    )
-  );
+    ),
+  ];
+  dom.projectHead.append(...parts.filter(Boolean));
 }
 
 function renderModeSwitch() {
