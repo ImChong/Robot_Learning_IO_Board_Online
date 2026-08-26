@@ -33,8 +33,14 @@ const dom = {
   legendBtn: document.getElementById("legend-btn"),
   fitBtn: document.getElementById("fit-btn"),
   themeBtn: document.getElementById("theme-toggle"),
+  topbar: document.querySelector(".topbar"),
+  toolbar: document.querySelector(".toolbar"),
   stage: document.querySelector(".stage"),
   canvas: document.getElementById("canvas"),
+  canvasHint: document.getElementById("canvas-hint"),
+  zoomIn: document.getElementById("zoom-in"),
+  zoomOut: document.getElementById("zoom-out"),
+  zoomFit: document.getElementById("zoom-fit"),
   viewport: document.getElementById("viewport"),
   edges: document.getElementById("edges"),
   nodes: document.getElementById("nodes"),
@@ -467,6 +473,8 @@ async function renderCompareView(token) {
 }
 
 function showDetail(node) {
+  // 窄屏上抽屉是收在屏幕底下的浮层，靠这个类推上来（样式见 style.css 的 720px 段）。
+  document.body.classList.toggle("detail-open", Boolean(node));
   renderDetail({
     emptyEl: dom.drawerEmpty,
     bodyEl: dom.drawerBody,
@@ -516,6 +524,30 @@ function setView(view) {
   state.view = view;
   writeUrl();
   render();
+}
+
+/* ---------- 视口适配 ---------- */
+
+/**
+ * 把顶栏与工具栏的实测高度写进 CSS 变量。粘性定位的偏移量原先是写死的 53 / 104，
+ * 顶栏一换行（窄屏、长项目名、系统字体放大）下面的东西就会被压在它底下。
+ */
+function syncStickyMetrics() {
+  const root = document.documentElement.style;
+  root.setProperty("--topbar-h", `${Math.round(dom.topbar.offsetHeight)}px`);
+  root.setProperty("--toolbar-h", `${Math.round(dom.toolbar.offsetHeight)}px`);
+}
+
+/** 触屏没有滚轮，也没有「点击」这个说法，提示语要按输入方式换。 */
+function setupCanvasHint() {
+  const coarse = window.matchMedia("(hover: none)").matches;
+  dom.canvasHint.textContent = coarse
+    ? "拖动平移 · 双指缩放 · 点按模块看详情"
+    : "滚轮缩放 · 拖拽平移 · 点击模块看详情";
+
+  const fade = () => dom.canvasHint.classList.add("faded");
+  dom.canvas.addEventListener("pointerdown", fade, { once: true });
+  dom.canvas.addEventListener("wheel", fade, { once: true, passive: true });
 }
 
 function showFatal(error) {
@@ -579,7 +611,15 @@ async function boot() {
   await render();
   writeUrl({ replace: true });
 
+  syncStickyMetrics();
+  new ResizeObserver(syncStickyMetrics).observe(dom.topbar);
+  new ResizeObserver(syncStickyMetrics).observe(dom.toolbar);
+  setupCanvasHint();
+
   dom.fitBtn.addEventListener("click", () => graphView.fit());
+  dom.zoomIn.addEventListener("click", () => graphView.zoomBy(1.25));
+  dom.zoomOut.addEventListener("click", () => graphView.zoomBy(1 / 1.25));
+  dom.zoomFit.addEventListener("click", () => graphView.fit());
   dom.legendBtn.addEventListener("click", () => {
     const open = dom.legend.hidden;
     dom.legend.hidden = !open;
