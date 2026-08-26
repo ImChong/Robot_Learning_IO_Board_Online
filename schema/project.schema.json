@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imchong.github.io/Robot_Learning_IO_Board/schema/project.schema.json",
+  "title": "Robot Learning IO Board — 项目数据",
+  "description": "一个人形 RL 项目的输入/输出/奖励节点图。枚举值的权威定义在 data/taxonomy.json，语义检查在 scripts/validate.mjs。",
+  "type": "object",
+  "required": ["id", "name", "modes"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "subtitle": { "type": "string" },
+    "tagline": { "type": "string", "description": "一句话概括这条技术路线的取舍。" },
+    "robot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "dof": { "type": "integer", "minimum": 1 },
+        "trackedBodies": { "type": "integer", "minimum": 1 },
+        "anchor": { "type": "string" }
+      }
+    },
+    "rates": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policyHz": { "type": "number" },
+        "physicsHz": { "type": "number" },
+        "note": { "type": "string" }
+      }
+    },
+    "verifiedAt": { "type": "string", "format": "date", "description": "内容最后一次与上游核对的日期。" },
+    "verifiedRef": { "type": "string", "description": "核对时的上游分支或 commit，以及所选配置。" },
+    "links": {
+      "type": "object",
+      "description": "展示名 → URL。",
+      "additionalProperties": { "type": "string", "format": "uri" }
+    },
+    "modes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/graph" },
+      "properties": {
+        "train": { "$ref": "#/$defs/graph" },
+        "deploy": { "$ref": "#/$defs/graph" }
+      }
+    }
+  },
+  "$defs": {
+    "graph": {
+      "type": "object",
+      "required": ["label", "lanes", "nodes", "edges"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string" },
+        "summary": { "type": "string" },
+        "facts": {
+          "type": "array",
+          "description": "对比视图逐行展示的关键指标。两个项目用同样的 label 才能对齐成一行。",
+          "items": {
+            "type": "object",
+            "required": ["label", "value"],
+            "additionalProperties": false,
+            "properties": {
+              "label": { "type": "string" },
+              "value": { "type": "string" }
+            }
+          }
+        },
+        "lanes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "本图使用的泳道 id，顺序即从左到右的列顺序。"
+        },
+        "nodes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" } },
+        "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } },
+        "rewards": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reward" },
+          "description": "只有训练态才应该有奖励项——奖励在部署时不存在。"
+        },
+        "callouts": { "type": "array", "items": { "$ref": "#/$defs/callout" } }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "lane", "kind", "label", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "lane": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["obs", "proc", "net", "act", "plant", "signal"]
+        },
+        "class": {
+          "type": "string",
+          "enum": ["A", "B", "C", "D", "E", "O1", "O2", "O3", "O4", "O5"],
+          "description": "观测五类或输出五类的代号。流程与网络节点可以不填。"
+        },
+        "label": { "type": "string" },
+        "sub": { "type": "string", "description": "副标题，一般是配置项名或规格。" },
+        "dim": { "type": "integer", "minimum": 0 },
+        "dimExpr": {
+          "type": "string",
+          "description": "可读的维度算式。若剥掉中文后是合法算式，校验脚本会求值并与 dim 比对。"
+        },
+        "checkSum": {
+          "type": "boolean",
+          "description": "为 true 时，校验脚本要求 dim 等于全部入边源节点 dim 之和。"
+        },
+        "unit": { "type": "string" },
+        "acquisition": {
+          "type": "string",
+          "enum": ["direct", "filter", "estimate", "given", "sim-only", "derived", "none"],
+          "description": "真机上这个量怎么拿到。带维度的观测节点必填。"
+        },
+        "availability": {
+          "type": "string",
+          "enum": ["deploy-ok", "deploy-hard", "train-only", "n/a"],
+          "description": "部署可得性。带维度的观测节点必填。"
+        },
+        "noise": { "type": "string", "description": "训练期注入的观测噪声区间。" },
+        "freqHz": { "type": "number" },
+        "desc": { "type": "string" },
+        "note": { "type": "string", "description": "工程要点、与其他项目的对照、口径差异。" },
+        "source": { "$ref": "#/$defs/source" },
+        "confidence": { "type": "string", "enum": ["verified", "derived", "inferred"] }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["ref", "obs", "action", "privileged", "grad", "reward", "feedback", "flow"]
+        },
+        "style": { "type": "string", "enum": ["solid", "dashed"], "default": "solid" },
+        "label": { "type": "string" }
+      }
+    },
+    "reward": {
+      "type": "object",
+      "required": ["id", "group", "label", "weight", "source", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "上游实现里的奖励项名。" },
+        "canonical": {
+          "type": "string",
+          "description": "跨项目的等价键。两个项目里同一个奖励项的函数名常常不同，对比视图靠这个键配对；省略时退化为用 id 配对。"
+        },
+        "group": {
+          "type": "string",
+          "enum": ["A", "B", "C", "D", "E", "F"],
+          "description": "奖励六类：任务与跟踪 / 姿态与稳定 / 步态与接触 / 能效与平滑 / 安全与硬件 / 风格与模仿。"
+        },
+        "label": { "type": "string" },
+        "weight": { "type": "number" },
+        "form": { "type": "string", "description": "KaTeX 公式源码，不带定界符。" },
+        "params": { "type": "object", "additionalProperties": { "type": ["string", "number"] } },
+        "target": { "type": "string", "description": "这一项作用在谁身上。" },
+        "direction": { "type": "string", "enum": ["positive", "negative"] },
+        "desc": { "type": "string" },
+        "note": { "type": "string" },
+        "sharedWith": {
+          "type": "string",
+          "description": "另一个项目的 id，表示这一项在两边同名同权重，供对比视图对齐。"
+        },
+        "source": { "$ref": "#/$defs/source" },
+        "confidence": { "type": "string", "enum": ["verified", "derived", "inferred"] }
+      }
+    },
+    "callout": {
+      "type": "object",
+      "required": ["title", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "body": { "type": "string" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "repo": { "type": "string" },
+        "path": { "type": "string", "description": "仓库内文件路径，或论文/文档的定位。" },
+        "symbol": { "type": "string", "description": "配置项名、类名或函数名。" }
+      }
+    }
+  }
+}

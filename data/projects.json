@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "title": "Robot Learning IO Board",
+  "subtitle": "人形机器人强化学习项目的输入 · 输出 · 奖励函数分析板",
+  "defaultProject": "beyondmimic",
+  "defaultMode": "train",
+  "projects": [
+    { "id": "beyondmimic", "file": "beyondmimic.json", "order": 1 },
+    { "id": "sonic", "file": "sonic.json", "order": 2 }
+  ],
+  "references": [
+    {
+      "label": "观测输入五类划分",
+      "url": "https://imchong.github.io/Robotics_Notebooks/detail.html?id=wiki-concepts-humanoid-policy-observation-inputs"
+    },
+    {
+      "label": "奖励函数六类划分",
+      "url": "https://imchong.github.io/Robotics_Notebooks/detail.html?id=wiki-concepts-humanoid-policy-reward-functions"
+    }
+  ]
+}
