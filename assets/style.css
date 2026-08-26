@@ -16,7 +16,10 @@
   --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
 }
 
+/* color-scheme 管的是浏览器自己画的那部分：滚动条、下拉列表、输入框内的按钮。
+   不声明的话它们一律按浅色画，深色主题下滚动条会是一条白槽。 */
 html[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0e1117;
   --bg-soft: #151a22;
   --bg-raised: #1a212b;
@@ -33,6 +36,7 @@ html[data-theme="dark"] {
 }
 
 html[data-theme="light"] {
+  color-scheme: light;
   --bg: #f6f7f9;
   --bg-soft: #ffffff;
   --bg-raised: #ffffff;
