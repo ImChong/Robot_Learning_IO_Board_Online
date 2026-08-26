@@ -591,6 +591,8 @@ kbd {
   /* 画布自己接管全部触摸手势：单指平移、双指捏合。交给浏览器的话，手指一动
      就变成翻页，图根本拖不动。画布高度刻意留有余地，页面照样能从上下滚走。 */
   touch-action: none;
+  /* 从卡片上起手拖画布时不要顺手把卡片上的字选中。要复制文字有详情与表格两处。 */
+  user-select: none;
 }
 .canvas:focus-visible {
   outline: 2px solid var(--accent);
@@ -1328,6 +1330,9 @@ table.tv td {
   padding: 5px 9px;
   text-align: left;
   vertical-align: top;
+  /* 中文默认可以在任意字之间断行，列一窄就断成一列一个字、行高涨到十几行。
+     keep-all 让列宽跟着词走，宽度不够时由外层横向滚动兜住。 */
+  word-break: keep-all;
 }
 table.tv thead th {
   background: var(--bg-soft);
@@ -1472,9 +1477,11 @@ table.tv caption {
     width: 100%;
     gap: 8px;
   }
-  /* 筛选按钮横向滑动，而不是折成三四行——它们是次要控件，不该占掉半屏。 */
+  /* 筛选按钮横向滑动，而不是折成三四行——它们是次要控件，不该占掉半屏。
+     留在「图例」同一行里，工具栏总高度因此是两行而不是三行。 */
   .filters {
-    flex: 1 1 100%;
+    flex: 1 1 0;
+    min-width: 0;
     flex-wrap: nowrap;
     overflow-x: auto;
     scrollbar-width: none;
@@ -1496,8 +1503,30 @@ table.tv caption {
     display: none;
   }
 
+  /* 项目头到画布之间的每一行都在把节点图往折叠线以下推，所以这里逐项收紧：
+     标题小一号、行距收拢、关键指标改成横滑一行（它本来要占三行）。 */
+  .project-head {
+    padding: 10px var(--pad-x) 6px;
+    gap: 6px 16px;
+  }
   .project-head h1 {
     font-size: 19px;
+  }
+  .project-head .ph-tagline,
+  .project-head .ph-diff {
+    font-size: 12.5px;
+  }
+  .project-head .ph-facts {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .project-head .ph-facts::-webkit-scrollbar {
+    display: none;
+  }
+  .fact {
+    flex: 0 0 auto;
   }
   .mode-summary {
     font-size: 12.5px;
@@ -1522,20 +1551,27 @@ table.tv caption {
     position: fixed;
     left: 0;
     right: 0;
+    /* top 得显式清掉：宽屏那条规则给了它粘性偏移，而 fixed 盒子同时有 top 和
+       height 时 bottom 会被忽略，浮层就停在半空中。 */
+    top: auto;
     bottom: 0;
     z-index: 45;
-    max-height: min(56vh, 440px);
-    max-height: min(56dvh, 440px);
+    max-height: min(50vh, 400px);
+    max-height: min(50dvh, 400px);
     overflow-y: auto;
     overscroll-behavior: contain;
     border: 1px solid var(--border-strong);
     border-radius: 14px 14px 0 0;
     padding: 10px var(--pad-x) calc(16px + env(safe-area-inset-bottom));
     box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.28);
+    /* 收起时一并 visibility: hidden——详情为空时浮层本身只有把手那么高，
+       只靠 translateY(101%) 挪不出屏幕，会在底边露出一条白。 */
+    visibility: hidden;
     transform: translateY(101%);
-    transition: transform 0.22s ease-out;
+    transition: transform 0.22s ease-out, visibility 0.22s;
   }
   body.detail-open .drawer {
+    visibility: visible;
     transform: translateY(0);
   }
   .drawer::before {
@@ -1591,7 +1627,6 @@ table.tv caption {
     padding-right: 0;
   }
   table.tv {
-    min-width: 760px;
     font-size: 12px;
   }
   table.cmp {
@@ -1615,9 +1650,25 @@ table.tv caption {
   }
 }
 
+/* ---------- 矮视口（横屏手机、分屏窗口） ---------- */
+
+/* 宽度够而高度不够时，粘性工具栏会常驻吃掉小半个屏幕，让它跟着页面滚走，
+   省下的高度全给画布——横屏本来就是看这张宽图最合适的姿势。 */
+@media (max-height: 620px) {
+  .toolbar {
+    position: static;
+  }
+  .canvas {
+    height: min(78vh, 720px);
+    height: min(78dvh, 720px);
+    min-height: 260px;
+  }
+}
+
 /* ---------- 触屏 ---------- */
 
-@media (hover: none) {
+/* 认 pointer 而不是 hover：无鼠标的桌面浏览器也会报 hover: none，但它不是手指。 */
+@media (pointer: coarse) {
   /* 快捷键在没有键盘的设备上不存在，写出来只会占地方。 */
   .drawer-empty .hint {
     display: none;

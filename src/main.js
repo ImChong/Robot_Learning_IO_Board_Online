@@ -44,6 +44,7 @@ const dom = {
   viewport: document.getElementById("viewport"),
   edges: document.getElementById("edges"),
   nodes: document.getElementById("nodes"),
+  drawer: document.getElementById("drawer"),
   drawerEmpty: document.getElementById("drawer-empty"),
   drawerBody: document.getElementById("drawer-body"),
   callouts: document.getElementById("callouts"),
@@ -475,6 +476,7 @@ async function renderCompareView(token) {
 function showDetail(node) {
   // 窄屏上抽屉是收在屏幕底下的浮层，靠这个类推上来（样式见 style.css 的 720px 段）。
   document.body.classList.toggle("detail-open", Boolean(node));
+  if (node) liftCanvasForSheet();
   renderDetail({
     emptyEl: dom.drawerEmpty,
     bodyEl: dom.drawerBody,
@@ -538,9 +540,23 @@ function syncStickyMetrics() {
   root.setProperty("--toolbar-h", `${Math.round(dom.toolbar.offsetHeight)}px`);
 }
 
+/**
+ * 详情浮层升起时把画布顶到顶栏底下。浮层占掉屏幕下半截，画布留在原位的话
+ * 只剩几十像素露在外面，读者就看不见自己点的是图上的哪一格了。
+ * 只往下滚：读者已经翻到更下面时不该被拽回来。
+ */
+function liftCanvasForSheet() {
+  if (state.view !== "graph") return;
+  if (getComputedStyle(dom.drawer).position !== "fixed") return;
+  const top =
+    dom.canvas.getBoundingClientRect().top + window.scrollY - dom.topbar.offsetHeight - 6;
+  if (window.scrollY < top - 4) window.scrollTo(0, top);
+}
+
 /** 触屏没有滚轮，也没有「点击」这个说法，提示语要按输入方式换。 */
 function setupCanvasHint() {
-  const coarse = window.matchMedia("(hover: none)").matches;
+  // 认 pointer 而不是 hover：无鼠标的桌面浏览器也会报 hover: none，但它不是手指。
+  const coarse = window.matchMedia("(pointer: coarse)").matches;
   dom.canvasHint.textContent = coarse
     ? "拖动平移 · 双指缩放 · 点按模块看详情"
     : "滚轮缩放 · 拖拽平移 · 点击模块看详情";
@@ -600,9 +616,12 @@ async function boot() {
     svg: dom.edges,
     nodesLayer: dom.nodes,
     taxonomy: core.taxonomy,
+    overlay: dom.drawer,
     onSelect: (node) => {
       state.nodeId = node?.id ?? null;
       showDetail(node);
+      // 详情浮层刚盖住画布下半截，被点中的那个框可能正好在下面。
+      graphView.revealSelected();
       writeUrl({ replace: true });
     },
   });

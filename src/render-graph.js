@@ -8,14 +8,16 @@ const TOP_CHANNEL_KINDS = new Set(["obs", "ref", "privileged", "latent"]);
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 1.6;
 const FALLBACK_NODE_H = 66;
-// 窄屏上「整张图塞进屏幕」会把卡片压到 0.3 倍，字全糊掉。宁可停在还读得清的
-// 比例上让读者横向拖，也不给一张看不清的全景。
+// 小画布上「整张图塞进去」会把卡片压到 0.3 倍，字全糊掉。宁可停在还读得清的
+// 比例上让读者拖，也不给一张看不清的全景——真想看全景，捏合缩小就是。
+// 横屏手机是矮而不是窄，所以两个方向都要判。
 const COMPACT_W = 720;
+const COMPACT_H = 420;
 const MIN_READABLE_SCALE = 0.52;
 // 手指按下到判定为拖动之间的容差：太小则点按会被当成拖动，太大则拖动起步发滞。
 const DRAG_SLOP = 6;
 
-export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, onSelect }) {
+export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, overlay, onSelect }) {
   const view = { x: 0, y: 0, k: 1 };
   let graph = null;
   let layout = null;
@@ -99,6 +101,7 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
   canvas.addEventListener("pointerdown", (event) => {
     if (!layout) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (event.target.closest(".canvas-zoom")) return;
     if (!pointers.size) dragMoved = false;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     rebaseGesture();
@@ -146,18 +149,27 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
     // 回路通道画在图的上下方，缩放时要把它们的高度一起算进去，否则会被裁掉。
     const contentH = layout.height + margins.top + margins.bottom;
     const exact = Math.min((rect.width - padX * 2) / layout.width, (rect.height - padY * 2) / contentH);
-    const k = clampScale(rect.width < COMPACT_W ? Math.max(exact, MIN_READABLE_SCALE) : exact);
+    const compact = rect.width < COMPACT_W || rect.height < COMPACT_H;
+    const k = clampScale(compact ? Math.max(exact, MIN_READABLE_SCALE) : exact);
     view.k = k;
 
-    // 放不下时贴着左上角起排，读者从输入侧开始往右拖——这正是图本身的阅读顺序。
+    // 横向放不下时贴左边起排，读者从输入侧往右拖——这正是图本身的阅读顺序。
+    // 纵向始终居中：每条泳道的模块都是绕中线排的，贴顶只会看到一片空的回路通道。
     const contentW = layout.width * k;
     view.x = contentW <= rect.width - padX * 2 ? (rect.width - contentW) / 2 : padX;
-    const totalH = contentH * k;
-    view.y =
-      totalH <= rect.height - padY * 2
-        ? (rect.height - totalH) / 2 + margins.top * k
-        : padY + margins.top * k;
+    view.y = (rect.height - contentH * k) / 2 + margins.top * k;
     applyTransform();
+  }
+
+  /**
+   * 窄屏上详情是贴底的浮层，会盖住画布下半截。量它没被变换过的布局高度而不是
+   * getBoundingClientRect：浮层正在滑入时后者读到的是动画中途的位置。
+   */
+  function overlayInset(rect) {
+    if (!overlay) return 0;
+    const style = getComputedStyle(overlay);
+    if (style.position !== "fixed" || style.visibility === "hidden") return 0;
+    return Math.max(0, rect.bottom - (window.innerHeight - overlay.offsetHeight));
   }
 
   /**
@@ -170,6 +182,7 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
     const rect = canvas.getBoundingClientRect();
     if (!rect.width) return;
     const pad = 24;
+    const floor = rect.height - overlayInset(rect);
     const left = view.x + box.x * view.k;
     const top = view.y + box.y * view.k;
     const right = left + box.w * view.k;
@@ -177,7 +190,7 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
     if (left < pad) view.x += pad - left;
     else if (right > rect.width - pad) view.x -= right - (rect.width - pad);
     if (top < pad) view.y += pad - top;
-    else if (bottom > rect.height - pad) view.y -= bottom - (rect.height - pad);
+    else if (bottom > floor - pad) view.y -= bottom - (floor - pad);
     applyTransform();
   }
 
@@ -528,7 +541,8 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
     // 的 click 要吃掉，否则松手就会顺手选中脚下的模块。
     const wasDrag = dragMoved;
     dragMoved = false;
-    if (wasDrag) return;
+    // detail 为 0 说明这一下是键盘敲出来的，跟刚才那次拖动无关。
+    if (wasDrag && event.detail > 0) return;
     const target = event.target.closest(".node");
     if (!target) return;
     const id = target.dataset.id;
@@ -585,6 +599,9 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
       selectedId = id;
       paintHighlight();
       if (id) reveal(id);
+    },
+    revealSelected() {
+      if (selectedId) reveal(selectedId);
     },
     get selectedId() {
       return selectedId;
