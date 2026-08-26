@@ -2,13 +2,7 @@
 
 import { el, svgEl, clear } from "./dom.js";
 import { nodeColor } from "./data.js";
-import {
-  computeLayout,
-  forwardPath,
-  channelPath,
-  NODE_W,
-  LANE_HEAD_H,
-} from "./layout.js";
+import { computeLayout, forwardPath, channelPath, siblingPath, NODE_W } from "./layout.js";
 
 const TOP_CHANNEL_KINDS = new Set(["obs", "ref", "privileged"]);
 const MIN_SCALE = 0.25;
@@ -25,6 +19,7 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
   let filters = null;
   let upstream = new Map();
   let downstream = new Map();
+  let margins = { top: 48, bottom: 48 };
 
   ensureMarkers(svg, taxonomy);
 
@@ -77,18 +72,20 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
     if (!layout) return;
     const rect = canvas.getBoundingClientRect();
     if (!rect.width) return;
-    const padX = 36;
-    const padY = 64; // 上下要给回路通道留出空间
+    const padX = 30;
+    const padY = 12;
+    // 回路通道画在图的上下方，缩放时要把它们的高度一起算进去，否则会被裁掉。
+    const contentH = layout.height + margins.top + margins.bottom;
     const k = Math.min(
       MAX_SCALE,
       Math.max(
         MIN_SCALE,
-        Math.min((rect.width - padX * 2) / layout.width, (rect.height - padY * 2) / layout.height)
+        Math.min((rect.width - padX * 2) / layout.width, (rect.height - padY * 2) / contentH)
       )
     );
     view.k = k;
     view.x = (rect.width - layout.width * k) / 2;
-    view.y = (rect.height - layout.height * k) / 2;
+    view.y = (rect.height - contentH * k) / 2 + margins.top * k;
     applyTransform();
   }
 
@@ -215,11 +212,13 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
 
     const backward = [];
     const forward = [];
+    const sibling = [];
     for (const edge of graph.edges) {
       const a = layout.pos.get(edge.from);
       const b = layout.pos.get(edge.to);
       if (!a || !b) continue;
-      (b.x > a.x ? forward : backward).push({ edge, a, b });
+      if (Math.abs(a.x - b.x) < 1) sibling.push({ edge, a, b });
+      else (b.x > a.x ? forward : backward).push({ edge, a, b });
     }
 
     // 回路边按跨度排序，跨度大的排到通道外侧，避免互相压线。
@@ -237,6 +236,12 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
       const y1 = a.y + a.h / 2;
       const y2 = b.y + b.h / 2;
       addEdge(group, labels, edge, forwardPath(a.x + a.w, y1, b.x, y2), (a.x + a.w + b.x) / 2, (y1 + y2) / 2);
+    }
+
+    for (const { edge, a, b } of sibling) {
+      const y1 = a.y + a.h / 2;
+      const y2 = b.y + b.h / 2;
+      addEdge(group, labels, edge, siblingPath(a.x, y1, y2), a.x - 30, (y1 + y2) / 2);
     }
 
     top.forEach((item, i) => {
@@ -273,11 +278,18 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
       );
     }
 
-    const marginY = Math.max(top.length * 13 + 44, bottom.length * 13 + 44, 44);
-    svg.setAttribute("width", layout.width + 40);
-    svg.setAttribute("height", layout.height + marginY * 2);
-    svg.style.top = `${-marginY}px`;
-    svg.setAttribute("viewBox", `0 ${-marginY} ${layout.width + 40} ${layout.height + marginY * 2}`);
+    margins = {
+      top: top.length ? top.length * 13 + 46 : 24,
+      bottom: bottom.length ? bottom.length * 13 + 46 : 24,
+    };
+    const pad = Math.max(margins.top, margins.bottom);
+    const boxLeft = -60; // 同列边向左鼓出，以及通道走线的左侧转角
+    const boxW = layout.width + 100;
+    svg.setAttribute("width", boxW);
+    svg.setAttribute("height", layout.height + pad * 2);
+    svg.style.top = `${-pad}px`;
+    svg.style.left = `${boxLeft}px`;
+    svg.setAttribute("viewBox", `${boxLeft} ${-pad} ${boxW} ${layout.height + pad * 2}`);
   }
 
   function addEdge(group, labels, edge, d, labelX, labelY) {

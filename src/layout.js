@@ -81,6 +81,12 @@ export function forwardPath(x1, y1, x2, y2) {
   return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 }
 
+/** 同列内部的边（如域随机化 → 仿真环境）：从左侧出、左侧入，向左鼓一个小弧。 */
+export function siblingPath(x, y1, y2) {
+  const bulge = Math.min(48, 20 + Math.abs(y2 - y1) * 0.18);
+  return `M ${x} ${y1} C ${x - bulge} ${y1}, ${x - bulge} ${y2}, ${x} ${y2}`;
+}
+
 /** 向后的边（回路闭合）：绕到上方或下方的通道里走。 */
 export function channelPath(x1, y1, x2, y2, channelY) {
   const xa = x1 + 26;
