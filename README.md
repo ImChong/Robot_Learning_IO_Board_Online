@@ -6,7 +6,13 @@
 
 分类语汇沿用 Robotics Notebooks 的[观测输入五类](https://imchong.github.io/Robotics_Notebooks/detail.html?id=wiki-concepts-humanoid-policy-observation-inputs)与[奖励函数六类](https://imchong.github.io/Robotics_Notebooks/detail.html?id=wiki-concepts-humanoid-policy-reward-functions)划分，并补上参考页目前缺失的输出侧五类。
 
-下一批要接的是 [MimicKit](https://github.com/xbpeng/MimicKit) 方法族的七个方法（DeepMimic、AWR、AMP、ASE、LCP、ADD、SMP）。内容已逐项核对完毕、落在 [PLAN.md](./PLAN.md) 附录 C，**数据文件尚未落地，页面上暂时看不到**。两批放在一起是因为它们互相照亮：现有的真机路线解释「为什么要往观测里减信息、往训练里加噪声」，MimicKit 方法族解释「奖励怎么从手写公式一路走到对抗判别器和冻结的扩散先验」。
+第二批是 [MimicKit](https://github.com/xbpeng/MimicKit) 方法族的七个方法，按年份排：**DeepMimic**（2018）、**AWR**（2019）、**AMP**（2021）、**ASE**（2022）、**LCP**（2025）、**ADD**（2025）、**SMP**（2026）。它们共用同一套环境、角色与网络规模，差别被压缩到「奖励从哪来」和「策略额外吃什么」两件事上——正好是本站的两个坐标轴。
+
+两批放在一起是因为它们互相照亮：真机路线解释「为什么要往观测里减信息、往训练里加噪声」，MimicKit 方法族解释「奖励怎么从手写公式一路走到对抗判别器和冻结的扩散先验」。几处可以直接在页面上点开看的对照：
+
+- 同一台 29 自由度 Unitree G1，LCP 的策略观测是 849 维、BeyondMimic 是 160 维，方向还相反；
+- ASE 的 64 维技能潜变量与 SONIC 的 64 维 FSQ token 维度相同、位置相同，但一个是采样出来的、一个是编码出来的；
+- 「动作抖动伤硬件」这一个问题，BeyondMimic 与 SONIC 加奖励项、LCP 改损失函数，前者落在奖励面板、后者落在学习信号里。
 
 ## 本地运行
 
@@ -44,10 +50,11 @@ index.html            页面骨架
 assets/               样式与主题初始化
 src/                  原生 ES modules
   ├── data.js           注册表加载与项目按需加载（带缓存）
+  ├── inherit.js        消融式项目的补丁合并（页面与校验脚本共用同一份）
   ├── project-picker.js 可搜索、分组的项目下拉
   ├── layout.js         泳道布局与连线路径几何
   ├── render-graph.js   SVG 连线 + HTML 节点卡片、缩放平移、链路高亮、模式补间
-  ├── render-rewards.js 奖励面板（六类折叠、对数刻度权重条、KaTeX 公式）
+  ├── render-rewards.js 奖励面板（六类折叠、权重条、学习式奖励的来源卡、KaTeX 公式）
   ├── render-detail.js  详情抽屉
   ├── render-compare.js 当前项目 vs 选定对比对象的对照表
   └── render-table.js   表格降级视图
@@ -55,7 +62,11 @@ data/
   ├── taxonomy.json     观测五类 / 输出五类 / 奖励六类等全部枚举的权威定义
   ├── projects.json     项目注册表与分组
   ├── beyondmimic.json  节点、连线、奖励项、关键指标
-  └── sonic.json
+  ├── sonic.json
+  └── mimickit/         MimicKit 方法族七个方法
+      ├── deepmimic.json    基线；awr.json 继承它
+      ├── awr.json          只写与 DeepMimic 的差异（inherits + overrides）
+      ├── amp.json  ase.json  lcp.json  add.json  smp.json
 schema/               编辑器可用的 JSON Schema（项目文件 + 注册表）
 scripts/validate.mjs  数据自洽性校验
 vendor/katex/         本地自带的 KaTeX 0.16.11（MIT），不依赖 CDN
@@ -86,7 +97,34 @@ vendor/katex/         本地自带的 KaTeX 0.16.11（MIT），不依赖 CDN
 
 `keywords` 只参与搜索、不显示，放读者可能拿来搜的词（机器人型号、仿真器、算法、机构、代码仓名、arXiv 号，中英文都行）。
 
-新增一个方法族时，在 `groups` 里加一条，然后让项目的 `group` 指向它——选择器会自动按组显示标题。
+`file` 是相对 `data/` 的路径，所以可以放进子目录（`"file": "mimickit/amp.json"`）。新增一个方法族时，在 `groups` 里加一条，然后让项目的 `group` 指向它——选择器会自动按组显示标题。
+
+### 消融式项目：只写差异
+
+如果新项目与已有项目共用同一份环境配置、只换了算法（MimicKit 里 AWR 对 DeepMimic 就是这样），可以只写差异：
+
+```json
+{
+  "id": "my-ablation",
+  "name": "MyAblation",
+  "inherits": "my-project",
+  "diffSummary": "必填，一句话说明差在哪，直接渲染在页面顶部",
+  "overrides": {
+    "modes.train": {
+      "facts": { "Actor 更新规则": "换掉的值" },
+      "nodes": { "l.ppo": { "label": "新标签", "desc": "……" } },
+      "nodes+": [],
+      "nodes-": []
+    }
+  }
+}
+```
+
+被补丁命中的模块会在图上带一个「改动」角标，所以「只有这一个框变了」是看得见的。合并逻辑在 `src/inherit.js`，页面与校验脚本共用同一份，校验会检查补丁目标在父项目里真实存在（写错 id 不会静默失效）。**继承只允许一层**，而且只在环境配置真的相同时才划算——换机器人就别用它，维度全都不一样。
+
+### 学习式奖励
+
+判别器、编码器、扩散先验这类奖励没有可以逐条列出的分项权重，写法不同：`rewardKind` 填 `adversarial` / `encoder` / `generative`，`weight` 填配置里真实存在的混合系数，真正的信息放进 `model`（吃什么、正负样本怎么定、网络多大、有哪些正则、参数是否冻结）。奖励面板会把这类项渲染成「来源卡」而不是权重条。`model.inputs` 要指向同一张图里存在的节点 id，校验脚本会检查。
 
 ## 数据准确性
 
@@ -99,7 +137,7 @@ vendor/katex/         本地自带的 KaTeX 0.16.11（MIT），不依赖 CDN
 
 ## 设计与实施计划
 
-见 [PLAN.md](./PLAN.md)。附录 A（BeyondMimic）、附录 B（SONIC）对应 `data/` 下已有的两份数据文件；附录 C（MimicKit 七个方法）已核对完成但尚未落成数据文件，是 M5 的输入。
+见 [PLAN.md](./PLAN.md)。附录 A（BeyondMimic）、附录 B（SONIC）、附录 C（MimicKit 七个方法）是逐项核对上游实现后的内容基线，与 `data/` 下的九份数据文件一一对应。
 
 ## 许可
 

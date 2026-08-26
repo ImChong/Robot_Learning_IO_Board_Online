@@ -6,6 +6,7 @@ import { nodeColor } from "./data.js";
 const REPO_URLS = {
   whole_body_tracking: "https://github.com/HybridRobotics/whole_body_tracking",
   "GR00T-WholeBodyControl": "https://github.com/NVlabs/GR00T-WholeBodyControl",
+  MimicKit: "https://github.com/xbpeng/MimicKit",
 };
 
 export function renderDetail({ emptyEl, bodyEl, node, taxonomy, onClose }) {

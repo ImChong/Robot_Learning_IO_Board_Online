@@ -28,6 +28,8 @@
         { "label": "特权 critic 观测", "value": "286 维" },
         { "label": "Actor 网络", "value": "MLP [512, 256, 128] · ELU" },
         { "label": "奖励项", "value": "9 项 · 正向权重 5.0" },
+        { "label": "奖励来源", "value": "手写（9 项闭式加权 exp）" },
+        { "label": "初始状态", "value": "失败率驱动的片段自适应采样" },
         { "label": "终止条件", "value": "4 项 · 固定阈值 0.25 / 0.8" },
         { "label": "质量随机化", "value": "无" },
         { "label": "推力扰动", "value": "每 1–3 s" },

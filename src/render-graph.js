@@ -4,7 +4,7 @@ import { el, svgEl, clear } from "./dom.js";
 import { nodeColor } from "./data.js";
 import { computeLayout, forwardPath, channelPath, siblingPath, NODE_W } from "./layout.js";
 
-const TOP_CHANNEL_KINDS = new Set(["obs", "ref", "privileged"]);
+const TOP_CHANNEL_KINDS = new Set(["obs", "ref", "privileged", "latent"]);
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 1.6;
 const FALLBACK_NODE_H = 66;
@@ -20,6 +20,7 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
   let upstream = new Map();
   let downstream = new Map();
   let margins = { top: 48, bottom: 48 };
+  let touched = new Set();
 
   ensureMarkers(svg, taxonomy);
 
@@ -201,6 +202,8 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
   function decorate(element, node) {
     element.classList.toggle("train-only", node.availability === "train-only");
     element.classList.toggle("deploy-hard", node.availability === "deploy-hard");
+    element.classList.toggle("sim-only", node.availability === "sim-only");
+    element.classList.toggle("touched", touched.has(node.id));
     element.style.setProperty("--node-color", nodeColor(node, taxonomy));
   }
 
@@ -338,9 +341,11 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
 
   /* ---------- 渲染 ---------- */
 
-  function render(nextGraph, { animate = false } = {}) {
+  function render(nextGraph, { animate = false, touchedIds = null } = {}) {
     const previous = layout;
     graph = nextGraph;
+    // 消融式项目：只有被 overrides 改动的模块闪一下，读者一眼看到「只有这两个框变了」。
+    touched = touchedIds ?? new Set();
     buildAdjacency();
 
     const wanted = new Map(graph.nodes.map((node) => [node.id, node]));

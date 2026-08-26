@@ -12,6 +12,8 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
+import { isInherited, mergeProject } from "../src/inherit.js";
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DATA = join(ROOT, "data");
 
@@ -151,6 +153,7 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
     }
   }
 
+  const LEARNED_KINDS = new Set(["adversarial", "encoder", "generative"]);
   for (const [i, reward] of (graph.rewards ?? []).entries()) {
     const at = `${where}/reward[${reward.id ?? i}]`;
     if (!reward.id) fail(at, "缺少 id");
@@ -167,6 +170,20 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
     }
     if (reward.direction === "negative" && reward.weight > 0) {
       fail(at, `标为 negative 但权重是 ${reward.weight}`);
+    }
+
+    // 学习式奖励（判别器 / 编码器 / 生成先验）没有可列表的分项权重，
+    // 信息量在 model 里：吃什么、正样本是什么、怎么变成标量、有哪些正则。
+    const kind = reward.rewardKind ?? "handcrafted";
+    if (!taxo.rewardKindIds.has(kind)) fail(at, `未知 rewardKind "${kind}"`);
+    if (LEARNED_KINDS.has(kind)) {
+      if (!reward.model) fail(at, `rewardKind=${kind} 但没有 model（学习式奖励必须说明网络本身）`);
+      if (!reward.model?.inputs?.length) fail(at, "model 缺少 inputs（这个奖励看着什么打分）");
+      for (const input of reward.model?.inputs ?? []) {
+        if (!nodes.has(input)) fail(at, `model.inputs 里的 "${input}" 不是本图的节点`);
+      }
+    } else if (reward.model) {
+      fail(at, `rewardKind=${kind} 不该带 model（手写与任务奖励的信息量在 form / params 里）`);
     }
   }
 
@@ -188,11 +205,53 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
   if (modeId === "train" && !(graph.rewards ?? []).length) {
     warn(where, "训练态没有奖励项");
   }
-  if (modeId === "deploy" && (graph.rewards ?? []).length) {
-    fail(where, "部署态不应该有奖励项（奖励只在训练期存在）");
+  // 训练之外的任何模式（deploy / test / …）都不该有奖励：奖励只在训练期存在。
+  if (modeId !== "train" && (graph.rewards ?? []).length) {
+    fail(where, `模式 "${modeId}" 不应该有奖励项（奖励只在训练期存在）`);
+  }
+  // train-only 表示「第二个模式里消失」，出现在非训练模式里就是自相矛盾。
+  if (modeId !== "train") {
+    for (const node of nodes.values()) {
+      if (node.availability === "train-only") {
+        fail(
+          `${where}/${node.id}`,
+          "在非训练模式里标了 train-only；仿真直读但推理仍在用的量应该标 sim-only"
+        );
+      }
+    }
   }
 
   return nodes.size;
+}
+
+/** overrides 里按 id 打的补丁必须命中父项目里真实存在的东西。 */
+function checkPatchTargets(at, path, patch, parentGraph) {
+  const nodeIds = new Set((parentGraph.nodes ?? []).map((n) => n.id));
+  const rewardIds = new Set((parentGraph.rewards ?? []).map((r) => r.id));
+  const edgeKeys = new Set((parentGraph.edges ?? []).map((e) => `${e.from}>${e.to}`));
+  const factLabels = new Set((parentGraph.facts ?? []).map((f) => f.label));
+
+  const check = (ids, pool, what) => {
+    for (const id of ids) {
+      if (!pool.has(id)) fail(at, `${path} 的 ${what} "${id}" 在父项目里不存在`);
+    }
+  };
+
+  check(Object.keys(patch.nodes ?? {}), nodeIds, "nodes 补丁目标");
+  check(patch["nodes-"] ?? [], nodeIds, "nodes- 删除目标");
+  check(Object.keys(patch.rewards ?? {}), rewardIds, "rewards 补丁目标");
+  check(patch["rewards-"] ?? [], rewardIds, "rewards- 删除目标");
+  check(patch["edges-"] ?? [], edgeKeys, "edges- 删除目标");
+
+  for (const id of (patch["nodes+"] ?? []).map((n) => n.id)) {
+    if (nodeIds.has(id)) fail(at, `${path} 的 nodes+ 里 "${id}" 与父项目重名，应该用 nodes 补丁`);
+  }
+  for (const label of Object.keys(patch.facts ?? {})) {
+    if (!factLabels.has(label)) {
+      // 追加新指标是允许的，只是提醒一下，避免拼错 label 后静默多出一行。
+      warn(at, `${path} 的 facts 里 "${label}" 父项目没有，会作为新指标追加`);
+    }
+  }
 }
 
 function checkRegistry(registry) {
@@ -242,6 +301,7 @@ async function main() {
     availabilityIds: new Set(taxonomy.availability.map((a) => a.id)),
     edgeKindIds: new Set(taxonomy.edgeKinds.map((e) => e.id)),
     rewardGroupIds: new Set(taxonomy.rewardGroups.map((g) => g.id)),
+    rewardKindIds: new Set(["handcrafted", "task", "adversarial", "encoder", "generative"]),
     classIds: new Set([
       ...taxonomy.inputClasses.map((c) => c.id),
       ...taxonomy.outputClasses.map((c) => c.id),
@@ -257,8 +317,47 @@ async function main() {
 
   checkRegistry(registry);
 
+  // 先把所有文件读进来，消融式项目要能引到父项目。
+  const raw = new Map();
   for (const entry of registry.projects) {
-    const project = await readJson(entry.file);
+    raw.set(entry.id, await readJson(entry.file));
+  }
+
+  for (const entry of registry.projects) {
+    let project = raw.get(entry.id);
+
+    if (isInherited(project)) {
+      const at = `${entry.file}`;
+      const parent = raw.get(project.inherits);
+      if (!parent) {
+        fail(at, `inherits 指向的父项目 "${project.inherits}" 没有在注册表里登记`);
+        continue;
+      }
+      if (isInherited(parent)) {
+        fail(at, `项目继承只允许一层，但父项目 "${parent.id}" 自己也有 inherits`);
+        continue;
+      }
+      if (!project.diffSummary) {
+        fail(at, "带 inherits 就必须写 diffSummary（页面顶部要直接告诉读者差在哪）");
+      }
+      // overrides 的路径必须命中东西，否则是写错了模式 id 或节点 id 的静默失效。
+      for (const [path, patch] of Object.entries(project.overrides ?? {})) {
+        const modeId = path.startsWith("modes.") ? path.slice("modes.".length) : null;
+        const parentGraph = modeId ? parent.modes?.[modeId] : null;
+        if (!parentGraph) {
+          fail(at, `overrides 的键 "${path}" 在父项目里找不到对应模式`);
+          continue;
+        }
+        checkPatchTargets(at, path, patch, parentGraph);
+      }
+      try {
+        project = mergeProject(project, parent);
+      } catch (error) {
+        fail(at, String(error.message ?? error));
+        continue;
+      }
+    }
+
     if (project.id !== entry.id) {
       fail(entry.file, `文件里的 id "${project.id}" 与注册表的 "${entry.id}" 不一致`);
     }

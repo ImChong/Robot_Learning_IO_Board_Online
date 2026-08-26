@@ -130,12 +130,14 @@
     { "id": "given", "name": "上层给定", "icon": "▷", "desc": "由遥控器、规划器、参考动作库等上游提供。" },
     { "id": "sim-only", "name": "仿真直读", "icon": "▣", "desc": "仿真器状态直读，真机无对应通道。" },
     { "id": "derived", "name": "内部推导", "icon": "↻", "desc": "由策略自身输出或已有量计算得到，零传感器成本。" },
+    { "id": "sampled", "name": "分布采样", "icon": "✳", "desc": "从一个分布里抽出来的条件量或初始状态，既不是测量也不是由已有量推导。" },
     { "id": "none", "name": "非观测量", "icon": "·", "desc": "流程、网络、执行器等非观测节点。" }
   ],
   "availability": [
     { "id": "deploy-ok", "name": "部署可得", "desc": "真机上能以策略频率稳定拿到。" },
     { "id": "deploy-hard", "name": "部署困难", "desc": "真机需额外估计链路，是「仿真给了真机没有」的典型陷阱。" },
     { "id": "train-only", "name": "仅训练可见", "desc": "只在训练期存在，部署时消失。" },
+    { "id": "sim-only", "name": "仅仿真存在", "desc": "仿真直读、真机无对应通道，但推理时依然在用——与「仅训练可见」的区别是它不会在第二个模式里消失。项目本身不以真机为目标时才用这一档。" },
     { "id": "n/a", "name": "不适用", "desc": "非观测节点。" }
   ],
   "confidence": [
@@ -159,16 +161,22 @@
     { "id": "grad", "name": "梯度 / 更新", "color": "#c792ea" },
     { "id": "reward", "name": "奖励信号", "color": "#c792ea" },
     { "id": "feedback", "name": "反馈 / 采样调整", "color": "#9aa4b2" },
+    { "id": "latent", "name": "潜变量条件流", "color": "#66d9d9" },
+    { "id": "disc", "name": "判别 / 打分", "color": "#ffd166" },
+    { "id": "init", "name": "初始状态注入", "color": "#b5e853" },
     { "id": "flow", "name": "流程", "color": "#7d8794" }
   ],
   "lanes": [
     { "id": "source", "name": "数据与参考源" },
     { "id": "ref", "name": "参考与指令输入" },
     { "id": "encode", "name": "编码器与 token" },
+    { "id": "latent", "name": "技能潜变量" },
+    { "id": "task", "name": "任务目标与观测" },
     { "id": "proprio", "name": "本体 · 历史 · 特权输入" },
     { "id": "policy", "name": "策略与价值网络" },
     { "id": "action", "name": "动作与执行链" },
     { "id": "plant", "name": "机器人与环境" },
+    { "id": "disc", "name": "判别器 · 编码器 · 先验" },
     { "id": "learn", "name": "学习信号" }
   ]
 }
