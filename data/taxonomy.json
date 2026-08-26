@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "inputClasses": [
+    {
+      "id": "A",
+      "name": "本体感知",
+      "en": "Proprioception",
+      "color": "#4cc2ff",
+      "desc": "关节编码器、IMU、上一动作等机器人自身状态。除基座线速度外部署时基本都能拿到。"
+    },
+    {
+      "id": "B",
+      "name": "指令与参考",
+      "en": "Command / Reference",
+      "color": "#3ddc97",
+      "desc": "速度指令、相位、参考运动相对量、目标点。由系统给定而非感知得来。"
+    },
+    {
+      "id": "C",
+      "name": "历史与时序上下文",
+      "en": "History / Temporal",
+      "color": "#ffd166",
+      "desc": "帧堆叠、RNN 隐状态、学习 latent。单帧本体感知是部分可观测的，历史是穷人版状态估计。"
+    },
+    {
+      "id": "D",
+      "name": "外部感知",
+      "en": "Exteroception",
+      "color": "#c792ea",
+      "desc": "高程图、深度图、点云、RGB。本站首批两个项目都是盲式跟踪，均不使用本类。"
+    },
+    {
+      "id": "E",
+      "name": "特权信息",
+      "en": "Privileged (train-only)",
+      "color": "#ff7b72",
+      "desc": "地形真值、接触真值、基座线速度真值等仿真直读量。只在训练侧出现（teacher 观测或特权 critic）。"
+    }
+  ],
+  "outputClasses": [
+    {
+      "id": "O1",
+      "name": "关节目标",
+      "en": "Joint targets",
+      "color": "#ff9f45",
+      "hardware": true,
+      "desc": "关节位置 setpoint，交给底层 PD 执行。人形 RL 的绝对主流动作空间。"
+    },
+    {
+      "id": "O2",
+      "name": "直接力矩",
+      "en": "Direct torque",
+      "color": "#ff7043",
+      "hardware": true,
+      "desc": "策略直接输出关节力矩或前馈项，绕过位置 PD。"
+    },
+    {
+      "id": "O3",
+      "name": "残差动作",
+      "en": "Residual action",
+      "color": "#e0a3ff",
+      "hardware": true,
+      "desc": "叠加在基线控制器（WBC、运动学规划器）之上的增量。"
+    },
+    {
+      "id": "O4",
+      "name": "分层接口输出",
+      "en": "Latent / token",
+      "color": "#66d9d9",
+      "hardware": false,
+      "desc": "统一 token 或 latent，供下游 decoder 消费或与上游 VLA 对接。不直接下发硬件。"
+    },
+    {
+      "id": "O5",
+      "name": "辅助头",
+      "en": "Auxiliary head",
+      "color": "#9aa4b2",
+      "hardware": false,
+      "desc": "价值函数、重建头、估计器输出、判别器分数。仅训练期或仅用于监控。"
+    }
+  ],
+  "rewardGroups": [
+    {
+      "id": "A",
+      "name": "任务与跟踪",
+      "en": "Task / Tracking",
+      "color": "#3ddc97",
+      "desc": "任务目标的代言人。速度跟踪、参考运动跟踪、目标到达、存活。跟踪系策略里参考跟踪本身就是任务奖励。"
+    },
+    {
+      "id": "B",
+      "name": "姿态与稳定",
+      "en": "Posture / Stability",
+      "color": "#4cc2ff",
+      "desc": "平衡与直立的代言人。重力投影、基座高度、手臂正则、足端朝向。人形比四足敏感得多。"
+    },
+    {
+      "id": "C",
+      "name": "步态与接触",
+      "en": "Gait / Contact",
+      "color": "#ffd166",
+      "desc": "节律与落地的代言人。相位时钟、抬脚高度、接触冲击、足端滑移。"
+    },
+    {
+      "id": "D",
+      "name": "能效与平滑",
+      "en": "Energy / Smoothness",
+      "color": "#c792ea",
+      "desc": "省力与平滑的代言人。力矩、关节速度/加速度、动作变化率、功率。真机平滑性的第一杠杆。"
+    },
+    {
+      "id": "E",
+      "name": "安全与硬件",
+      "en": "Safety / Hardware",
+      "color": "#ff7b72",
+      "desc": "硬件极限的代言人。关节限位、自碰撞、摔倒终止。权重逻辑与其他类相反：宁可过大不可过小。"
+    },
+    {
+      "id": "F",
+      "name": "风格与模仿",
+      "en": "Style / Imitation",
+      "color": "#ff9f45",
+      "desc": "像不像参考的代言人。AMP 判别器、DeepMimic 跟踪子项、接触图模仿。"
+    }
+  ],
+  "acquisition": [
+    { "id": "direct", "name": "传感器直读", "icon": "◉", "desc": "编码器、IMU 等直接读数，延迟最低。" },
+    { "id": "filter", "name": "滤波处理", "icon": "≈", "desc": "差分 + 低通等。滤波器参数必须与训练时一致。" },
+    { "id": "estimate", "name": "需要估计", "icon": "△", "desc": "不可直测，需要 EKF 或学习估计器。真机翻车高发区。" },
+    { "id": "given", "name": "上层给定", "icon": "▷", "desc": "由遥控器、规划器、参考动作库等上游提供。" },
+    { "id": "sim-only", "name": "仿真直读", "icon": "▣", "desc": "仿真器状态直读，真机无对应通道。" },
+    { "id": "derived", "name": "内部推导", "icon": "↻", "desc": "由策略自身输出或已有量计算得到，零传感器成本。" },
+    { "id": "none", "name": "非观测量", "icon": "·", "desc": "流程、网络、执行器等非观测节点。" }
+  ],
+  "availability": [
+    { "id": "deploy-ok", "name": "部署可得", "desc": "真机上能以策略频率稳定拿到。" },
+    { "id": "deploy-hard", "name": "部署困难", "desc": "真机需额外估计链路，是「仿真给了真机没有」的典型陷阱。" },
+    { "id": "train-only", "name": "仅训练可见", "desc": "只在训练期存在，部署时消失。" },
+    { "id": "n/a", "name": "不适用", "desc": "非观测节点。" }
+  ],
+  "confidence": [
+    { "id": "verified", "name": "已核对", "badge": "", "desc": "从一手仓库配置或论文中逐项核对。" },
+    { "id": "derived", "name": "求和推出", "badge": "≈", "desc": "由逐项核对过的维度计算得出。" },
+    { "id": "inferred", "name": "推断待核", "badge": "?", "desc": "论文或文档口径推断，未在代码中定位到确切定义。" }
+  ],
+  "nodeKinds": [
+    { "id": "obs", "name": "观测项" },
+    { "id": "proc", "name": "数据流程" },
+    { "id": "net", "name": "网络模块" },
+    { "id": "act", "name": "动作与执行" },
+    { "id": "plant", "name": "机器人与环境" },
+    { "id": "signal", "name": "学习信号" }
+  ],
+  "edgeKinds": [
+    { "id": "ref", "name": "参考流", "color": "#3ddc97" },
+    { "id": "obs", "name": "观测流", "color": "#4cc2ff" },
+    { "id": "action", "name": "动作流", "color": "#ff9f45" },
+    { "id": "privileged", "name": "特权流", "color": "#ff7b72" },
+    { "id": "grad", "name": "梯度 / 更新", "color": "#c792ea" },
+    { "id": "reward", "name": "奖励信号", "color": "#c792ea" },
+    { "id": "feedback", "name": "反馈 / 采样调整", "color": "#9aa4b2" },
+    { "id": "flow", "name": "流程", "color": "#7d8794" }
+  ],
+  "lanes": [
+    { "id": "source", "name": "数据与参考源" },
+    { "id": "ref", "name": "参考与指令输入" },
+    { "id": "encode", "name": "编码器与 token" },
+    { "id": "proprio", "name": "本体 · 历史 · 特权输入" },
+    { "id": "policy", "name": "策略与价值网络" },
+    { "id": "action", "name": "动作与执行链" },
+    { "id": "plant", "name": "机器人与环境" },
+    { "id": "learn", "name": "学习信号" }
+  ]
+}

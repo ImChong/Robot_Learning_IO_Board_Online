@@ -1,0 +1,79 @@
+{
+  "version": 2,
+  "title": "Robot Learning IO Board",
+  "subtitle": "人形机器人强化学习项目的输入 · 输出 · 奖励函数分析板",
+  "defaultProject": "beyondmimic",
+  "defaultMode": "train",
+
+  "groups": [
+    {
+      "id": "wbt",
+      "name": "全身运动跟踪",
+      "desc": "把参考动作跟踪本身当作任务目标的模仿系路线"
+    }
+  ],
+
+  "projects": [
+    {
+      "id": "beyondmimic",
+      "file": "beyondmimic.json",
+      "name": "BeyondMimic",
+      "subtitle": "精确物理建模 + 失败率驱动自适应采样",
+      "group": "wbt",
+      "order": 1,
+      "keywords": [
+        "whole_body_tracking",
+        "Isaac Lab",
+        "PPO",
+        "rsl_rl",
+        "Unitree G1",
+        "LAFAN1",
+        "armature",
+        "guided diffusion",
+        "Berkeley",
+        "Stanford",
+        "伯克利",
+        "斯坦福",
+        "2508.08241"
+      ]
+    },
+    {
+      "id": "sonic",
+      "file": "sonic.json",
+      "name": "SONIC",
+      "subtitle": "规模化运动跟踪预训练 + 统一 token 接口",
+      "group": "wbt",
+      "order": 2,
+      "keywords": [
+        "GR00T-WholeBodyControl",
+        "gear_sonic",
+        "Isaac Lab",
+        "PPO",
+        "TRL",
+        "Unitree G1",
+        "BONES-SEED",
+        "FSQ",
+        "universal token",
+        "VR",
+        "SMPL",
+        "VLA",
+        "ONNX",
+        "NVIDIA",
+        "CMU",
+        "英伟达",
+        "2511.07820"
+      ]
+    }
+  ],
+
+  "references": [
+    {
+      "label": "观测输入五类划分",
+      "url": "https://imchong.github.io/Robotics_Notebooks/detail.html?id=wiki-concepts-humanoid-policy-observation-inputs"
+    },
+    {
+      "label": "奖励函数六类划分",
+      "url": "https://imchong.github.io/Robotics_Notebooks/detail.html?id=wiki-concepts-humanoid-policy-reward-functions"
+    }
+  ]
+}
