@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { isInherited, mergeProject } from "../src/inherit.js";
+import { buildTour } from "../src/tour.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DATA = join(ROOT, "data");
@@ -221,7 +222,38 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
     }
   }
 
+  checkTour(where, graph, nodes);
+
   return nodes.size;
+}
+
+/**
+ * 讲解序列的自洽性。顺序是从图推出来的（src/tour.js），所以数据一改它就跟着变——
+ * 这里把「不该变的部分」钉住：每个模块讲到且只讲一次，且没有哪一步先于它的
+ * 前置模块出场。图排乱了不会报错，只会讲得别扭；这两条破了才是真讲错。
+ */
+function checkTour(where, graph, nodes) {
+  const { steps } = buildTour(graph);
+  const ids = steps.map((step) => step.id);
+  const seen = new Set(ids);
+  if (seen.size !== ids.length) fail(`${where}/tour`, "讲解序列里有模块出现了两次");
+  if (seen.size !== nodes.size) {
+    const missing = [...nodes.keys()].filter((id) => !seen.has(id));
+    fail(`${where}/tour`, `讲解序列漏掉了 ${missing.length} 个模块：${missing.slice(0, 5).join(", ")}`);
+  }
+
+  const laneIndex = new Map((graph.lanes ?? []).map((id, i) => [id, i]));
+  const authored = new Map((graph.nodes ?? []).map((node, i) => [node.id, i]));
+  const at = new Map(ids.map((id, i) => [id, i]));
+  for (const edge of graph.edges ?? []) {
+    if (!nodes.has(edge.from) || !nodes.has(edge.to)) continue;
+    const a = [laneIndex.get(nodes.get(edge.from).lane), authored.get(edge.from)];
+    const b = [laneIndex.get(nodes.get(edge.to).lane), authored.get(edge.to)];
+    const forward = a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
+    if (forward && at.get(edge.from) > at.get(edge.to)) {
+      fail(`${where}/tour`, `讲到 "${edge.to}" 时它的上游 "${edge.from}" 还没讲`);
+    }
+  }
 }
 
 /** overrides 里按 id 打的补丁必须命中父项目里真实存在的东西。 */
@@ -276,7 +308,13 @@ function checkRegistry(registry) {
     ids.add(entry.id);
     files.add(entry.file);
     if (entry.group && !groupIds.has(entry.group)) fail(at, `未定义的分组 "${entry.group}"`);
-    if (entry.order != null && typeof entry.order !== "number") fail(at, "order 必须是数字");
+    // 项目列表按 published 排序，格式写错会静默把项目甩到列表末尾。
+    if (!entry.published) fail(at, "缺少 published（项目列表按发布时间排序，缺了就排不进去）");
+    else if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.published)) {
+      fail(at, `published "${entry.published}" 不是 YYYY-MM-DD`);
+    } else if (Number.isNaN(Date.parse(entry.published))) {
+      fail(at, `published "${entry.published}" 不是有效日期`);
+    }
     if (entry.keywords && !Array.isArray(entry.keywords)) fail(at, "keywords 必须是数组");
     for (const keyword of entry.keywords ?? []) {
       if (typeof keyword !== "string") fail(at, "keywords 里出现了非字符串");

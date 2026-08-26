@@ -126,7 +126,7 @@ export function renderDetail({ emptyEl, bodyEl, node, taxonomy, onClose }) {
 }
 
 /** 把 source.path 拼成可点的仓库链接；带省略号的路径无法定位，就只显示文本。 */
-function sourceLink(source) {
+export function sourceLink(source) {
   const base = REPO_URLS[source.repo];
   if (!base) return null;
   if (!source.path || source.path.includes("...")) return base;

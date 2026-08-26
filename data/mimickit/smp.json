@@ -9,6 +9,7 @@
   "verifiedRef": "main@2ed1e6c · smp_dodgeball_humanoid_env + smp_task_humanoid_agent",
   "links": {
     "论文": "https://xbpeng.github.io/projects/SMP/index.html",
+    "预印本 arXiv:2512.03028": "https://arxiv.org/abs/2512.03028",
     "代码": "https://github.com/xbpeng/MimicKit",
     "方法文档": "https://github.com/xbpeng/MimicKit/blob/main/docs/README_SMP.md",
     "MimicKit 指南": "https://arxiv.org/abs/2510.13794"
