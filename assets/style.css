@@ -44,6 +44,12 @@ html[data-theme="light"] {
   box-sizing: border-box;
 }
 
+/* 本文件里多个可折叠区块都设了 display: grid/flex，会盖掉 hidden 属性自带的
+   display: none（UA 样式优先级更低），所以这里显式兜住。 */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -182,7 +188,7 @@ kbd {
 /* ---------- 项目头 ---------- */
 
 .project-head {
-  padding: 16px 20px 10px;
+  padding: 12px 20px 8px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px 24px;
@@ -322,9 +328,10 @@ kbd {
 }
 
 .mode-summary {
-  margin: 12px 20px 0;
+  margin: 10px 20px 0;
   max-width: 96ch;
   color: var(--text-soft);
+  font-size: 13px;
 }
 
 /* ---------- 图例 ---------- */
@@ -401,8 +408,8 @@ kbd {
 
 .canvas {
   position: relative;
-  height: min(72vh, 760px);
-  min-height: 440px;
+  height: min(70vh, 720px);
+  min-height: 420px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg-soft);
@@ -611,7 +618,7 @@ kbd {
   border-radius: 12px;
   background: var(--bg-soft);
   padding: 16px;
-  max-height: min(72vh, 760px);
+  max-height: min(70vh, 720px);
   overflow-y: auto;
   position: sticky;
   top: 104px;
