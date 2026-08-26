@@ -100,11 +100,10 @@ function obsTable(projects, modeId, taxonomy) {
     );
   }
 
-  // 只统计会进策略网络的部分，特权项单列一行。
   const deployable = projects.map((p) => sumDeployable(p.modes[modeId]));
   body.append(
     el("tr", {}, [
-      el("th", { scope: "row", text: "进策略网络的观测合计" }),
+      el("th", { scope: "row", text: "非特权观测合计" }),
       ...deployable.map((v) => el("td", { class: "cmp-diff", text: `${v} 维` })),
     ])
   );
@@ -114,7 +113,8 @@ function obsTable(projects, modeId, taxonomy) {
     el("p", {
       class: "reward-scale-note",
       text:
-        "同一个量在两个项目里可能落在不同类别——比如历史动作在 SONIC 里带 10 帧窗口，算作 C 类时序上下文；在 BeyondMimic 里是单帧，算 A 类本体感知。",
+        "两点读法上的坑：同一个量在两个项目里可能落在不同类别（历史动作在 SONIC 带 10 帧窗口，算 C 类时序上下文；在 BeyondMimic 是单帧，算 A 类本体感知）；" +
+        "另外「非特权观测合计」不等于 Actor 的输入维度——SONIC 的 B 类里有一大部分是编码器侧的参考输入，会先被压成 64 维 token 才进主干。",
     }),
   ]);
 }
