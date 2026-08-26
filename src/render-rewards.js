@@ -2,15 +2,18 @@
 
 import { el, clear, renderMath } from "./dom.js";
 
-const LOG_MIN = -7; // 10^-7，覆盖 feet_acc 的 -2.5e-6 这类极小权重
-const LOG_MAX = 1; // 10^1，覆盖 joint_limit 的 -10
+// 权重条的对数定义域。取 10^-4 ~ 10^1：上界覆盖 joint_limit 的 -10，
+// 下界不取更小是因为跨度一拉大，0.5 与 1.0 这类常用权重就几乎一样长了；
+// 比 10^-4 更小的权重（如 feet_acc 的 -2.5e-6）夹到最短，读作「基本可忽略」。
+const LOG_MIN = -4;
+const LOG_MAX = 1;
 
 const pendingFormulas = new Set();
 
 function barWidth(weight) {
   const mag = Math.log10(Math.abs(weight));
   const t = (Math.min(LOG_MAX, Math.max(LOG_MIN, mag)) - LOG_MIN) / (LOG_MAX - LOG_MIN);
-  return `${(4 + t * 96).toFixed(1)}%`;
+  return `${(3 + t * 97).toFixed(1)}%`;
 }
 
 function formatWeight(weight) {
@@ -62,7 +65,7 @@ export function renderRewards({ container, graph, taxonomy, project }) {
     el("p", {
       class: "reward-scale-note",
       text:
-        "权重条用对数刻度（10⁻⁷ ~ 10¹）——各项权重跨了七个数量级，线性刻度下小权重会完全看不见。绿色向右为正向奖励，红色向左为惩罚。",
+        "权重条用对数刻度（10⁻⁴ ~ 10¹）：各项权重跨了好几个数量级，线性刻度下小权重会完全看不见。绿色向右为正向奖励，红色向左为惩罚；比 10⁻⁴ 更小的权重夹到最短一格。",
     })
   );
 
