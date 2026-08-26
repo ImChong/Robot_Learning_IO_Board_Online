@@ -25,7 +25,8 @@
       "name": "BeyondMimic",
       "subtitle": "精确物理建模 + 失败率驱动自适应采样",
       "group": "wbt",
-      "order": 1,
+      "published": "2025-08-11",
+      "venue": "arXiv 预印本",
       "keywords": [
         "whole_body_tracking",
         "Isaac Lab",
@@ -48,7 +49,8 @@
       "name": "SONIC",
       "subtitle": "规模化运动跟踪预训练 + 统一 token 接口",
       "group": "wbt",
-      "order": 2,
+      "published": "2025-11-11",
+      "venue": "arXiv 预印本",
       "keywords": [
         "GR00T-WholeBodyControl",
         "gear_sonic",
@@ -76,7 +78,8 @@
       "name": "DeepMimic",
       "subtitle": "参考跟踪 + 手写五项奖励的基线",
       "group": "mimickit",
-      "order": 11,
+      "published": "2018-04-08",
+      "venue": "SIGGRAPH 2018 · TOG 37(4)",
       "keywords": [
         "MimicKit",
         "Isaac Gym",
@@ -99,7 +102,8 @@
       "name": "AWR",
       "subtitle": "只换优化器：PPO → 优势加权回归",
       "group": "mimickit",
-      "order": 12,
+      "published": "2019-10-01",
+      "venue": "arXiv 预印本",
       "keywords": [
         "MimicKit",
         "Advantage-Weighted Regression",
@@ -117,7 +121,8 @@
       "name": "AMP",
       "subtitle": "奖励从手写公式换成判别器",
       "group": "mimickit",
-      "order": 13,
+      "published": "2021-04-05",
+      "venue": "SIGGRAPH 2021 · TOG 40(4)",
       "keywords": [
         "MimicKit",
         "Adversarial Motion Priors",
@@ -138,7 +143,8 @@
       "name": "ASE",
       "subtitle": "加一个 64 维技能潜空间",
       "group": "mimickit",
-      "order": 14,
+      "published": "2022-05-04",
+      "venue": "SIGGRAPH 2022 · TOG 41(4)",
       "keywords": [
         "MimicKit",
         "Adversarial Skill Embeddings",
@@ -160,7 +166,8 @@
       "name": "LCP",
       "subtitle": "一项梯度罚换来真机可用的平滑度",
       "group": "mimickit",
-      "order": 15,
+      "published": "2024-10-15",
+      "venue": "IROS 2025",
       "keywords": [
         "MimicKit",
         "Lipschitz-Constrained Policies",
@@ -180,7 +187,8 @@
       "name": "ADD",
       "subtitle": "判别器改看「差多少」而不是「像不像」",
       "group": "mimickit",
-      "order": 16,
+      "published": "2025-05-08",
+      "venue": "SIGGRAPH Asia 2025",
       "keywords": [
         "MimicKit",
         "Adversarial Differential Discriminator",
@@ -198,7 +206,8 @@
       "name": "SMP",
       "subtitle": "判别器换成冻结的扩散先验",
       "group": "mimickit",
-      "order": 17,
+      "published": "2025-12-02",
+      "venue": "SIGGRAPH 2026 · TOG",
       "keywords": [
         "MimicKit",
         "Score-Matching Motion Priors",
@@ -211,6 +220,7 @@
         "GSI",
         "生成式状态初始化",
         "dodgeball",
+        "2512.03028",
         "LaFAN1",
         "SIGGRAPH 2026"
       ]

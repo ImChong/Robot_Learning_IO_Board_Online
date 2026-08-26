@@ -9,6 +9,8 @@ import { renderDetail } from "./render-detail.js";
 import { renderRewards } from "./render-rewards.js";
 import { renderCompare } from "./render-compare.js";
 import { renderTable } from "./render-table.js";
+import { buildTour } from "./tour.js";
+import { renderTour, dwellFor } from "./render-tour.js";
 
 const VIEWS = [
   { id: "graph", label: "节点图" },
@@ -32,6 +34,8 @@ const dom = {
   legend: document.getElementById("legend"),
   legendBtn: document.getElementById("legend-btn"),
   fitBtn: document.getElementById("fit-btn"),
+  tourBtn: document.getElementById("tour-btn"),
+  tour: document.getElementById("tour"),
   themeBtn: document.getElementById("theme-toggle"),
   topbar: document.querySelector(".topbar"),
   toolbar: document.querySelector(".toolbar"),
@@ -61,6 +65,7 @@ const state = {
   nodeId: null,
   compareId: null,
   filters: { classes: new Set(), availability: new Set(), confidence: new Set() },
+  tour: false,
 };
 
 let core = null;
@@ -69,6 +74,11 @@ let picker = null;
 let current = null; // 当前项目的完整数据
 let renderToken = 0;
 let pendingLoads = 0;
+// 讲解：步骤表由当前这张图推出来（src/tour.js），换项目 / 换模式都会重建。
+let tourSteps = [];
+let tourIndex = 0;
+let tourPlaying = false;
+let tourTimer = null;
 
 /* ---------- 加载指示 ---------- */
 
@@ -93,6 +103,7 @@ function readUrl() {
     view: params.get("view"),
     nodeId: params.get("n"),
     compareId: params.get("vs"),
+    tour: params.get("tour") === "1",
   };
 }
 
@@ -103,6 +114,8 @@ function writeUrl({ replace = false } = {}) {
   if (state.view !== "graph") params.set("view", state.view);
   if (state.view === "compare" && state.compareId) params.set("vs", state.compareId);
   if (state.view === "graph" && state.nodeId) params.set("n", state.nodeId);
+  // 只记「在讲解」，不记讲到第几步：每步都写一次历史，后退键就没法用了。
+  if (state.view === "graph" && state.tour) params.set("tour", "1");
   const url = `${location.pathname}?${params}`;
   if (replace) history.replaceState(null, "", url);
   else history.pushState(null, "", url);
@@ -126,10 +139,15 @@ function defaultCompareId(projectId) {
 function renderProjectHead() {
   clear(dom.projectHead);
   const p = current;
-  const group = core.groups.find((g) => g.id === core.entryById.get(p.id)?.group);
+  const entry = core.entryById.get(p.id);
+  const group = core.groups.find((g) => g.id === entry?.group);
 
   const facts = [];
   if (group) facts.push(["分类", group.name]);
+  // 项目列表按这个日期排序，所以它必须在页面上出现——读者要能核对顺序。
+  if (entry?.published) {
+    facts.push(["发表", entry.venue ? `${entry.published} · ${entry.venue}` : entry.published]);
+  }
   if (p.robot) {
     facts.push(["机器人", `${p.robot.name} · ${p.robot.dof} DoF`]);
     if (p.robot.trackedBodies) facts.push(["跟踪连杆", `${p.robot.trackedBodies} 个`]);
@@ -411,6 +429,9 @@ async function render({ animate = false } = {}) {
   dom.modeSummary.textContent = g.summary ?? "";
   dom.modeSummary.hidden = state.view !== "graph" || !g.summary;
 
+  // 讲的是节点图，切到对比 / 表格就没得讲了。
+  if (state.view !== "graph" && state.tour) stopTour();
+
   dom.stage.hidden = state.view !== "graph";
   dom.rewards.hidden = state.view !== "graph";
   dom.compare.hidden = state.view !== "compare";
@@ -422,9 +443,18 @@ async function render({ animate = false } = {}) {
   if (state.view === "graph") {
     graphView.render(g, { animate, touchedIds: touchedIds(current) });
     applyFilters();
-    graphView.select(state.nodeId);
+    rebuildTour();
     renderRewards({ container: dom.rewards, graph: g, taxonomy: core.taxonomy, project: current });
-    showDetail(state.nodeId ? g.nodes.find((n) => n.id === state.nodeId) : null);
+    if (state.tour) {
+      // 讲解态接管整张图的明暗，选中与详情都让位（见 syncTourPanels）。
+      syncTourPanels();
+      paintTour();
+    } else {
+      graphView.setTour(null);
+      graphView.select(state.nodeId);
+      syncTourPanels();
+      showDetail(state.nodeId ? g.nodes.find((n) => n.id === state.nodeId) : null);
+    }
   } else if (state.view === "compare") {
     await renderCompareView(token);
   } else {
@@ -491,6 +521,130 @@ function showDetail(node) {
   });
 }
 
+/* ---------- 讲解 ---------- */
+
+/**
+ * 讲解是「按代码运行顺序把这张图讲一遍」：顺序由 buildTour 从图本身推出来，
+ * 解说词取自节点已核对过的 desc / note / source。
+ *
+ * 它和详情抽屉互斥地占同一列——两块内容都在说当前这个模块，同时出现只会互相
+ * 抢注意力，窄屏上还会变成两个叠在一起的浮层。
+ */
+function syncTourPanels() {
+  const on = state.tour && state.view === "graph" && tourSteps.length > 0;
+  dom.tour.hidden = !on;
+  dom.drawer.hidden = on;
+  document.body.classList.toggle("tour-open", on);
+  dom.tourBtn.setAttribute("aria-pressed", String(on));
+  dom.tourBtn.textContent = on ? "✕ 结束讲解" : "▶ 讲解";
+}
+
+function clearTourTimer() {
+  if (tourTimer) clearTimeout(tourTimer);
+  tourTimer = null;
+}
+
+/** 当前这一步之前（含）的全部模块：图上「已经讲亮」的那部分。 */
+function visitedIds() {
+  return new Set(tourSteps.slice(0, tourIndex + 1).map((step) => step.id));
+}
+
+function paintTour() {
+  const step = tourSteps[tourIndex];
+  if (!step) return;
+  renderTour({
+    container: dom.tour,
+    steps: tourSteps,
+    index: tourIndex,
+    playing: tourPlaying,
+    taxonomy: core.taxonomy,
+    modeLabel: graph().label ?? state.modeId,
+    onPrev: () => goTour(tourIndex - 1, { pause: true }),
+    onNext: () => goTour(tourIndex + 1, { pause: true }),
+    onToggle: toggleTourPlay,
+    onExit: () => stopTour({ focusButton: true }),
+  });
+  // 顺序要紧：先把画布顶到浮层上方，reveal 才是按滚动之后的几何算的。
+  liftCanvasForSheet();
+  graphView.setTour({ currentId: step.id, visited: visitedIds() });
+  scheduleTourStep();
+}
+
+function scheduleTourStep() {
+  clearTourTimer();
+  if (!tourPlaying) return;
+  // 最后一步不再自动往下：讲完就停在结论上，让读者自己决定重播还是退出。
+  if (tourIndex >= tourSteps.length - 1) {
+    tourPlaying = false;
+    paintTour();
+    return;
+  }
+  tourTimer = setTimeout(() => goTour(tourIndex + 1), dwellFor(tourSteps[tourIndex]));
+}
+
+function goTour(index, { pause = false } = {}) {
+  if (!tourSteps.length) return;
+  tourIndex = Math.min(tourSteps.length - 1, Math.max(0, index));
+  if (pause) tourPlaying = false;
+  paintTour();
+}
+
+function toggleTourPlay() {
+  // 停在最后一步时按播放 = 从头再讲一遍。
+  if (!tourPlaying && tourIndex >= tourSteps.length - 1) tourIndex = 0;
+  tourPlaying = !tourPlaying;
+  paintTour();
+}
+
+function startTour({ index = 0, playing = true } = {}) {
+  if (state.view !== "graph" || !tourSteps.length) return;
+  state.tour = true;
+  tourIndex = Math.min(tourSteps.length - 1, Math.max(0, index));
+  tourPlaying = playing;
+  // 详情与讲解同占一列，进讲解就把详情收起来。
+  if (state.nodeId) {
+    state.nodeId = null;
+    showDetail(null);
+  }
+  syncTourPanels();
+  writeUrl({ replace: true });
+  paintTour();
+}
+
+function stopTour({ focusButton = false } = {}) {
+  if (!state.tour) return;
+  clearTourTimer();
+  state.tour = false;
+  tourPlaying = false;
+  graphView.setTour(null);
+  syncTourPanels();
+  clear(dom.tour);
+  writeUrl({ replace: true });
+  // 只有读者自己退出时才把焦点还给按钮；切视图导致的自动退出不该抢焦点。
+  if (focusButton) dom.tourBtn.focus();
+}
+
+/** 讲解态下点图上的模块 = 跳到讲它的那一步（并停下来，读者已经接管了）。 */
+function jumpTourTo(nodeId) {
+  const index = tourSteps.findIndex((step) => step.id === nodeId);
+  if (index >= 0) goTour(index, { pause: true });
+}
+
+/** 换项目 / 换模式后重建步骤表：同名模块还在就停在原处，不在就从头讲。 */
+function rebuildTour() {
+  clearTourTimer();
+  if (state.view !== "graph") {
+    tourSteps = [];
+    if (state.tour) stopTour();
+    return;
+  }
+  const previousId = tourSteps[tourIndex]?.id ?? null;
+  tourSteps = buildTour(graph()).steps;
+  const same = previousId ? tourSteps.findIndex((step) => step.id === previousId) : -1;
+  tourIndex = same >= 0 ? same : 0;
+  if (!tourSteps.length && state.tour) stopTour();
+}
+
 /* ---------- 状态变更 ---------- */
 
 function setProject(id) {
@@ -547,7 +701,9 @@ function syncStickyMetrics() {
  */
 function liftCanvasForSheet() {
   if (state.view !== "graph") return;
-  if (getComputedStyle(dom.drawer).position !== "fixed") return;
+  const sheet = state.tour ? dom.tour : dom.drawer;
+  if (sheet.hidden) return;
+  if (getComputedStyle(sheet).position !== "fixed") return;
   const top =
     dom.canvas.getBoundingClientRect().top + window.scrollY - dom.topbar.offsetHeight - 6;
   if (window.scrollY < top - 4) window.scrollTo(0, top);
@@ -592,6 +748,7 @@ async function boot() {
   state.modeId = url.modeId || core.registry.defaultMode || "train";
   state.view = VIEWS.some((v) => v.id === url.view) ? url.view : "graph";
   state.nodeId = url.nodeId;
+  state.tour = Boolean(url.tour) && state.view === "graph";
   state.compareId =
     url.compareId && core.entryById.has(url.compareId) && url.compareId !== state.projectId
       ? url.compareId
@@ -616,7 +773,9 @@ async function boot() {
     svg: dom.edges,
     nodesLayer: dom.nodes,
     taxonomy: core.taxonomy,
-    overlay: dom.drawer,
+    // 窄屏上这两块都是贴底浮层，画布要知道自己被挡掉了多少。
+    overlays: [dom.drawer, dom.tour],
+    onTourJump: jumpTourTo,
     onSelect: (node) => {
       state.nodeId = node?.id ?? null;
       showDetail(node);
@@ -627,7 +786,11 @@ async function boot() {
   });
 
   renderLegend();
+  const wantTour = state.tour;
+  state.tour = false; // 先按常规渲染一遍，把步骤表建出来再进讲解
   await render();
+  // 分享链接带 tour=1 时不自动播放：读者刚落地，先让他看清整张图。
+  if (wantTour) startTour({ playing: false });
   writeUrl({ replace: true });
 
   syncStickyMetrics();
@@ -635,6 +798,9 @@ async function boot() {
   new ResizeObserver(syncStickyMetrics).observe(dom.toolbar);
   setupCanvasHint();
 
+  dom.tourBtn.addEventListener("click", () =>
+    state.tour ? stopTour({ focusButton: true }) : startTour()
+  );
   dom.fitBtn.addEventListener("click", () => graphView.fit());
   dom.zoomIn.addEventListener("click", () => graphView.zoomBy(1.25));
   dom.zoomOut.addEventListener("click", () => graphView.zoomBy(1 / 1.25));
@@ -662,6 +828,7 @@ async function boot() {
     if (next.modeId) state.modeId = next.modeId;
     state.view = VIEWS.some((v) => v.id === next.view) ? next.view : "graph";
     state.nodeId = next.nodeId;
+    state.tour = Boolean(next.tour) && state.view === "graph";
     state.compareId =
       next.compareId && core.entryById.has(next.compareId) ? next.compareId : state.compareId;
     render();
@@ -674,7 +841,38 @@ async function boot() {
     if (picker.isOpen && event.key !== "Escape") return;
 
     const key = event.key.toLowerCase();
-    if (key === "p" || event.key === "/") {
+
+    // 讲解态先接管自己的几个键：空格播放/暂停、左右翻步、Esc 退出。
+    if (state.tour) {
+      // 焦点在讲解按钮上时空格归按钮自己，否则一下会既按按钮又切播放。
+      const onControl = event.target instanceof HTMLButtonElement;
+      if (!onControl && (event.key === " " || event.key === "Spacebar")) {
+        event.preventDefault();
+        toggleTourPlay();
+        return;
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goTour(tourIndex + 1, { pause: true });
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goTour(tourIndex - 1, { pause: true });
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        stopTour({ focusButton: true });
+        return;
+      }
+    }
+
+    if (key === "g") {
+      event.preventDefault();
+      if (state.tour) stopTour({ focusButton: true });
+      else startTour();
+    } else if (key === "p" || event.key === "/") {
       event.preventDefault();
       picker.open();
     } else if (event.key === "[") stepProject(-1);

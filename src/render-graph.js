@@ -17,7 +17,16 @@ const MIN_READABLE_SCALE = 0.52;
 // 手指按下到判定为拖动之间的容差：太小则点按会被当成拖动，太大则拖动起步发滞。
 const DRAG_SLOP = 6;
 
-export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, overlay, onSelect }) {
+export function createGraphView({
+  canvas,
+  viewport,
+  svg,
+  nodesLayer,
+  taxonomy,
+  overlays = [],
+  onSelect,
+  onTourJump,
+}) {
   const view = { x: 0, y: 0, k: 1 };
   let graph = null;
   let layout = null;
@@ -29,6 +38,8 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
   let downstream = new Map();
   let margins = { top: 48, bottom: 48 };
   let touched = new Set();
+  // 讲解态：{ currentId, visited:Set }。非空时接管整张图的明暗。
+  let tour = null;
 
   ensureMarkers(svg, taxonomy);
 
@@ -162,14 +173,26 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
   }
 
   /**
-   * 窄屏上详情是贴底的浮层，会盖住画布下半截。量它没被变换过的布局高度而不是
-   * getBoundingClientRect：浮层正在滑入时后者读到的是动画中途的位置。
+   * 浮层（详情、讲解）盖住了画布的哪一条边。窄屏上它们贴底，矮而宽的视口上
+   * 讲解面板改贴右——这里不去猜是哪条 CSS 规则生效了，直接看浮层的盒子落在
+   * 画布的哪一侧。
    */
-  function overlayInset(rect) {
-    if (!overlay) return 0;
-    const style = getComputedStyle(overlay);
-    if (style.position !== "fixed" || style.visibility === "hidden") return 0;
-    return Math.max(0, rect.bottom - (window.innerHeight - overlay.offsetHeight));
+  function overlayInsets(rect) {
+    let bottom = 0;
+    let right = 0;
+    for (const overlay of overlays) {
+      if (!overlay || overlay.hidden) continue;
+      const style = getComputedStyle(overlay);
+      if (style.position !== "fixed" || style.visibility === "hidden") continue;
+      const box = overlay.getBoundingClientRect();
+      if (box.left > rect.left + rect.width / 2) {
+        right = Math.max(right, rect.right - box.left);
+      } else {
+        // 贴底浮层量的是布局高度而不是 rect：浮层正在滑入时 rect 读到的是动画中途。
+        bottom = Math.max(bottom, rect.bottom - (window.innerHeight - overlay.offsetHeight));
+      }
+    }
+    return { bottom: Math.max(0, bottom), right: Math.max(0, right) };
   }
 
   /**
@@ -182,13 +205,15 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
     const rect = canvas.getBoundingClientRect();
     if (!rect.width) return;
     const pad = 24;
-    const floor = rect.height - overlayInset(rect);
+    const inset = overlayInsets(rect);
+    const floor = rect.height - inset.bottom;
+    const wall = rect.width - inset.right;
     const left = view.x + box.x * view.k;
     const top = view.y + box.y * view.k;
     const right = left + box.w * view.k;
     const bottom = top + box.h * view.k;
     if (left < pad) view.x += pad - left;
-    else if (right > rect.width - pad) view.x -= right - (rect.width - pad);
+    else if (right > wall - pad) view.x -= right - (wall - pad);
     if (top < pad) view.y += pad - top;
     else if (bottom > floor - pad) view.y -= bottom - (floor - pad);
     applyTransform();
@@ -229,6 +254,10 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
   }
 
   function paintHighlight() {
+    if (tour) {
+      paintTour();
+      return;
+    }
     const chain = activeChain();
     for (const [id, node] of nodeEls) {
       node.classList.toggle("dimmed", Boolean(chain) && !chain.has(id));
@@ -238,6 +267,29 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
       const inChain = chain && chain.has(path.dataset.from) && chain.has(path.dataset.to);
       path.classList.toggle("dimmed", Boolean(chain) && !inChain);
       path.classList.toggle("active", Boolean(inChain));
+    }
+  }
+
+  /**
+   * 讲解态的明暗：讲过的保持正常，当前这个打高亮，还没讲到的压暗。
+   * 于是整条链路是「随着讲解一格一格亮起来」，而不是每步只亮一个孤零零的框。
+   */
+  function paintTour() {
+    const { currentId, visited } = tour;
+    for (const [id, element] of nodeEls) {
+      const done = visited.has(id) && id !== currentId;
+      element.classList.toggle("tour-current", id === currentId);
+      element.classList.toggle("tour-done", done);
+      element.classList.toggle("dimmed", !done && id !== currentId);
+      element.classList.remove("selected");
+    }
+    for (const path of svg.querySelectorAll("[data-from]")) {
+      const { from, to } = path.dataset;
+      // 正在讲的这一步：入边加粗，读者一眼看到「这一格的输入是从哪来的」。
+      const active = to === currentId && visited.has(from);
+      const walked = visited.has(from) && visited.has(to);
+      path.classList.toggle("active", active);
+      path.classList.toggle("dimmed", !walked);
     }
   }
 
@@ -546,6 +598,10 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
     const target = event.target.closest(".node");
     if (!target) return;
     const id = target.dataset.id;
+    if (tour) {
+      onTourJump?.(id);
+      return;
+    }
     selectedId = selectedId === id ? null : id;
     paintHighlight();
     onSelect?.(selectedId ? graph.nodes.find((n) => n.id === selectedId) : null);
@@ -599,6 +655,17 @@ export function createGraphView({ canvas, viewport, svg, nodesLayer, taxonomy, o
       selectedId = id;
       paintHighlight();
       if (id) reveal(id);
+    },
+    /** @param {{currentId: string, visited: Set<string>}|null} next */
+    setTour(next) {
+      tour = next;
+      canvas.classList.toggle("touring", Boolean(next));
+      if (next) {
+        selectedId = null;
+        hoveredId = null;
+      }
+      paintHighlight();
+      if (next?.currentId) reveal(next.currentId);
     },
     revealSelected() {
       if (selectedId) reveal(selectedId);

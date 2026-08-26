@@ -20,6 +20,26 @@ function indexBy(list, key = "id") {
   return new Map((list ?? []).map((item) => [item[key], item]));
 }
 
+/**
+ * 项目列表的顺序：先按 groups 里声明的分组顺序，组内按发布时间从早到晚。
+ *
+ * 排序依据是 entry.published（首次公开发表日期），不再是手工编号——加一个项目
+ * 只要填对日期就会自动落到它在这条技术线上的位置，不必回头重排别人的序号。
+ *
+ * 分组仍是第一顺位：选择器把分组标题按列表顺序插在组的第一项前面，纯按时间排
+ * 会让两族交错，同一个标题重复出现好几次。组内时间序才是读者要的「谁先谁后」。
+ */
+function sortEntries(registry) {
+  const groupOrder = new Map((registry.groups ?? []).map((g, i) => [g.id, i]));
+  const rank = (entry) => groupOrder.get(entry.group) ?? Number.MAX_SAFE_INTEGER;
+  // 缺 published 的项目排到组末尾，而不是当成 1970 年顶到最前面。
+  const day = (entry) => entry.published || "9999-99-99";
+  return [...registry.projects].sort(
+    (a, b) =>
+      rank(a) - rank(b) || day(a).localeCompare(day(b)) || a.name.localeCompare(b.name)
+  );
+}
+
 export async function loadCore() {
   const [taxonomyRaw, registry] = await Promise.all([
     fetchJson("taxonomy.json"),
@@ -39,9 +59,7 @@ export async function loadCore() {
   };
   taxonomy.classById = new Map([...taxonomy.inputClassById, ...taxonomy.outputClassById]);
 
-  const entries = [...registry.projects].sort(
-    (a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)
-  );
+  const entries = sortEntries(registry);
 
   const cache = new Map();
   const inflight = new Map();

@@ -105,6 +105,10 @@ kbd {
 .topbar {
   display: flex;
   align-items: center;
+  /* 顶栏永远是一行。它是粘性的，多出来的每一行都会在每一屏上常驻。
+     flex 默认就是 nowrap，写出来是因为这条是约束而不是顺手的默认值：
+     谁要往顶栏里再加东西，得先想清楚让谁先走（见下面两段窄屏规则）。 */
+  flex-wrap: nowrap;
   gap: 20px;
   padding: 10px var(--pad-x);
   border-bottom: 1px solid var(--border);
@@ -277,6 +281,16 @@ kbd {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  flex: 1;
+}
+/* 列表按发布时间排序，日期就得看得见，否则顺序像是随手定的。 */
+.picker-date {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
 }
 .picker-name {
   font-size: 13px;
@@ -296,6 +310,7 @@ kbd {
 
 .topbar-actions {
   display: flex;
+  flex: 0 0 auto;
   gap: 6px;
 }
 
@@ -764,6 +779,48 @@ kbd {
   pointer-events: none;
 }
 
+/* ---------- 讲解态 ---------- */
+
+/* 正在讲的这一格。压暗留给「还没讲到」，所以当前这格要靠加法（描边 + 光晕）
+   跳出来，而不是靠别人变暗——否则往回翻步时整张图会忽明忽暗。 */
+.node.tour-current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 6px 20px rgba(0, 0, 0, 0.32);
+  z-index: 2;
+}
+.node.tour-current::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 12px;
+  border: 1px solid var(--accent);
+  opacity: 0.55;
+  pointer-events: none;
+  animation: tour-pulse 1.8s ease-out infinite;
+}
+@keyframes tour-pulse {
+  0% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.045);
+  }
+}
+/* 讲过的保持正常亮度：整条链路随着讲解一格一格亮起来，读者能回看走过的路。 */
+.node.tour-done {
+  opacity: 1;
+}
+/* 讲解态下鼠标悬停不再改边框——那一套是给「看链路」用的，会和当前步打架。 */
+.canvas.touring .node:hover {
+  border-color: var(--border-strong);
+}
+.canvas.touring .node.tour-current:hover {
+  border-color: var(--accent);
+}
+
 .node-top {
   display: flex;
   align-items: center;
@@ -850,6 +907,246 @@ kbd {
   font-size: 10px;
   fill: var(--text-faint);
   letter-spacing: 0.05em;
+}
+
+/* ---------- 讲解面板 ---------- */
+
+/* 与详情抽屉占同一列、同一套尺寸：两者互斥出现，换成讲解时这一列的宽度、
+   高度、粘性偏移都不该跳一下。 */
+.tour {
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  padding: 14px 16px 16px;
+  max-height: min(70vh, 720px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--toolbar-h) + 14px);
+}
+
+.tour-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tour-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+.tour-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: 0 0 auto;
+}
+.tour-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.tour-close:hover {
+  color: var(--text);
+}
+
+.tour-bars {
+  margin: 9px 0 8px;
+  display: grid;
+  gap: 3px;
+}
+/* 上面一条是「讲到哪儿了」。 */
+.tour-progress {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.tour-progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s ease-out;
+}
+/* 下面一条是自动播放时这一步还剩多久，读者据此判断要不要按暂停。 */
+.tour-dwell {
+  height: 2px;
+  border-radius: 2px;
+  background: transparent;
+  overflow: hidden;
+}
+.tour-dwell span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  animation-name: tour-dwell;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@keyframes tour-dwell {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.tour-meta {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.tour-meta b {
+  color: var(--text-soft);
+}
+
+/* 进到新一列时的开场白。它解释的是「这一列在整轮里干什么」，不是某个模块。 */
+.tour-stage {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 7px 7px 0;
+  background: var(--accent-soft);
+  font-size: 12.5px;
+  color: var(--text-soft);
+  display: grid;
+  gap: 2px;
+}
+.tour-stage b {
+  color: var(--text);
+}
+
+.tour-title {
+  margin: 0;
+  padding-left: 9px;
+  border-left: 3px solid var(--border-strong);
+  font-size: 16px;
+  line-height: 1.35;
+}
+.tour-sub {
+  margin: 4px 0 0 12px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.tour-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 9px 0 0;
+}
+
+.tour-desc {
+  margin: 10px 0 0;
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+.tour-note {
+  margin: 8px 0 0;
+  padding-left: 9px;
+  border-left: 2px solid var(--border-strong);
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+
+/* 「上一步给它 / 算完交给 / 绕回去」——图上看得见但字段里没有的那部分。 */
+.tour-flow {
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 6px;
+}
+.tf-row {
+  display: grid;
+  grid-template-columns: 6.5em minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12.5px;
+}
+.tf-key {
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+.tf-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+}
+.tf-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+.tf-arrow {
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+.tf-name {
+  color: var(--text);
+}
+.tf-edge {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.tour-code {
+  margin-top: 9px;
+  display: grid;
+  grid-template-columns: 6.5em minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.tour-code code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-soft);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+  margin-left: 6px;
+}
+
+.tour-controls {
+  display: flex;
+  gap: 6px;
+  margin-top: 13px;
+}
+.tour-controls .icon-btn {
+  flex: 1;
+  text-align: center;
+}
+.tour-controls .icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.tour-controls .icon-btn.play {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.tour .hint {
+  margin: 9px 0 0;
+  font-size: 11.5px;
+  color: var(--text-faint);
 }
 
 /* ---------- 详情抽屉 ---------- */
@@ -1382,7 +1679,8 @@ table.tv caption {
   .stage {
     grid-template-columns: minmax(0, 1fr);
   }
-  .drawer {
+  .drawer,
+  .tour {
     position: static;
     max-height: none;
   }
@@ -1591,6 +1889,7 @@ table.tv caption {
   .drawer-empty {
     display: none;
   }
+
   .dd-close {
     font-size: 22px;
     padding: 0 6px;
@@ -1642,9 +1941,11 @@ table.tv caption {
   }
 }
 
-/* ---------- 极窄屏（360px 一类的小手机） ---------- */
+/* ---------- 小屏手机（480px 及以下，含 430/440 的「Pro Max」一档） ---------- */
 
-@media (max-width: 420px) {
+/* 480 而不是 420：站名一露出来就要占掉 210px 左右，430px 的机器上项目选择器
+   会被压到 110px，只剩「Beyo… 1/9」——那时它已经不是导航了。 */
+@media (max-width: 480px) {
   .brand-text {
     display: none;
   }
@@ -1659,6 +1960,16 @@ table.tv caption {
 /* 宽度够而高度不够时，粘性工具栏会常驻吃掉小半个屏幕，让它跟着页面滚走，
    省下的高度全给画布——横屏本来就是看这张宽图最合适的姿势。 */
 @media (max-height: 620px) {
+  /* 横屏手机宽度往往超过 720px，窄屏那段规则不生效，于是站名副标题还在，
+     顶栏是两行文字、57px 高——在 390px 高的横屏上就是一屏的 1/7 常驻。
+     副标题在页脚与文档里都有，顶栏这一行只留站名。 */
+  .brand-text small {
+    display: none;
+  }
+  .topbar {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
   .toolbar {
     position: static;
   }
@@ -1669,12 +1980,64 @@ table.tv caption {
   }
 }
 
+/* ---------- 讲解面板的贴边形态 ---------- */
+
+/* 讲解面板必须和图同屏：解说词在说「这一格」，读者却得滚一屏才看得到那一格，
+   这功能就没了。所以小屏上它脱离文档流贴到边上——贴哪条边取决于缺什么。
+   它和详情抽屉互斥出现（见 main.js 的 syncTourPanels），不会两块浮层叠在一起。 */
+
+/* 窄屏（手机竖屏）：缺宽度，贴底。不做滑入动画——它是逐步换内容的，
+   每一步滑一次只会让人晕。 */
+@media (max-width: 720px) {
+  .tour {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    z-index: 45;
+    max-height: min(52vh, 420px);
+    max-height: min(52dvh, 420px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--accent);
+    border-radius: 14px 14px 0 0;
+    padding: 10px var(--pad-x) calc(14px + env(safe-area-inset-bottom));
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.28);
+  }
+  /* 手指够得着才算能用：这三个按钮是这块面板的主要交互。 */
+  .tour-controls .icon-btn {
+    padding: 9px 8px;
+  }
+}
+
+/* 矮而宽（横屏手机、分屏窗口）：缺的是高度，贴底会把画布压到只剩一百多像素，
+   横向反而有的是地方，所以改贴右侧。画布知道自己被挡掉了右边一条，
+   会把当前讲到的模块推到左边露出来（见 render-graph.js 的 overlayInsets）。 */
+@media (max-height: 620px) and (min-width: 721px) {
+  .tour {
+    position: fixed;
+    left: auto;
+    top: calc(var(--topbar-h) + 8px);
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: min(340px, 40vw);
+    max-height: none;
+    z-index: 45;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
+  }
+}
+
 /* ---------- 触屏 ---------- */
 
 /* 认 pointer 而不是 hover：无鼠标的桌面浏览器也会报 hover: none，但它不是手指。 */
 @media (pointer: coarse) {
   /* 快捷键在没有键盘的设备上不存在，写出来只会占地方。 */
-  .drawer-empty .hint {
+  .drawer-empty .hint,
+  .tour .hint {
     display: none;
   }
   /* 手指的落点比光标粗，点得中才谈得上好用。 */
@@ -1689,6 +2052,7 @@ table.tv caption {
 @media print {
   .topbar,
   .toolbar,
+  .tour,
   .stage,
   .legend,
   .canvas-hint {
@@ -1703,5 +2067,11 @@ table.tv caption {
   * {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+  /* 上面那条会把脉冲环定格成一圈静止的描边，不如不画——当前格靠边框与光晕
+     已经足够显眼。停留进度条同理，它一瞬间就满，留着只是条噪声。 */
+  .node.tour-current::before,
+  .tour-dwell {
+    display: none;
   }
 }

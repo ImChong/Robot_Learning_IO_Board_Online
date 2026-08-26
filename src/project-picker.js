@@ -8,6 +8,9 @@
 
 import { el, clear } from "./dom.js";
 
+/** 列表里只排到月：日期精确到天是给项目头看的，列表要的是一眼看出先后。 */
+const yearMonth = (date) => String(date).slice(0, 7);
+
 export function createProjectPicker({ trigger, currentLabel, panel, search, list, empty, entries, groups, onPick }) {
   const groupById = new Map(groups.map((g) => [g.id, g]));
   // 只要注册表用了分组就一直显示分组标题：项目多起来之后这是唯一的导航结构，
@@ -26,6 +29,8 @@ export function createProjectPicker({ trigger, currentLabel, panel, search, list
       entry.name,
       entry.subtitle,
       entry.id,
+      entry.published,
+      entry.venue,
       groupById.get(entry.group)?.name,
       ...(entry.keywords ?? []),
     ]
@@ -82,6 +87,14 @@ export function createProjectPicker({ trigger, currentLabel, panel, search, list
               el("span", { class: "picker-name", text: entry.name }),
               entry.subtitle ? el("span", { class: "picker-sub", text: entry.subtitle }) : null,
             ]),
+            // 列表按发布时间排，就得让读者看见排的是什么，否则顺序像是随手定的。
+            entry.published
+              ? el("span", {
+                  class: "picker-date",
+                  text: yearMonth(entry.published),
+                  title: entry.venue ? `${entry.published} · ${entry.venue}` : entry.published,
+                })
+              : null,
           ]
         )
       );
