@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Robot Learning IO Board · 人形机器人 RL 输入输出分析板</title>
+    <meta
+      name="description"
+      content="用模块与连线展示热门人形机器人强化学习项目的观测输入、动作输出与奖励函数。覆盖 SONIC 与 BeyondMimic，可在训练态与部署态之间切换。"
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔌</text></svg>"
+    />
+    <link rel="stylesheet" href="assets/style.css" />
+    <!-- KaTeX 本地自带（vendor/katex，MIT）：不走 CDN，页面在离线与受限网络下也能正确排公式。 -->
+    <link rel="stylesheet" href="vendor/katex/katex.min.css" />
+    <script src="assets/theme-init.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#canvas">跳到节点图</a>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">◨</span>
+        <span class="brand-text">
+          <strong>Robot Learning IO Board</strong>
+          <small>人形机器人 RL 的输入 · 输出 · 奖励函数分析板</small>
+        </span>
+      </div>
+
+      <nav class="project-tabs" id="project-tabs" aria-label="项目"></nav>
+
+      <div class="topbar-actions">
+        <a
+          class="icon-btn"
+          href="https://github.com/ImChong/Robot_Learning_IO_Board"
+          target="_blank"
+          rel="noopener"
+          title="源码仓库"
+          >仓库</a
+        >
+        <button class="icon-btn" id="theme-toggle" type="button" title="切换主题">主题</button>
+      </div>
+    </header>
+
+    <section class="project-head" id="project-head"></section>
+
+    <div class="toolbar">
+      <div class="mode-switch" id="mode-switch" role="tablist" aria-label="训练态与部署态"></div>
+      <div class="mode-switch" id="view-switch" role="tablist" aria-label="展示形式"></div>
+
+      <div class="toolbar-right">
+        <div class="filters" id="filters"></div>
+        <button class="icon-btn" id="fit-btn" type="button" title="缩放到合适大小">适应窗口</button>
+        <button class="icon-btn" id="legend-btn" type="button" aria-expanded="false">图例</button>
+      </div>
+    </div>
+
+    <p class="mode-summary" id="mode-summary"></p>
+
+    <div class="legend" id="legend" hidden></div>
+
+    <main class="stage">
+      <div class="canvas" id="canvas" tabindex="0" aria-label="模块与连线节点图">
+        <div class="viewport" id="viewport">
+          <svg class="edges" id="edges" aria-hidden="true"></svg>
+          <div class="nodes" id="nodes"></div>
+        </div>
+        <div class="canvas-hint" id="canvas-hint">滚轮缩放 · 拖拽平移 · 点击模块看详情</div>
+      </div>
+
+      <aside class="drawer" id="drawer" aria-live="polite">
+        <div class="drawer-empty" id="drawer-empty">
+          <h2>模块详情</h2>
+          <p>点击左侧任意模块，这里会显示它的维度构成、真机如何获得、以及出处链接。</p>
+          <p class="hint">键盘：<kbd>1</kbd>/<kbd>2</kbd> 切项目，<kbd>T</kbd>/<kbd>D</kbd> 切训练与部署，<kbd>Esc</kbd> 关闭详情。</p>
+        </div>
+        <div class="drawer-body" id="drawer-body" hidden></div>
+      </aside>
+    </main>
+
+    <section class="callouts" id="callouts"></section>
+
+    <section class="rewards" id="rewards"></section>
+
+    <section class="compare" id="compare" hidden></section>
+
+    <section class="table-view" id="table-view" hidden></section>
+
+    <footer class="footer" id="footer"></footer>
+
+    <script defer src="vendor/katex/katex.min.js"></script>
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
