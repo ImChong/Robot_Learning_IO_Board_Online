@@ -1,9 +1,34 @@
 # Robot Learning IO Board — 建设计划
 
 > 用「模块 + 连线」的节点图，把热门人形机器人强化学习项目的**输入、输出、奖励函数**画成可交互的网页。
-> 首批覆盖**真机路线**的 **SONIC** 与 **BeyondMimic**，以及**动画路线**的 **MimicKit** 方法族（DeepMimic、AWR、AMP、ASE、LCP、ADD、SMP 共 7 个方法）。每个项目可在**训练态**（含奖励函数设置）与**推理/部署态**之间切换。
+> 规划范围两批：**真机路线**的 **SONIC** 与 **BeyondMimic**（已上线），**动画路线**的 **MimicKit** 方法族 7 个方法（DeepMimic、AWR、AMP、ASE、LCP、ADD、SMP，内容已核对、待落数据）。每个项目可在**训练态**（含奖励函数设置）与**部署态 / 推理态**之间切换。
 
-本文是实施前的设计文档，确定「做什么、做成什么样、怎么分阶段做」。文末附录 A/B/C 是已经逐项核对过一手实现的内容基线，可直接作为首版数据文件的输入。
+本文是设计文档，确定「做什么、做成什么样、怎么分阶段做」。文末附录 A/B/C 是已经逐项核对过一手实现的内容基线，也是数据文件的输入。
+
+> **实施状态**：M0–M4 已完成，页面可运行（`python3 -m http.server 8080`）。相对本文的三处偏差：
+> KaTeX 改为本地自带而非 CDN（受限网络下 CDN 不可靠，且省掉 SRI 哈希这一处易错的手工维护点）；
+> 对比模式做成「当前项目 vs 一个选定对象」的逐项对照表，而不是两块并排画布（画布并排在同屏下都太挤，
+> 表格信息密度更高，而且比全部项目并排更能随项目数量扩展）；
+> 项目切换从顶栏页签改成可搜索的下拉，项目文件改为按需加载（见下节）。
+> **M5（接入 MimicKit 方法族，见 §2.2）与 M6（打磨与扩展）尚未开始。**
+
+> **给读 §4 / §5 的人**：M0 已经把数据模型落成 `schema/project.schema.json` + `data/taxonomy.json`，
+> 并且 `data/beyondmimic.json` 与 `data/sonic.json` 两份真实数据在跑。所以 §4 / §5 里为 MimicKit 提出的
+> 每一处扩展**都是对已上线结构的增量**，不是绿地设计：改动要么向后兼容这两份文件，要么连带改它们，
+> 而枚举值必须同时登记进 `data/taxonomy.json`（校验脚本从那里读词汇表，不是从本文读）。
+> 已经不需要再改的部分已在文中标注「M0 已用……实现，本文的提法作废」。
+
+### 面向「项目数量增长」的三处改造
+
+首版按 2 个项目实现，以下三处到十几个项目就会顶不住，已一并改掉：
+
+| 原实现 | 到规模后的问题 | 现在的做法 |
+|---|---|---|
+| 顶栏平铺项目页签 | 放不下，横向挤爆顶栏 | 可搜索、按方法族分组的下拉；搜索命中项目名、副标题与关键词；`P` 打开、`[` `]` 切换、上下键 + 回车选中 |
+| 启动时 `Promise.all` 拉取全部项目文件 | N 个项目就是 N 次请求、首屏越来越慢 | 按需加载 + 缓存。`projects.json` 冗余了 `name` / `subtitle` / `group` / `keywords`，让选择器不必先下载项目文件；校验脚本保证冗余字段与项目文件一致 |
+| 对比视图把全部项目并排 | 十几列的表排不下也读不动 | 只比两个：当前项目 vs 一个选定的对比对象（`vs` 参数进 URL，可分享） |
+
+这三处改造正是冲着「项目从 2 个涨到 9 个」这件事做的，所以 §2.2 要接的七个方法在**加载与选择**这两层已经不需要额外工作，剩下的工作量集中在数据模型与奖励面板（§4、§5.2）。
 
 ---
 
@@ -14,7 +39,7 @@
 1. **一眼看清一条策略吃什么、吐什么**。观测项、参考项、特权项、动作项、奖励项各自是一个模块，模块之间用连线表达数据流，每个模块标注维度、频率、来源、真机可得性。
 2. **训练态 / 部署（推理）态可切换**。同一个项目切换视图后，能直接看到「训练时有、之后没有」的模块被摘掉（特权观测、奖励、判别器、终止条件），以及部署时新增的模块（状态估计器、ONNX 运行时、多速率命令环）。
 3. **横向可比**。所有项目用同一套模块语汇和同一套配色描述，使「规模化预训练」与「精确物理 + 失败采样」两条真机路线的差异、以及「手写奖励 → 对抗奖励 → 生成式奖励」这条方法演进线，都落在图上而不是文字里。
-4. **说清奖励是谁算出来的**。同样落在「风格与模仿」类里，闭式公式、判别器输出、扩散先验的 score matching 是三种完全不同的东西。页面要把这个区分做成一等公民（见 §3.2 的 `reward_kind`），而不是把它们画成同一种框。
+4. **说清奖励是谁算出来的**。同样落在「风格与模仿」类里，闭式公式、判别器输出、扩散先验的 score matching 是三种完全不同的东西。页面要把这个区分做成一等公民（见 §3.2 的 `rewardKind`），而不是把它们画成同一种框。
 5. **数字可追溯**。每个模块的维度和权重都能点开看到出处（论文章节、仓库文件路径、配置项名），避免变成一张凭印象画的示意图。
 
 ### 非目标
@@ -55,7 +80,7 @@
 
 选它的四条理由：
 
-1. **奖励来源的完整光谱**。第一批两个项目的奖励全是手写的加权 exp 项，六类奖励面板足够用。MimicKit 一次给出四种奖励来源：手写（DeepMimic / AWR / LCP）、对抗（AMP / ASE / ADD）、编码器互信息（ASE）、扩散先验的 score matching（SMP）。这迫使数据模型在「奖励项」之上再加一个正交维度 `reward_kind`（见 §4.5），也让奖励面板从「一张权重表」升级成「一张来源图」。
+1. **奖励来源的完整光谱**。第一批两个项目的奖励全是手写的加权 exp 项，六类奖励面板足够用。MimicKit 一次给出四种奖励来源：手写（DeepMimic / AWR / LCP）、对抗（AMP / ASE / ADD）、编码器互信息（ASE）、扩散先验的 score matching（SMP）。这迫使数据模型在「奖励项」之上再加一个正交维度 `rewardKind`（见 §4.5），也让奖励面板从「一张权重表」升级成「一张来源图」。
 2. **消融对照的天然样本**。DeepMimic 与 AWR 共用同一份环境配置，唯一差别在 agent；LCP 也只是在 PPO 的 actor 损失上加一项。页面上把它们并排画出来，读者能直接看到「哪些框是环境的、哪些框是算法的」——这是节点图相比论文表格的独有优势，也顺带验证了数据模型的复用能力（§4.6 的 `inherits`）。
 3. **补上一直空着的 D 类（外部感知）**。SONIC 与 BeyondMimic 都是盲式跟踪，输入五类里的 D 类只能标「本项目不使用」。MimicKit 的 dodgeball 任务把飞来物体的相对位置与速度（1 个投射物 × 6 维）直接喂进策略，D 类第一次有了真实内容。
 4. **反向照出真机路线的取舍**。MimicKit 全程**没有域随机化、没有观测噪声、没有状态估计器**，观测里大方地用全局根位置、全身连杆位置这类仿真直读量，控制频率 30 Hz。把它和 SONIC / BeyondMimic 并排放，「哪些设计是为了真机」这件事不用文字论证就成立了。
@@ -88,9 +113,9 @@ MimicKit 引入一类现有五类装不下的输入：ASE 的 64 维技能潜变
 六类沿用：任务与跟踪 / 姿态与稳定 / 步态与接触 / 能效与平滑 / 安全与硬件 / 风格与模仿。
 跟踪系策略的特点是 A 类与 F 类合流（参考跟踪本身就是任务奖励），页面要显式说明这一点，否则读者会疑惑为什么没有独立的「步态相位」项。
 
-六类回答的是「这一项替谁说话」，但 MimicKit 逼出了另一个必须回答的问题：**这一项的数值是谁算出来的**。同样落在 F 类（风格与模仿）里，DeepMimic 的 `pose` 项是一条闭式公式，AMP 的判别器奖励是一个每轮都在变的神经网络输出，SMP 的奖励要在三个噪声水平上各做一次加噪去噪、拿噪声预测误差当分数。把它们画成同一种框会丢掉最关键的信息。因此新增正交字段 `reward_kind`（枚举，见 §4.5）：
+六类回答的是「这一项替谁说话」，但 MimicKit 逼出了另一个必须回答的问题：**这一项的数值是谁算出来的**。同样落在 F 类（风格与模仿）里，DeepMimic 的 `pose` 项是一条闭式公式，AMP 的判别器奖励是一个每轮都在变的神经网络输出，SMP 的奖励要在三个噪声水平上各做一次加噪去噪、拿噪声预测误差当分数。把它们画成同一种框会丢掉最关键的信息。因此新增正交字段 `rewardKind`（枚举，见 §4.5）：
 
-| `reward_kind` | 含义 | 出现在 | 页面表现 |
+| `rewardKind` | 含义 | 出现在 | 页面表现 |
 |---|---|---|---|
 | `handcrafted` | 闭式公式 + 人工权重 | BeyondMimic / SONIC 全部；DeepMimic / AWR / LCP 全部 | 实心框，展开显示 KaTeX 公式与参数 |
 | `adversarial` | 判别器输出，与策略同步训练 | AMP、ASE、ADD | 双线框，展开显示判别器输入清单、正/负样本定义、正则项 |
@@ -137,67 +162,91 @@ MimicKit 的这条链形状相同但每一环的来源不同，是同一组模�
 
 全部内容放在 `data/` 下的 JSON，页面不硬编码任何项目知识。核心是一个「项目 → 模式 → 图」的三层结构。
 
-### 4.1 顶层
+**权威定义在代码里，不在本文**：结构约束是 `schema/project.schema.json` 与 `schema/registry.schema.json`，枚举取值是 `data/taxonomy.json`，语义检查是 `scripts/validate.mjs`。本节描述设计意图与为 MimicKit 所需的增量；数字与字段名一旦与那三处不一致，以那三处为准。字段名统一用 **camelCase**（`dimExpr`、`verifiedAt`、`policyHz`），这是 M0 定下并已在两份数据文件里用开的约定。
+
+### 4.1 顶层与模式声明
 
 ```jsonc
 {
   "id": "beyondmimic",
   "name": "BeyondMimic",
   "subtitle": "精确物理建模 + 失败率驱动自适应采样",
-  "robot": { "name": "Unitree G1", "dof": 29, "tracked_bodies": 14 },
-  "rates": { "policy_hz": 50, "sim_hz": 200, "note": "decimation=4, sim_dt=0.005" },
-  "links": { "paper": "...", "code": "...", "project": "..." },
-  "family": "realworld",              // realworld | mimickit，用于项目选择器分组
-  "modes": [
-    { "id": "train",  "label": "训练态", "graph": { /* Graph */ } },
-    { "id": "deploy", "label": "部署态", "graph": { /* Graph */ } }
-  ]
+  "tagline": "……",
+  "robot": { "name": "Unitree G1", "dof": 29, "trackedBodies": 14, "anchor": "torso_link" },
+  "rates": { "policyHz": 50, "physicsHz": 200, "note": "decimation=4, sim_dt=0.005" },
+  "verifiedAt": "2026-08-…", "verifiedRef": "main@…",
+  "links": { "论文": "...", "代码": "...", "项目页": "..." },
+  "modes": {
+    "train":  { "label": "训练态", /* Graph */ },
+    "deploy": { "label": "部署态", /* Graph */ }
+  }
 }
 ```
 
-`modes` 用**数组**而不是固定键的对象，因为第二批项目的第二个视图是「推理态（Test）」而不是「部署态」（§2.2）：MimicKit 没有真机导出目标，硬套 `deploy` 会让 `availability: "deploy-ok"` 这类标注变成假信息。数组形式让每个项目自己声明有哪几个模式、各叫什么，页面的模式切换器按数组渲染按钮；模式切换动画（§5.2）改成「按 `id` 匹配前后两个 Graph 的节点」，与模式叫什么无关。
+**关于 MimicKit 的第二个视图是「推理态」而不是「部署态」这件事：M0 已经解决，本文原先提的「把 `modes` 改成数组」作废。** 上线的 `modes` 是一个**开放对象**：schema 里 `additionalProperties` 指向 Graph、只约束 `minProperties: 1`，模式的中文名写在各自 Graph 的 `label` 里，`src/main.js` 用 `Object.entries(current.modes)` 生成切换按钮、用 `Object.keys(current.modes)[0]` 作默认模式。也就是说 MimicKit 的项目文件直接写
 
-约定：**每个项目的第一个模式必须是训练态**，对比视图（§5.2）按数组下标对齐，找不到对应下标时只画左侧并标「本项目无此模式」。
+```jsonc
+"modes": { "train": { "label": "训练态", … }, "test": { "label": "推理态", … } }
+```
+
+就能跑，**零代码改动**，而且「第一个键是默认模式」这条约定已经由实现保证。数组形式除了多一层 `graph` 嵌套之外没有额外收益，不值得为它迁移两份已有数据文件。
+
+项目分组也已经有实现，且**不在项目文件里**：`data/projects.json` 顶层有 `groups`（`id` / `name` / `desc`），每个项目条目用 `group` 指向它，`scripts/validate.mjs` 校验引用存在。所以本文原先提的项目顶层 `family` 字段作废——接 MimicKit 时只需在 `groups` 里加一条，例如
+
+```jsonc
+{ "id": "mimickit", "name": "MimicKit 方法族", "desc": "同一套代码里的七个模仿学习方法，差别集中在奖励从哪来" }
+```
+
+现有的唯一分组是 `wbt`（全身运动跟踪），两个真机项目都挂在它下面，语义上正好对应 §2.1，不需要改名。
 
 ### 4.2 图（Graph）
 
 ```jsonc
 {
-  "lanes": ["source", "reference", "proprio", "history", "privileged",
-            "latent", "task", "network", "action", "actuation",
-            "critic", "discriminator", "prior", "learning"],
+  "label": "训练态",
+  "summary": "……",
+  "facts": [ { "label": "策略观测", "value": "160 维" } ],   // 对比视图逐行对齐用
+  "lanes": ["source", "ref", "encode", "proprio", "policy", "action", "plant", "learn"],
   "nodes": [ /* Node */ ],
   "edges": [ /* Edge */ ],
   "rewards": [ /* RewardTerm，仅训练态 */ ],
-  "terminations": [ /* TerminationTerm，仅训练态 */ ],
   "callouts": [ /* 图上的批注气泡 */ ]
 }
 ```
 
-第二批新增四条泳道，全部由 MimicKit 逼出来：
+上线的八条泳道（`data/taxonomy.json` 的 `lanes`）与本文初稿的命名不同，**以上线的为准**：`source`（数据与参考源）、`ref`（参考与指令输入）、`encode`（编码器与 token）、`proprio`（本体 · 历史 · 特权输入）、`policy`（策略与价值网络）、`action`（动作与执行链）、`plant`（机器人与环境）、`learn`（学习信号）。初稿里的 `reference` / `history` / `privileged` / `network` / `actuation` / `learning` 已被合并或改名。
 
-- `latent` —— ASE 的 64 维技能潜变量及其采样器（周期重采样）。
-- `task` —— location / steering / dodgeball 的任务观测与任务目标发生器。
-- `discriminator` —— 判别器/编码器的观测窗口、网络、回放缓冲、梯度罚。AMP、ASE、ADD 三家结构不同但都落这条泳道。
-- `prior` —— SMP 的冻结扩散先验（TinyMDM）及其 SDS 打分路径与 GSI 初始状态生成路径。
+接 MimicKit 需要新增的泳道收缩到三条（初稿提的五条里，`critic` 与 `discriminator` 不再需要）：
 
-`critic` 从原来的 `learning` 泳道里拆出来单列，因为 ASE 的 critic 与 actor 吃的输入不同（多一个 z），画在一起会让边穿过整张图。`lanes` 是每个 Graph 自己声明的数组，项目只声明自己用得到的泳道，渲染时按声明顺序分列——所以新增泳道不影响第一批两个项目的布局。
+| 新泳道 | 内容 | 为什么现有八条装不下 |
+|---|---|---|
+| `latent` | ASE 的 64 维技能潜变量与它的周期重采样器 | 它是条件输入而不是观测，混进 `proprio` 会让「本体感知」这一列名不副实；也不是 `ref`，因为没有任何上游给定它 |
+| `task` | location / steering / dodgeball 的任务观测与任务目标发生器 | 勉强能塞进 `ref`，但任务目标是**环境自己按时钟随机生成**的，与「参考动作库按时间索引取帧」是两种东西，混一列会让 `ref` 的语义变糊 |
+| `disc` | 判别器与编码器的观测窗口、网络、回放缓冲、梯度罚；SMP 的冻结扩散先验与它的 SDS 打分、GSI 生成两条支路 | 这些都产出「学习信号」，但 `learn` 泳道现在放的是优化器与损失项这类**无输入端口**的东西；判别器有明确的输入清单和数据流，画进 `learn` 会让那一列同时承担两种抽象 |
+
+两处对初稿的收缩，理由都来自上线代码：
+
+- **不拆 `critic`**。初稿想把 critic 从 `learning` 里单列，但上线的 `policy` 泳道本来就同时放 actor 与 critic，`data/sonic.json` 已经这么用了。ASE 的 critic 多吃一个 z 只是多一条入边，不值得为它改动已有两份数据文件的列结构。
+- **判别器与先验合成一条 `disc`**，不分成 `discriminator` + `prior`。AMP / ASE / ADD / SMP 里同一时刻只会出现其中一种（没有任何一个方法同时有判别器和扩散先验），分两列会让每张图都空一列。冻结与否用节点自身的角标表达（§5.3），不用列位置表达。
+
+`lanes` 是每个 Graph 自己声明的数组，`validate.mjs` 检查它的每一项都在 `taxonomy.json` 的 `lanes` 里、且每个节点的 `lane` 都在本图声明过。所以新增泳道要**同时**加进 `data/taxonomy.json`，但不影响已有两个项目的布局。
 
 ### 4.3 节点（Node）
 
 ```jsonc
 {
   "id": "obs.motion_anchor_pos_b",
-  "lane": "reference",
+  "lane": "ref",
+  "kind": "obs",                      // obs | proc | net | act | plant | signal
   "class": "B",                       // 输入五类 / 输出五类代号
   "label": "参考 anchor 相对位置",
   "dim": 3,
-  "dim_expr": "3",                    // 可读的维度算式，如 "29 × 10"
+  "dimExpr": "3",                     // 可读的维度算式，如 "29 × 10"；校验脚本会求值并与 dim 比对
   "unit": "m",
-  "acquisition": "estimate",          // direct | filter | estimate | given | sim-only | derived | sampled
-  "availability": "deploy-hard",      // deploy-ok | deploy-hard | train-only | sim-only
-  "noise": "U(-0.25, 0.25)",          // 训练时注入的观测噪声，null = 不注入
-  "freq_hz": 50,
+  "acquisition": "estimate",          // direct | filter | estimate | given | sim-only | derived | none | ⟨sampled⟩
+  "availability": "deploy-hard",      // deploy-ok | deploy-hard | train-only | n/a | ⟨sim-only⟩
+  "noise": "U(-0.25, 0.25)",          // 训练时注入的观测噪声，缺省 = 不注入
+  "freqHz": 50,
   "desc": "参考 anchor 位姿在机器人 anchor 系下的位置差。",
   "note": "真机需要全局位置估计；上游提供了去掉本项的 wo-state-estimation 变体。",
   "source": {
@@ -209,11 +258,16 @@ MimicKit 的这条链形状相同但每一环的来源不同，是同一组模�
 }
 ```
 
-三个字段是这个页面的核心表达力，不能省：
+上面用 `⟨⟩` 标出的两个取值是接 MimicKit 时要新增的，其余已上线。三个字段是这个页面的核心表达力，不能省：
 
-- **`acquisition`（怎么拿到）** —— 直读 / 滤波 / 学习估计 / 上层给定 / 仿真直读 / 推导 / 采样得到。这是参考页反复强调的「工程关键问题」。第二批新增 `sampled`，专给 ASE 的技能潜变量和 SMP 由扩散先验生成的初始状态用：它们既不是测量也不是推导，而是从一个分布里抽出来的。
-- **`availability`（部署可得性）** —— 决定该节点在第二个模式里是否出现、以及是否要画成虚线降级形态。第二批新增 `sim-only`：这一项在仿真里随手可得、真机上根本没有对应量（全局根位置、全身连杆位置、参考角色状态），且**项目本身不打算上真机**。它和 `train-only` 的区别是后者意味着「作者刻意只在训练用」，前者意味着「作者没有这个问题」——混为一谈会让 MimicKit 看起来像是在特权观测上偷懒。
+- **`acquisition`（怎么拿到）** —— 已上线七个取值：`direct` 传感器直读 / `filter` 滤波处理 / `estimate` 需要估计 / `given` 上层给定 / `sim-only` 仿真直读 / `derived` 内部推导 / `none` 非观测量。这是参考页反复强调的「工程关键问题」。
+  需要新增 **`sampled`（采样得到）**，专给 ASE 的技能潜变量与 SMP 由扩散先验生成的初始状态用：它们既不是测量、也不是由已有量推导，而是从一个分布里抽出来的。现有七个取值里没有一个说得通——`given` 最接近，但「上层给定」暗示有一个外部主体做了决策，而 z 是无条件随机抽的。
+- **`availability`（部署可得性）** —— 已上线四个取值：`deploy-ok` / `deploy-hard` / `train-only` / `n/a`（非观测节点）。决定该节点在第二个模式里是否出现、以及是否画成降级形态。
+  需要新增 **`sim-only`**：这一项在仿真里随手可得、真机上根本没有对应通道（全局根位置、根线速度、全身连杆位置、参考角色状态），而且它**在推理态依然存在**。三个已有取值都套不上：`n/a` 是留给网络、执行器这类非观测节点的；`train-only` 意味着「部署时消失」，可 MimicKit 的推理态照样在用这些量；`deploy-hard` 意味着「真机上难但办得到」，而这里作者根本没打算上真机。混用 `train-only` 会让 MimicKit 看起来像是在特权观测上偷懒，实际上是它不面对这个问题。
+  注意 `acquisition` 里已有一个同名的 `sim-only`，两者不冲突也不重复：一个说「这个量从哪来」，一个说「真机上还有没有它」。同名是好事——同一个节点两处都标 `sim-only` 恰好读作「仿真直读、真机没有」。
 - **`confidence`（可信度）** —— `verified` = 从一手仓库配置逐项核对；`derived` = 由核对过的项算出（如总维度求和）；`inferred` = 论文/文档口径推断，未在代码中定位。页面用角标区分，不让推断值伪装成事实。
+
+新增枚举值的落地成本（M5.1 要一并做掉）：`data/taxonomy.json` 的 `acquisition` / `availability` 各加一条（含图标与说明），`schema/project.schema.json` 的对应 `enum` 各加一项，`assets/style.css` 补 `sim-only` 的边框样式。`scripts/validate.mjs` 从 `taxonomy.json` 读词汇表，不用改。
 
 ### 4.4 连线（Edge）
 
@@ -221,51 +275,61 @@ MimicKit 的这条链形状相同但每一环的来源不同，是同一组模�
 {
   "from": "obs.motion_anchor_pos_b",
   "to": "net.actor",
-  "kind": "obs",        // obs | ref | action | reward | grad | distill | privileged
-                        // | feedback | latent | disc | prior | init
+  "kind": "obs",        // 已上线：ref | obs | action | privileged | grad | reward | feedback | flow
+                        // 需新增：⟨latent⟩ | ⟨disc⟩ | ⟨init⟩
   "style": "solid",     // solid | dashed（dashed = 仅训练期存在 / 信息搬运）
   "label": "3"          // 可选，边上标维度
 }
 ```
 
-第二批新增四种 `kind`：`latent`（潜变量条件流，ASE 的 z → actor/critic）、`disc`（判别器/编码器的取样与打分流）、`prior`（冻结生成模型的打分流，SMP 的 SDS）、`init`（初始状态注入流，SMP 的 GSI 与各方法的参考状态初始化 RSI）。`init` 这条边在第一批里其实也存在（BeyondMimic 的失败率驱动采样器就是往环境里塞初始状态），原先被塞进 `feedback` 里，现在单列，正好让「初始状态从哪来」在四个项目上可横向对比——这条线是模仿学习里被论文反复强调、却几乎不会画进示意图的一环。
+上线的八种 `kind` 与本文初稿不同：多了 `flow`（流程），没有初稿写的 `distill`。以 `data/taxonomy.json` 的 `edgeKinds` 为准，每种都带配色。
+
+接 MimicKit 需要新增三种（初稿提的 `prior` 并进 `disc`，与 §4.2 不拆 `prior` 泳道同理）：
+
+- **`latent`** —— 潜变量条件流，ASE 的 z → actor / critic。不能复用 `obs`：它不是观测，而且它的配色要和观测流区分开，否则 ASE 图上最关键的那条线会淹没在一片蓝里。
+- **`disc`** —— 判别器 / 编码器 / 冻结先验的取样与打分流。不能复用 `reward`：`reward` 现在画的是「标量奖励进优化器」，而这条线画的是「观测窗口进一个网络」，两端的语义完全不同。
+- **`init`** —— 初始状态注入流。SMP 的 GSI、各方法的参考状态初始化（RSI）都走这条。
+
+`init` 值得单独说：它在第一批里其实**已经存在**（BeyondMimic 的失败率驱动采样器就是往环境里塞初始状态），当时被归进了 `feedback`。单列出来之后，「初始状态从哪来」这件事在九个项目上可横向对比——RSI、RSI 混站姿、GSI、失败率驱动采样是同一个位置的四种答案。这是模仿学习里被论文反复强调、却几乎不会画进示意图的一环。所以这条新增**要回头改 `data/beyondmimic.json`**：把那条 `feedback` 边改成 `init`。这是本轮唯一一处需要改动已有数据文件的地方，`validate.mjs` 能兜住改错。
 
 ### 4.5 奖励项（RewardTerm）
 
 ```jsonc
 {
   "id": "motion_body_pos",
+  "canonical": "body_pos_tracking",     // 跨项目等价键，对比视图靠它配对
   "group": "A",                         // 奖励六类代号
-  "reward_kind": "handcrafted",         // handcrafted | task | adversarial | encoder | generative
+  "rewardKind": "handcrafted",          // ⟨新增⟩ handcrafted | task | adversarial | encoder | generative
   "label": "关键连杆相对位置跟踪",
   "weight": 1.0,
   "form": "\\exp(-\\lVert e \\rVert^2 / \\sigma^2)",   // KaTeX
   "params": { "std": 0.3 },
   "target": "14 个关键连杆",
   "direction": "positive",
+  "sharedWith": "sonic",                // 在另一个项目里同名同权重
   "desc": "...",
   "source": { /* 同 Node */ },
   "confidence": "verified"
 }
 ```
 
-`reward_kind` 不是 `handcrafted` 时，`weight` 的语义变成「该来源在总奖励里的混合系数」，`form` 描述从网络输出到标量奖励的映射，并新增一个 `model` 子对象说明这个网络本身：
+`rewardKind` 缺省视为 `handcrafted`，这样两份已有数据文件一行都不用改。它不是 `handcrafted` 也不是 `task` 时，`weight` 的语义变成「该来源在总奖励里的混合系数」，`form` 描述从网络输出到标量奖励的映射，并新增一个 `model` 子对象说明这个网络本身：
 
 ```jsonc
 {
   "id": "disc_reward",
   "group": "F",
-  "reward_kind": "adversarial",
+  "rewardKind": "adversarial",
   "label": "判别器风格奖励",
   "weight": 1.0,                        // disc_reward_weight
   "form": "-\\lambda \\log\\bigl(1 - D(s)\\bigr)",
   "params": { "disc_reward_scale": 2.0 },
   "model": {
-    "inputs": ["disc.obs_window"],      // 指向 Node id，页面据此高亮输入模块
+    "inputs": ["disc.obsWindow"],       // 指向 Node id，页面据此高亮输入模块
     "positive": "参考动作库按同一时间窗采样的片段",
     "negative": "策略采样 + 200k 容量回放缓冲",
     "net": "[1024, 512] ReLU",
-    "regularizers": { "logit_reg": 0.01, "grad_penalty": 5 },
+    "regularizers": { "logitReg": 0.01, "gradPenalty": 5 },
     "frozen": false
   },
   "source": { /* 同 Node */ },
@@ -273,7 +337,11 @@ MimicKit 的这条链形状相同但每一环的来源不同，是同一组模�
 }
 ```
 
-奖励面板按 `group` 折叠成六个分区，分区内按 `reward_kind` 二次分组（手写项在上、学习式项在下），每项显示权重、公式、参数、方向。多个项目共有的项要能横向对齐显示（阶段 4 的对比视图依赖这个）。
+奖励面板按 `group` 折叠成六个分区，分区内按 `rewardKind` 二次分组（手写项在上、学习式项在下），每项显示权重、公式、参数、方向。
+
+跨项目对齐已经有实现，接 MimicKit 时**沿用而不是另造**：奖励项的 `canonical` 是跨项目等价键（同一个奖励在两个仓库里函数名常常不同），`sharedWith` 标「这一项在另一个项目里同名同权重」。这两个字段正好用来表达附录 C 里那条最有信息量的事实——MimicKit 的 DeepMimic 五项手写奖励与 BeyondMimic 的九项**不是**同一套（前者按关节加权、后者按连杆），所以它们**不应该**共用 `canonical`；而 SONIC 与 BeyondMimic 的九项是同一套。别因为名字像就把它们配成一对，这正是 `canonical` 需要人工填而不能靠 `id` 猜的原因。
+
+`model.inputs` 指向节点 id，校验脚本要检查这些 id 在同一张图里存在——这是 `validate.mjs` 需要新增的一条检查。
 
 ### 4.6 项目继承（`inherits`）
 
@@ -286,15 +354,27 @@ MimicKit 里 DeepMimic 与 AWR 共用一份 `deepmimic_humanoid_env.yaml`，LCP 
   "name": "AWR",
   "subtitle": "只换优化器：PPO → 优势加权回归",
   "overrides": {
-    "modes[train].graph.nodes": { "learn.optimizer": { /* 覆盖该节点 */ } },
-    "modes[train].graph.nodes -": ["learn.ppo_clip"],   // 删除节点
-    "modes[train].graph.nodes +": [ /* 新增节点 */ ]
+    "modes.train.nodes":   { "learn.optimizer": { /* 覆盖该节点 */ } },
+    "modes.train.nodes -": ["learn.ppoClip"],           // 删除节点
+    "modes.train.nodes +": [ /* 新增节点 */ ]
   },
-  "diff_summary": "环境、观测、动作、奖励、终止条件与 DeepMimic 完全一致，只有 actor 的更新规则不同。"
+  "diffSummary": "环境、观测、动作、奖励、终止条件与 DeepMimic 完全一致，只有 actor 的更新规则不同。"
 }
 ```
 
-规则：合并在加载时完成（`data.js`），`validate.mjs` 对合并后的结果做全套校验；`diff_summary` 是必填的一句话，直接渲染在页面顶部，让读者立刻知道「这个项目和它的父项目差在哪」。继承只允许一层，禁止链式继承——两层以上就该老老实实写全量 JSON，否则数据文件会变成没人能读懂的补丁堆。
+规则：合并在加载时完成，`validate.mjs` 对合并后的结果做全套校验；`diffSummary` 是必填的一句话，直接渲染在页面顶部，让读者立刻知道「这个项目和它的父项目差在哪」。继承只允许一层，禁止链式继承——两层以上就该老老实实写全量 JSON，否则数据文件会变成没人能读懂的补丁堆。
+
+这是本文对已上线结构**唯一一处伤筋动骨**的扩展，落地时要动三个地方，M5.1 应当第一件做它、做完再写数据：
+
+| 要改的文件 | 改什么 | 风险 |
+|---|---|---|
+| `schema/project.schema.json` | 项目顶层是 `additionalProperties: false`，必须显式加 `inherits` / `overrides` / `diffSummary` 三个属性，否则带这些字段的文件直接不合法 | 低，纯声明 |
+| `src/data.js` | `loadProject(id)` 现在是「取注册表条目 → fetch 一个文件 → 缓存」。要改成「发现 `inherits` 就递归取父项目、合并后再缓存」，且父项目本身也走同一份缓存 | 中。并发去重的 `inflight` 表要一起考虑，否则同时切两个子项目会重复拉父文件 |
+| `scripts/validate.mjs` | 现在是逐文件读、逐文件校验。要在校验前做同样的合并，并额外检查「继承不超过一层」「父项目已在注册表登记」「`overrides` 的路径确实命中了东西」 | 中。合并逻辑必须与 `data.js` 完全一致，否则校验通过但页面渲染出错 |
+
+第三行那个「两份合并逻辑必须一致」是真正的隐患。稳妥的做法是把合并写成一个不依赖 DOM 与 `fetch` 的纯函数模块（例如 `src/inherit.js`），页面和校验脚本都 import 它——`scripts/validate.mjs` 已经是 Node ESM，import 一个纯函数没有障碍。
+
+**如果 M5.1 动手时发现这三处改动比预期大**，退路是：AWR 与 LCP 写全量 JSON，靠 `diffSummary` + 校验脚本的一条「两个项目声明为消融对时必须逐字段相同」检查来保证一致性。代价是数据冗余，好处是零结构改动。先做继承、发现不划算再退，比反过来省事。
 
 ### 4.7 布局策略
 
@@ -324,20 +404,30 @@ MimicKit 里 DeepMimic 与 AWR 共用一份 `deepmimic_humanoid_env.yaml`，LCP 
 └──────────────────────────────────────────────────────────────┘
 ```
 
-项目数量从 2 涨到 9，顶栏的横向 Tab 放不下了。改成**按 `family` 分组的下拉选择器**：第一组「真机路线」两项，第二组「MimicKit 方法族」七项，按年份升序排列，父项目下的继承项（AWR、LCP）缩进一级显示并在名字后跟一句 `diff_summary`。模式切换按钮的文字来自 `modes[i].label`，不写死「部署态」。
+**顶栏选择器与模式按钮 M0 已经做完，本文原先提的改造作废。** 上线的实现是可搜索、按 `groups` 分组的下拉（`src/project-picker.js`），搜索命中项目名、副标题与 `keywords`，`P` 打开、`[` `]` 前后切换、上下键 + 回车选中；模式按钮的文字直接取 `modes[*].label`，没有写死「部署态」。项目从 2 涨到 9 在这一层不需要额外工作。
+
+接 MimicKit 时这一层只剩两件小事：在 `data/projects.json` 的 `groups` 里加 `mimickit` 一条（§4.1），以及给继承项（AWR、LCP）在下拉里缩进一级、名字后跟一句 `diffSummary`——后者依赖 §4.6，做不成也不影响可用性。
 
 ### 5.2 关键交互
 
+下表里没有标注的行都已在 M0–M4 实现；标 **⟨M5⟩** 的是接 MimicKit 时要新增或改动的。
+
 | 交互 | 行为 |
 |---|---|
-| 切换项目 | 换数据源，画布做淡入淡出重绘；保持当前模式与滚动位置。切到继承项目（AWR / LCP）时，父项目共有的节点保持原位不动，只有被 `overrides` 改动的节点做高亮闪烁——**这是继承机制在视觉上的兑现**，读者一眼看到「只有这两个框变了」 |
-| 切换模式 | **同一批节点做位置补间动画**：共有节点平移到新位置，`train-only` / `sim-only` 节点淡出并收缩，第二个模式新增的节点淡入。这个动画是页面的核心表达——「奖励和特权观测消失了，策略权重留下了」 |
+| 切换项目 | 换数据源，画布做淡入淡出重绘；保持当前模式与滚动位置。**⟨M5⟩** 切到继承项目（AWR / LCP）时，父项目共有的节点保持原位不动，只有被 `overrides` 改动的节点做高亮闪烁——**这是继承机制在视觉上的兑现**，读者一眼看到「只有这两个框变了」 |
+| 切换模式 | **同一批节点做位置补间动画**：共有节点平移到新位置，`train-only` 节点淡出并收缩，第二个模式新增的节点淡入。这个动画是页面的核心表达——「奖励和特权观测消失了，策略权重留下了」。**⟨M5⟩** 新增的 `sim-only` 可得性**不参与淡出**：它在推理态照样存在，只是画成降级形态 |
 | hover 节点 | 高亮该节点的完整上下游链路，其余节点降透明度 |
 | click 节点 | 右侧抽屉展开详情；URL 同步 `?p=sonic&mode=train&n=obs.gravity_dir`，可分享可回退 |
-| click 奖励项 | 在画布上高亮该奖励项作用的目标模块（如 `joint_limit` 高亮关节限位与执行器节点）。学习式奖励项高亮的是它 `model.inputs` 指向的观测窗口节点与判别器/先验节点，把「这个奖励看着什么打分」画出来 |
-| 筛选器 | 按输入五类 A–E、按 `availability`、按 `confidence`、按 `reward_kind` 过滤显示 |
-| 对比模式 | 左右并排两个项目的同一模式下标，共有节点用连接线对齐，差异节点标 `+ / −` |
-| 键盘 | `[` `]` 在项目列表里前后移动，`T/D` 切模式，`Esc` 关抽屉，方向键在节点间移动 |
+| click 奖励项 | 在画布上高亮该奖励项作用的目标模块（如 `joint_limit` 高亮关节限位与执行器节点）。**⟨M5⟩** 学习式奖励项高亮的是它 `model.inputs` 指向的观测窗口节点与判别器/先验节点，把「这个奖励看着什么打分」画出来 |
+| 筛选器 | 按输入五类 A–E、按 `availability`、按 `confidence` 过滤显示。**⟨M5⟩** 增一条按 `rewardKind` 过滤 |
+| 对比 | 当前项目 vs 一个选定的对比对象，逐项对照表；`vs` 参数进 URL 可分享。见下方说明 |
+| 键盘 | `P` 打开项目下拉、`[` `]` 前后切项目，`T` / `D` 切模式，`F` 复位画布，`Esc` 关抽屉 |
+
+**对比视图：本文初稿的「左右并排两块画布」已被实现推翻，以实现为准。** M4 落地时改成了「当前项目 vs 一个选定对象」的逐项对照表（`src/render-compare.js`），理由记在开头的实施状态里：两块画布在同屏下都太挤，表格信息密度更高，而且随项目数量增长比并排更能扩展。
+
+这个决定对第二批是**好消息而不是坏消息**。原先设想的并排画布要求两个项目的泳道结构可对齐，而 MimicKit 与真机路线的泳道结构差得远（多 `latent` / `task` / `disc`，少 `encode`），并排会画得很难看；逐项对照表只要求两边有同名的 `facts.label` 与同 `canonical` 的奖励项，跨族对比反而更容易成立。所以 §7 的 M6 跨族对比不需要新的视图形态，只需要把附录 C.10 那三条观察落成两边都填的 `facts` 行。
+
+代价是丢掉了初稿里「共有节点用连接线对齐、差异节点标 `+ / −`」这个效果。要不要在表格之外补一个节点级 diff（列出「只有 A 有的节点 / 只有 B 有的节点 / 两边都有的节点」），留到 M6 按实际需要决定，不预先承诺。
 
 ### 5.3 图例与视觉编码
 
@@ -347,7 +437,7 @@ MimicKit 里 DeepMimic 与 AWR 共用一份 `deepmimic_humanoid_env.yaml`，LCP 
 | 部署可得性 | 边框：实线 = 可得；点线 = 需估计；灰底斜纹 = 仅训练；灰底无纹 = 仅仿真 |
 | 获取方式 | 节点左上角小图标（传感器 / 滤波器 / 网络 / 上层 / 仿真 / 采样） |
 | 维度大小 | 节点宽度按 `log(dim)` 轻微缩放，让 580 维的未来参考在视觉上重于 3 维的角速度 |
-| 连线类型 | 颜色 + 虚实：观测流（蓝实）、参考流（青实）、动作流（橙实）、奖励/梯度（紫虚）、潜变量（紫实）、判别器/先验打分（红虚）、初始状态注入（绿虚）、蒸馏/信息搬运（灰虚） |
+| 连线类型 | 颜色 + 虚实，取值与配色见 `data/taxonomy.json` 的 `edgeKinds`：参考流（青）、观测流（蓝）、动作流（橙）、特权流（红）、梯度与奖励（紫）、反馈（灰）、流程（深灰）；**⟨M5⟩** 再加潜变量、判别器/先验打分、初始状态注入三种 |
 | 奖励来源 | 奖励卡边框：单线 = 手写/任务；双线 = 学习式；双线 + 锁形角标 = 冻结的生成先验 |
 | 可信度 | 右上角角标：无 = verified，`≈` = derived，`?` = inferred |
 
@@ -369,48 +459,58 @@ MimicKit 里 DeepMimic 与 AWR 共用一份 `deepmimic_humanoid_env.yaml`，LCP 
 |---|---|---|
 | 框架 | 无框架，原生 ES modules | 内容量级（9 个项目 × 2 个模式 × 数十节点，且同一时刻只渲染一张图）远不到需要虚拟 DOM 的规模；无构建步骤意味着改 JSON 就能预览，也和参考站（vanilla JS + d3）的工程习惯一致 |
 | 渲染 | 内联 SVG，手写布局 | 连线是核心视觉，SVG 的路径与动画能力足够；避免 Canvas 带来的可访问性与文本渲染问题 |
-| 公式 | KaTeX（CDN，与参考站同版本 0.16.x） | 奖励公式必须排版正确；KaTeX 体积小、无需构建 |
+| 公式 | KaTeX 0.16.11，**本地自带**（`vendor/katex/`） | 奖励公式必须排版正确；KaTeX 体积小、无需构建。初稿写的是走 CDN，M0 落地时改成本地自带：受限网络下 CDN 不可靠，且省掉 SRI 哈希这一处易错的手工维护点 |
 | 动画 | Web Animations API + CSS transition | 模式切换的位置补间用 `element.animate()`，无需动画库 |
 | 数据 | 静态 JSON，运行时 `fetch` | 便于外部校验脚本读取；也让「加一个项目 = 加一个 JSON + 一行注册」成立 |
 | 校验 | JSON Schema + 一个 Node 脚本 | 在 CI 里检查节点 id 唯一、边两端存在、维度求和自洽、`source` 必填、`inherits` 只有一层、学习式奖励的 `model.inputs` 指向存在的节点 |
 
+下面是**当前实际结构**，`+` 标出接 MimicKit 时要新增的文件（`README.md` 里有面向使用者的同一份说明）：
+
 ```
 Robot_Learning_IO_Board/
-├── index.html
+├── index.html                   # 页面骨架
+├── .nojekyll                    # 让 Pages 原样发布 vendor/ 等目录
+├── .github/workflows/pages.yml  # Pages 部署
 ├── assets/
 │   ├── style.css
 │   └── theme-init.js            # 主题偏好，避免首帧闪白
 ├── src/
-│   ├── main.js                  # 入口：路由、状态、事件
-│   ├── data.js                  # 加载、inherits 合并与校验
-│   ├── layout.js                # 泳道布局：节点 → 坐标
-│   ├── render-graph.js          # SVG 节点与连线渲染
-│   ├── render-rewards.js        # 奖励面板（手写项权重条 + 学习式来源卡）
+│   ├── main.js                  # 入口：路由、状态、事件、模式补间
+│   ├── data.js                  # 注册表加载 + 项目按需加载（带缓存与并发去重）
+│   ├── dom.js                   # 建元素的小工具
+│   ├── project-picker.js        # 可搜索、分组的项目下拉
+│   ├── layout.js                # 泳道布局与连线路径几何
+│   ├── render-graph.js          # SVG 连线 + HTML 节点卡片、缩放平移、链路高亮
+│   ├── render-rewards.js        # 奖励面板（六类折叠、对数刻度权重条、KaTeX）
 │   ├── render-detail.js         # 详情抽屉
+│   ├── render-compare.js        # 当前项目 vs 选定对比对象的对照表
 │   ├── render-table.js          # 表格降级视图
-│   └── transitions.js           # 模式切换补间
+│   └── inherit.js               # + 项目继承的合并逻辑（页面与校验脚本共用，见 §4.6）
 ├── data/
-│   ├── projects.json            # 项目注册表（含 family 分组与排序）
-│   ├── taxonomy.json            # A–E / O1–O5 / 奖励六类 / reward_kind 的定义与配色
-│   ├── realworld/
-│   │   ├── beyondmimic.json
-│   │   └── sonic.json
-│   └── mimickit/
-│       ├── deepmimic.json       # 基准项目，AWR / LCP 继承它
-│       ├── awr.json             # inherits: mimickit-deepmimic
+│   ├── taxonomy.json            # 全部枚举的权威定义与配色
+│   ├── projects.json            # 项目注册表、分组、排序、搜索关键词
+│   ├── beyondmimic.json
+│   ├── sonic.json
+│   └── mimickit/                # +
+│       ├── deepmimic.json       #   基准项目，AWR / LCP 继承它
+│       ├── awr.json             #   inherits: mimickit-deepmimic
 │       ├── amp.json
 │       ├── ase.json
-│       ├── lcp.json             # inherits: mimickit-deepmimic（G1 变体）
+│       ├── lcp.json             #   inherits: mimickit-deepmimic（G1 变体）
 │       ├── add.json
 │       └── smp.json
 ├── schema/
-│   └── project.schema.json
+│   ├── project.schema.json
+│   └── registry.schema.json
 ├── scripts/
 │   └── validate.mjs             # 数据自洽性检查
+├── vendor/katex/                # 本地自带的 KaTeX 0.16.11（MIT）
 └── PLAN.md
 ```
 
-`data/` 按 `family` 分子目录：九个 JSON 平铺在一个目录里，改 SONIC 时会翻半屏才找到文件。`projects.json` 是唯一的注册表，页面只 fetch 它 + 当前选中项目（以及被继承的父项目），不预加载全部。
+两份已有数据文件**留在 `data/` 根下不动**，只把 MimicKit 的七份放进 `data/mimickit/` 子目录。理由：注册表条目里的 `file` 是相对 `data/` 的路径（`src/data.js` 直接 `fetch("data/" + entry.file)`），写 `"file": "mimickit/amp.json"` 本来就能用，**不需要任何代码改动**；而为了对称去挪 `beyondmimic.json` / `sonic.json` 就得同时改注册表、改 schema 里的 `$id` 相对路径引用，收益只是好看。七份新文件挤在根目录才是真会碍事的那一侧，所以只对新增的那一侧分目录。
+
+`projects.json` 是唯一的注册表，页面只 fetch `taxonomy.json` + `projects.json` + 当前选中项目（以及被继承的父项目），不预加载全部。
 
 ---
 
@@ -418,67 +518,81 @@ Robot_Learning_IO_Board/
 
 阶段之间以「可演示的完整切片」为界，每个阶段结束时页面都是能打开看的。
 
-### M0 — 数据与骨架
+### M0 — 数据与骨架 ✅
 
 - 定义 `taxonomy.json`（五类输入 / 五类输出 / 六类奖励的代号、中文名、配色、说明）。
 - 写 `project.schema.json` 与 `scripts/validate.mjs`。
 - 把附录 A（BeyondMimic）落成完整的 `beyondmimic.json`，两个模式都填齐。
 - 交付：`validate.mjs` 通过，数据文件可被人类读懂。
 
-### M1 — 单项目单模式可视化
+### M1 — 单项目单模式可视化 ✅
 
 - `layout.js` + `render-graph.js`：泳道布局、节点卡片、贝塞尔连线、缩放平移。
 - 渲染 BeyondMimic 训练态一张图，含图例。
 - 交付：一张能看的图，颜色与边框正确表达类别和可得性。
 
-### M2 — 详情抽屉 + 奖励面板 + 模式切换
+### M2 — 详情抽屉 + 奖励面板 + 模式切换 ✅
 
 - 点击节点开抽屉，URL 状态同步。
 - 奖励面板：六类分组、权重条、KaTeX 公式。
 - 训练 ↔ 部署 补间动画，`train-only` 节点淡出。
 - 交付：BeyondMimic 两个模式完整可用。这是**第一个值得分享的版本**。
 
-### M3 — 接入 SONIC
+### M3 — 接入 SONIC ✅
 
 - 落 `sonic.json`（附录 B），重点验证数据模型能否表达：多编码器并行、FSQ token 瓶颈、共享 decoder、10 帧历史与 10 帧未来窗口、辅助重建头。
 - 若不能表达，回头改 schema——这是数据模型的真正压力测试。
 - 项目选择器、筛选器、键盘导航。
 - 交付：真机路线的四张图全部可用。
 
-### M4 — 对比模式与表格视图
+### M4 — 对比视图与表格视图 ✅
 
-- 并排对比，共有节点对齐，差异标注。
+- 对比：**当前项目 vs 一个选定对象的逐项对照表**（`facts` 行 + 按 `canonical` 配对的奖励项），`vs` 参数进 URL。初稿设想的两块并排画布在落地时被否掉，理由见开头的实施状态与 §5.2。
 - 表格降级视图与打印样式。
 - 交付：可以直接用来讲「SONIC 与 BeyondMimic 的奖励项其实几乎一样」这个结论。
 
 ### M5 — 接入 MimicKit 方法族（DeepMimic → SMP）
 
-七个方法一次性接完，但内部按「数据模型改动量」分三小步，每小步都能单独验收。
+七个方法一次性接完，但内部按「对已上线结构的改动量」分三小步，每小步都能单独验收。**每一小步都以 `node scripts/validate.mjs` 通过、且两份已有数据文件不回归为完成条件。**
+
+**M5.0 结构改动先行（不写任何项目数据）**
+
+先把 §4 里所有增量一次做完，再动内容——反过来做会让七份数据文件在 schema 变更时反复返工。
+
+- `data/taxonomy.json`：`acquisition` 加 `sampled`；`availability` 加 `sim-only`；`lanes` 加 `latent` / `task` / `disc`；`edgeKinds` 加 `latent` / `disc` / `init`（含配色）。
+- `schema/project.schema.json`：同步上述 `enum`；奖励项加 `rewardKind` 与 `model`；项目顶层加 `inherits` / `overrides` / `diffSummary`（顶层是 `additionalProperties: false`，不加就直接非法）。
+- `src/inherit.js` 新建，`src/data.js` 与 `scripts/validate.mjs` 共用它（§4.6）。
+- `scripts/validate.mjs` 加两条检查：继承不超过一层、学习式奖励的 `model.inputs` 指向本图存在的节点。
+- `assets/style.css` 补 `sim-only` 的节点边框样式与新增三种连线的配色。
+- `data/beyondmimic.json`：把失败率驱动采样那条 `feedback` 边改成 `init`（§4.4）。
+- 交付：校验通过，页面上两个已有项目**看起来完全没变**（除了那条边换色）。这一步的价值就在于「什么都没变」。
 
 **M5.1 手写奖励的三个方法（DeepMimic / AWR / LCP）**
 
-- 落 `mimickit/deepmimic.json`（附录 C.2），验证 `modes` 数组化与 `sim-only` 可得性两项 schema 改动。
-- 落 `awr.json` 与 `lcp.json`，验证 `inherits` + `overrides` 机制。这两个文件应当**短到能一屏看完**——如果不是，说明继承粒度设计错了，回头改 §4.6。
-- 前端：项目选择器改分组下拉；继承项目切换时的「只有这两个框变了」高亮。
+- 落 `mimickit/deepmimic.json`（附录 C.2），用它检验 `sim-only` 可得性与 `modes: { train, test }` 这组开放键在真实数据上成立。
+- 落 `awr.json` 与 `lcp.json`，检验 `inherits` + `overrides`。这两个文件应当**短到能一屏看完**——如果不是，说明继承粒度设计错了，回头改 §4.6，或者按 §4.6 末尾的退路改写全量 JSON。
+- `data/projects.json`：加 `mimickit` 分组与三个条目（`file` 写 `mimickit/xxx.json`）。
+- 前端：继承项目在下拉里缩进显示 + 切换时的「只有这两个框变了」高亮。
 - 交付：三张训练态图 + 三张推理态图。数据模型的复用能力得到验证。
 
 **M5.2 对抗系三个方法（AMP / ASE / ADD）**
 
-- 新增 `discriminator` 与 `latent` 两条泳道，落 `amp.json`、`ase.json`、`add.json`（附录 C.3–C.5）。
-- 奖励面板改造：`reward_kind != "handcrafted"` 时渲染「来源卡」而不是权重条。这是本阶段主要前端工作量。
+- 落 `amp.json`、`ase.json`、`add.json`（附录 C.4、C.5、C.7），启用 `latent` 与 `disc` 两条泳道。
+- 奖励面板改造：`rewardKind` 不是 `handcrafted` / `task` 时渲染「来源卡」而不是权重条。这是本阶段主要前端工作量。
 - 重点验证三件事能否画清楚：AMP 的「10 帧窗口 + 回放缓冲 + 梯度罚」、ASE 的「潜变量采样器 → actor，判别器观测 → 编码器 → 互信息奖励」这条回路、ADD 的「判别器吃的是差分而不是状态本身，正样本是零向量」。
 - 交付：六张图。**第二个值得分享的版本**——此时页面已经能讲「模仿学习的奖励是怎么从手写走到对抗的」这条完整线索。
 
 **M5.3 生成式方法（SMP）与任务环境**
 
-- 新增 `prior` 与 `task` 泳道，落 `smp.json`（附录 C.6），含 location / steering / dodgeball 三个任务预设。
+- 落 `smp.json`（附录 C.8），启用 `task` 泳道，含 location / steering / dodgeball 三个任务预设。
 - dodgeball 预设让输入五类的 D 类第一次有内容，图例里「本项目不使用」的灰条要能变成实框。
 - 画两条此前没有的链路：SDS 打分路径（冻结先验 → 奖励）与 GSI 路径（冻结先验 → 初始状态，`kind: "init"`）。后者要显式标注「策略训练期间不使用任何动作数据」，这是 SMP 相对 AMP 最反直觉的一点。
 - 交付：九个项目全部可用。
 
 ### M6 — 跨族对比与打磨（可选）
 
-- 跨族对比视图：MimicKit 的 DeepMimic 与 BeyondMimic 并排（同为「参考跟踪 + 手写奖励」，差在部署取向）、SONIC 与 ASE 并排（同为「潜空间接口」，差在潜空间是学出来的 token 还是采样出来的 z）。这两组对比是把两批内容真正缝在一起的地方，不做的话页面只是两个独立的展。
+- 跨族对比：把附录 C.10 那三条观察落成**两边都填的 `facts` 行**，让现有的逐项对照表能直接拿来对比 DeepMimic vs BeyondMimic（同为「参考跟踪 + 手写奖励」，差在部署取向）与 ASE vs SONIC（同为「潜空间接口」，差在潜空间是学出来的 token 还是采样出来的 z）。M4 的对照表形态已经够用，**不需要新的视图**——这是当初把并排画布换成对照表意外换来的好处（§5.2）。
+- 可选：在对照表之外补一个节点级 diff（只有 A 有 / 只有 B 有 / 两边都有），按实际需要决定，不预先承诺。
 - 移动端布局（画布改为纵向堆叠 + 折叠泳道）。
 - 深链接分享卡片、导出 SVG/PNG。
 - 拖拽微调节点位置并导出坐标，回写 JSON。
@@ -492,10 +606,10 @@ Robot_Learning_IO_Board/
 1. **每个 `dim` 和每个 `weight` 都要有 `source`**，指向仓库文件路径 + 配置项名，或论文的具体表/节。没有出处的条目不许进 `main`。
 2. **总维度只能是 `derived`**，由逐项 `verified` 的维度求和得出，并在页面上标 `≈` 角标。求和逻辑写进 `validate.mjs`，防止手算漏项。
 3. **区分「论文口径」与「开源实现口径」**。二者不一致时，以开源实现为图的主体，把论文口径放在节点的 `note` 里。已知的一处不一致：多份二手资料称 BeyondMimic 使用「历史本体感知堆叠」，但上游 `whole_body_tracking` 的策略观测组**没有设置 history_length**，是单帧观测 + 经验归一化。这类差异要在页面上明确写出来，而不是二选一悄悄采用。
-4. **记录核对时间与 commit**。数据文件里带 `verified_at` 与 `verified_ref`（分支或 commit），因为上游仓库还在迭代（SONIC 已有 release / v1.1 / bones_seed / h2 多套配置）。
+4. **记录核对时间与 commit**。数据文件里带 `verifiedAt` 与 `verifiedRef`（分支或 commit），因为上游仓库还在迭代（SONIC 已有 release / v1.1 / bones_seed / h2 多套配置）。
 5. **同一项目的多套配置要显式选一套并标明**。SONIC 首版以 `sonic_release` 为主，把 `sonic_v1_1` 的差异（heading 归一化、额外 energy 项、更大的 decoder）作为节点批注。MimicKit 每个方法都有 5–6 个角色的配置（humanoid / G1 / SMPL / Go2 / pi_plus），首版**统一以 humanoid 为准**（它是唯一随仓库分发 MJCF 的角色，可逐项核对），其余角色列成一张对照表放在项目详情里（附录 C.1）。LCP 例外：它只提供 G1 配置，就以 G1 为准并注明。
 6. **只在源文件里能读到的数字才算 `verified`**。MimicKit 的资产（除 humanoid 外）与动作数据需要另行下载，`data/assets/` 里只有 `humanoid.xml`。所以 G1 / SMPL / Go2 / pi_plus 的关节数与 DoF 数是从 `joint_err_w` 数组长度和 `init_pose` 数组长度反推的，必须标 `derived` 并在 `note` 里写清反推依据；连杆分组、关节限位、PD 增益这些只存在于未分发 XML 里的量，一律不写进数据文件，宁可留空。
-7. **学习式奖励不许伪造权重**。`reward_kind` 为 `adversarial` / `encoder` / `generative` 的项，`weight` 只能填配置里真实存在的混合系数（`disc_reward_weight` 等），不得为了让权重条好看而编造分项权重。这类项的信息量在 `model` 子对象里，不在权重里。
+7. **学习式奖励不许伪造权重**。`rewardKind` 为 `adversarial` / `encoder` / `generative` 的项，`weight` 只能填配置里真实存在的混合系数（`disc_reward_weight` 等），不得为了让权重条好看而编造分项权重。这类项的信息量在 `model` 子对象里，不在权重里。
 
 ---
 
@@ -509,6 +623,7 @@ Robot_Learning_IO_Board/
 | 第一批两个项目的奖励项高度重叠，对比视图可能显得「没差别」 | 页面结论平淡 | 这本身就是结论。对比视图要突出**差异集**（SONIC 多出的 anti_shake / vr_5point / feet_acc / energy）与**观测时序深度**的量级差（单帧 vs 10 帧 × 10 未来帧） |
 | 中文长标签在窄节点里排版困难 | 视觉粗糙 | 节点标签两行截断 + `title`，完整说明放抽屉；维度用等宽数字单独一行 |
 | 学习式奖励「没有公式可看」，读者可能觉得这几张图信息量不如手写奖励的项目 | MimicKit 后三个方法的页面显得空 | 奖励来源卡必须回答四个具体问题：吃什么（指向具体观测节点与维度）、正样本是什么、怎么变成标量（写出 `-2\log(1-D)` 这类真实映射）、有哪些正则项（梯度罚系数、logit 罚系数）。这些都是配置里的真实数字，信息量并不比权重表少 |
+| §4 的结构扩展现在是**对已上线 schema 的迁移**，不是绿地设计：两份真实数据文件在跑，改错会让页面白屏 | 引入回归 | M5.0 把全部结构改动集中做完、以「两个已有项目看起来完全没变」为完成条件，再动内容。`inherits` 的合并逻辑抽成 `src/inherit.js` 供页面与校验脚本共用，避免两份实现漂移（§4.6） |
 | MimicKit 除 humanoid 外的角色资产不随仓库分发 | 五个角色的关节/DoF 数只能反推，PD 增益无从核对 | 见 §8 第 6 条：反推值标 `derived` 并写明依据，不可核对的量留空不写。首版只把 humanoid 画全 |
 | 项目数量涨到 9，同一套泳道布局未必都合适（Go2 四足、SMPL 69 DoF） | 部分图过高或过宽 | 首版统一用 humanoid，把角色差异降级为详情里的对照表；泳道内的「分组节点」（可展开容器）是主要的高度控制手段 |
 | DeepMimic 的实现口径与 2018 年论文口径不一致（最显眼的一处：相位观测在 28 个环境配置里全部关闭，改由 3 帧未来参考承担同一职责） | 读者按论文预期看图会困惑 | 按 §8 第 3 条处理：图以实现为主体，节点 `note` 写明论文口径与差异原因。这一条要写成显式批注气泡，因为 DeepMimic 是这七个方法里名气最大、读者预期最强的一个。论文侧的具体项数与权重本次未逐项核对，写入数据文件前须标 `inferred` 或补核对 |
@@ -789,7 +904,7 @@ actor / critic 主干默认 `fc_2layers_1024units` = **[1024, 512] + ReLU**；AS
 
 #### C.2.2 奖励（5 项手写，权重和为 1.0）
 
-`r = Σ wᵢ · exp(−sᵢ · eᵢ)`，全部 `reward_kind: handcrafted`：
+`r = Σ wᵢ · exp(−sᵢ · eᵢ)`，全部 `rewardKind: handcrafted`：
 
 | 奖励项 | 权重 w | 尺度 s | 六类 | 误差 e 的定义 |
 |---|---|---|---|---|
@@ -849,7 +964,7 @@ PPO（`mimickit/learning/ppo_agent.py`）：actor / critic 均 `[1024, 512] + Re
 
 出处：`mimickit/learning/awr_agent.py`、`data/agents/deepmimic_humanoid_awr_agent.yaml`。论文 <https://arxiv.org/abs/1910.00177>。
 
-**环境与 DeepMimic 完全同一份文件**（`data/envs/deepmimic_humanoid_env.yaml`）：观测 464 维、5 项手写奖励、终止条件、RSI 全部一致。这是 `inherits` 机制最干净的一个用例——`awr.json` 应当只包含 `learning` 泳道的差异。
+**环境与 DeepMimic 完全同一份文件**（`data/envs/deepmimic_humanoid_env.yaml`）：观测 464 维、5 项手写奖励、终止条件、RSI 全部一致。这是 `inherits` 机制最干净的一个用例——`awr.json` 应当只包含 `learn` 泳道的差异。
 
 唯一差别在 actor 的更新规则：不做 PPO 的比率裁剪，而是把优势指数化成回归权重。
 
@@ -861,7 +976,7 @@ PPO（`mimickit/learning/ppo_agent.py`）：actor / critic 均 `[1024, 512] + Re
 
 其余超参（SGD 1e-4、discount 0.99、td_lambda 0.95、epochs / batch、`action_bound_weight` 10.0）与 DeepMimic 逐项相同。
 
-`diff_summary`（§4.6 要求的一句话）：**「环境、观测、动作、奖励、终止条件与 DeepMimic 完全一致，只有 actor 的更新规则从 PPO 的比率裁剪换成了优势指数加权回归。」**
+`diffSummary`（§4.6 要求的一句话）：**「环境、观测、动作、奖励、终止条件与 DeepMimic 完全一致，只有 actor 的更新规则从 PPO 的比率裁剪换成了优势指数加权回归。」**
 
 ---
 
@@ -890,7 +1005,7 @@ PPO（`mimickit/learning/ppo_agent.py`）：actor / critic 均 `[1024, 512] + Re
 
 正样本 `disc_obs_demo` 从参考动作库按同样的 10 帧窗口采样（`fetch_disc_obs_demo`），负样本是策略自己的窗口 + 一个 **200 000 容量的回放缓冲**（每轮存入 1 000 条），后者防止判别器只针对最新策略过拟合。
 
-#### C.4.3 奖励（1 项，`reward_kind: adversarial`）
+#### C.4.3 奖励（1 项，`rewardKind: adversarial`）
 
 环境的 `_update_reward` 是**空实现**——AMP 环境不产生任何任务奖励，`task_reward_weight` 也是 0。总奖励只剩判别器一项：
 
@@ -962,13 +1077,13 @@ enc_loss = mean( −z · ẑ )               # 编码器损失
 
 #### C.5.3 奖励（两项生效，任务项置零）
 
-| 来源 | 权重 | `reward_kind` |
+| 来源 | 权重 | `rewardKind` |
 |---|---|---|
 | 判别器（形式同 AMP，`−2 log(1−D)`） | `disc_reward_weight: 0.5` | `adversarial` |
 | 编码器互信息 | `enc_reward_weight: 0.5` | `encoder` |
 | 任务 | `task_reward_weight: 0.0` | 不生效（预训练阶段无任务） |
 
-另有一项**只进损失不进奖励**的多样性正则，画在 `learning` 泳道：
+另有一项**只进损失不进奖励**的多样性正则，画在 `learn` 泳道：
 
 ```
 a_diff         = mean‖ μ(s, z′) − μ(s, z) ‖²      # 两个潜变量下动作均值的差
@@ -976,7 +1091,7 @@ z_diff         = 0.5 − 0.5 · (z′ · z)             # 两个潜变量本身�
 diversity_loss = ( diversity_tar − a_diff / z_diff )²
 ```
 
-`diversity_weight: 0.01`，`diversity_tar: 1.0`，`z′` 是重新采样的潜变量。它要求「潜变量差多少，动作就该差多少」，防止策略忽略 z 而退化成单一行为。数据模型上它不是 RewardTerm 而是一个 `learning` 泳道的节点 + 一条 `kind: "grad"` 的虚线边——这个区分很重要：它影响的是梯度，不进入 TD 回报，画成奖励项会误导读者。
+`diversity_weight: 0.01`，`diversity_tar: 1.0`，`z′` 是重新采样的潜变量。它要求「潜变量差多少，动作就该差多少」，防止策略忽略 z 而退化成单一行为。数据模型上它不是 RewardTerm 而是一个 `learn` 泳道的节点 + 一条 `kind: "grad"` 的虚线边——这个区分很重要：它影响的是梯度，不进入 TD 回报，画成奖励项会误导读者。
 
 #### C.5.4 初始状态：一半参考、一半默认站姿
 
@@ -1026,9 +1141,9 @@ actor_loss += lcp_weight × lcp_loss        # lcp_weight = 0.002
 
 `LCPAgent` 被写成一个可以套在任意 agent 上的包装类（默认继承 `PPOAgent`），文档明确说 `lcp_weight` 是这个方法唯一需要调的关键参数。
 
-这一项在数据模型里的位置值得注意：它**既不是奖励也不是观测**，而是 `learning` 泳道里一个作用于 actor 的约束节点，用 `kind: "grad"` 的虚线连回 actor。它和 SONIC 的 `anti_shake_ang_vel`、BeyondMimic 的 `action_rate_l2` 想解决的是同一个问题（动作抖动伤硬件），但一个是改损失、两个是加奖励项。**把这三者并排放在对比视图里，是页面能给出的最好一组「同一工程问题的三种技术路径」**。
+这一项在数据模型里的位置值得注意：它**既不是奖励也不是观测**，而是 `learn` 泳道里一个作用于 actor 的约束节点，用 `kind: "grad"` 的虚线连回 actor。它和 SONIC 的 `anti_shake_ang_vel`、BeyondMimic 的 `action_rate_l2` 想解决的是同一个问题（动作抖动伤硬件），但一个是改损失、两个是加奖励项。**把这三者并排放在对比视图里，是页面能给出的最好一组「同一工程问题的三种技术路径」**。
 
-`diff_summary`：**「环境（G1）、观测、动作、奖励、终止条件与 DeepMimic 的 G1 配置完全一致，只在 actor 损失上加了一项对观测的梯度平方罚（权重 0.002），用于把策略约束成 Lipschitz 连续以获得平滑动作。」**
+`diffSummary`：**「环境（G1）、观测、动作、奖励、终止条件与 DeepMimic 的 G1 配置完全一致，只在 actor 损失上加了一项对观测的梯度平方罚（权重 0.002），用于把策略约束成 Lipschitz 连续以获得平滑动作。」**
 
 ---
 
@@ -1116,7 +1231,7 @@ actor_loss += lcp_weight × lcp_loss        # lcp_weight = 0.002
 
 在图上它是一个带「锁」角标的节点，两条出边：一条去奖励（C.8.3），一条去初始状态（C.8.5）。
 
-#### C.8.3 SDS 奖励（`reward_kind: generative`）
+#### C.8.3 SDS 奖励（`rewardKind: generative`）
 
 对每个扩散步 t ∈ {22, 15, 8}：给归一化后的观测窗口加上该噪声水平的噪声，让冻结先验去噪并还原出噪声预测，取**噪声预测误差的均方值**作为该档的分数（`ESM_SDS_loss`，返回形状 `(batch, 3)`）。先验越认为这段动作「像它见过的动作」，误差越小。
 
@@ -1172,7 +1287,7 @@ r          = task_reward_weight × task_r + smp_reward_weight × smp_r
 
 #### C.8.6 算法与网络
 
-PPO，actor / critic `[1024, 512] + ReLU`，SGD lr 1e-4，固定 std 0.05，`critic_loss_weight: 1.0`，其余同 C.1.6。**没有判别器、没有编码器**——`SMPModel` 直接继承 `PPOModel`，没有添加任何网络。SMP 的全部复杂度都在那个冻结的先验里，这一点在图上会表现为「`learning` 泳道很简单，`prior` 泳道很重」，与 ASE 恰好相反。
+PPO，actor / critic `[1024, 512] + ReLU`，SGD lr 1e-4，固定 std 0.05，`critic_loss_weight: 1.0`，其余同 C.1.6。**没有判别器、没有编码器**——`SMPModel` 直接继承 `PPOModel`，没有添加任何网络。SMP 的全部复杂度都在那个冻结的先验里，这一点在图上会表现为「`learn` 泳道很简单，`disc` 泳道很重」，与 ASE 恰好相反。
 
 ---
 
@@ -1202,7 +1317,7 @@ PPO，actor / critic `[1024, 512] + ReLU`，SGD lr 1e-4，固定 std 0.05，`cri
 
 2. **潜空间接口的两种来源。** ASE 的 64 维技能潜变量与 SONIC 的 64 维 FSQ token 维度相同、位置相同（都拼在本体观测后进 actor），但来源相反：ASE 的 z 是**采样出来的**，语义由编码器的互信息目标事后赋予；SONIC 的 token 是**编码出来的**，语义由三个上游编码器事先约定。一个是「给策略一个随机指令，逼它自己划分技能」，一个是「给策略一个统一接口，让不同上游都能接」。两者在图上是同一个位置、同一个维度的同一个框，唯一的区别就写在 `acquisition` 上：ASE 是 `sampled`，SONIC 是 `estimate`（编码器学出来的）。整个数据模型里没有别的字段能承担这个区分——`acquisition` 的价值在这里体现得最充分。
 
-3. **抖动问题的三条技术路径。** 同一个「动作抖动伤硬件」的问题：BeyondMimic 加奖励项（`action_rate_l2`，−0.1）、SONIC 加奖励项（`anti_shake_ang_vel` −5e-3 与 `feet_acc` −2.5e-6）、LCP 改损失函数（Lipschitz 梯度罚 0.002）。前两者在奖励面板里，后者在 `learning` 泳道里，如果没有 §3.2 的 `reward_kind` 与 §4.4 的 `kind: "grad"` 区分，这三者会被画成看起来无关的东西。把它们并排放在对比视图里，是页面能提供的最实用的一条工程结论。
+3. **抖动问题的三条技术路径。** 同一个「动作抖动伤硬件」的问题：BeyondMimic 加奖励项（`action_rate_l2`，−0.1）、SONIC 加奖励项（`anti_shake_ang_vel` −5e-3 与 `feet_acc` −2.5e-6）、LCP 改损失函数（Lipschitz 梯度罚 0.002）。前两者在奖励面板里，后者在 `learn` 泳道里，如果没有 §3.2 的 `rewardKind` 与 §4.4 的 `kind: "grad"` 区分，这三者会被画成看起来无关的东西。把它们并排放在对比视图里，是页面能提供的最实用的一条工程结论。
 
 ---
 
