@@ -2,20 +2,26 @@
 
 import { el, clear } from "./dom.js";
 
-export function renderCompare({ container, projects, modeId, taxonomy }) {
+/**
+ * 对比视图：当前项目 vs 一个选定的对比对象。
+ *
+ * 刻意只比两个而不是全部项目——项目多起来之后，几十列的表既排不下也读不动，
+ * 「拿谁跟谁比」本身就是读者的问题。
+ */
+export function renderCompare({
+  container,
+  base,
+  other,
+  modeId,
+  taxonomy,
+  entries,
+  compareId,
+  onChangeCompare,
+  loading = false,
+}) {
   clear(container);
-  const usable = projects.filter((p) => p.modes[modeId]);
-  if (usable.length < 2) {
-    container.append(
-      el("div", { class: "section-head" }, [
-        el("h2", { text: "对比" }),
-        el("p", { text: "至少需要两个项目都提供该模式才能对比。" }),
-      ])
-    );
-    return;
-  }
 
-  const modeLabel = usable[0].modes[modeId].label;
+  const modeLabel = base.modes[modeId]?.label ?? modeId;
   container.append(
     el("div", { class: "section-head" }, [
       el("h2", { text: `${modeLabel}对比` }),
@@ -26,10 +32,58 @@ export function renderCompare({ container, projects, modeId, taxonomy }) {
     ])
   );
 
-  container.append(factsTable(usable, modeId));
-  container.append(obsTable(usable, modeId, taxonomy));
+  const candidates = entries.filter((entry) => entry.id !== base.id);
+  container.append(
+    el("div", { class: "cmp-controls" }, [
+      el("span", { text: `把 ${base.name} 与` }),
+      candidates.length
+        ? el(
+            "select",
+            {
+              class: "cmp-select",
+              "aria-label": "选择对比对象",
+              onChange: (event) => onChangeCompare(event.target.value),
+            },
+            candidates.map((entry) =>
+              el("option", {
+                value: entry.id,
+                selected: entry.id === compareId,
+                text: entry.name,
+              })
+            )
+          )
+        : el("span", { text: "（暂无其他项目）" }),
+      el("span", { text: "对比" }),
+    ])
+  );
+
+  if (!candidates.length) {
+    container.append(
+      el("p", { class: "reward-scale-note", text: "注册表里只有一个项目，加入第二个后即可对比。" })
+    );
+    return;
+  }
+
+  if (loading || !other) {
+    container.append(el("p", { class: "reward-scale-note", text: "正在加载对比项目…" }));
+    return;
+  }
+
+  if (!other.modes[modeId]) {
+    container.append(
+      el("p", {
+        class: "reward-scale-note",
+        text: `${other.name} 没有提供「${modeLabel}」这个模式，换一个模式或对比对象。`,
+      })
+    );
+    return;
+  }
+
+  const pair = [base, other];
+  container.append(factsTable(pair, modeId));
+  container.append(obsTable(pair, modeId, taxonomy));
   if (modeId === "train") {
-    container.append(rewardTable(usable, modeId, taxonomy));
+    container.append(rewardTable(pair, modeId, taxonomy));
   } else {
     container.append(
       el("p", {
@@ -122,8 +176,8 @@ function obsTable(projects, modeId, taxonomy) {
     el("p", {
       class: "reward-scale-note",
       text:
-        "两点读法上的坑：同一个量在两个项目里可能落在不同类别（历史动作在 SONIC 带 10 帧窗口，算 C 类时序上下文；在 BeyondMimic 是单帧，算 A 类本体感知）；" +
-        "另外「非特权观测合计」不等于 Actor 的输入维度——SONIC 的 B 类里有一大部分是编码器侧的参考输入，会先被压成 64 维 token 才进主干。",
+        "两点读法上的坑：同一个量在不同项目里可能落进不同类别（带历史窗口的动作序列算 C 类时序上下文，单帧的上一动作算 A 类本体感知）；" +
+        "另外「非特权观测合计」不等于策略网络的输入维度——走编码器的项目会先把参考侧观测压成 token 再进主干。",
     }),
   ]);
 }
@@ -159,14 +213,12 @@ function rewardTable(projects, modeId, taxonomy) {
   // 两个项目里同一个奖励项的函数名往往不同（motion_global_anchor_pos vs
   // tracking_anchor_pos），所以用作者标注的 canonical 键配对。
   const keyOf = (reward) => reward.canonical ?? reward.id;
-  const groupsSeen = [];
   const rowMap = new Map();
   for (const [i, rewards] of rewardsByProject.entries()) {
     for (const reward of rewards) {
       const key = keyOf(reward);
       if (!rowMap.has(key)) {
         rowMap.set(key, { key, group: reward.group, label: reward.label, cells: [] });
-        if (!groupsSeen.includes(reward.group)) groupsSeen.push(reward.group);
       }
       rowMap.get(key).cells[i] = reward;
     }
@@ -216,15 +268,16 @@ function rewardTable(projects, modeId, taxonomy) {
     ])
   );
 
-  const shared = rows.filter(
-    (row) => row.cells.filter(Boolean).length === projects.length
-  ).length;
+  const shared = rows.filter((row) => row.cells.filter(Boolean).length === projects.length).length;
+  const mostlyShared = shared >= rows.length * 0.6;
 
   return tableWrap([
     el("table", { class: "cmp" }, [head(projects, "奖励项（权重）"), body]),
     el("p", {
       class: "reward-scale-note",
-      text: `${shared} 项在两个项目里同名同权重。奖励设计上两条路线基本没有分歧，全部差异都落在观测侧与数据侧。`,
+      text: mostlyShared
+        ? `共 ${rows.length} 项，其中 ${shared} 项两边同名同权重——奖励设计上分歧很小，差异主要落在观测侧与数据侧。`
+        : `共 ${rows.length} 项，其中 ${shared} 项两边同名同权重。`,
     }),
   ]);
 }
