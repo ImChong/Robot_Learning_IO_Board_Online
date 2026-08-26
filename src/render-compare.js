@@ -28,7 +28,16 @@ export function renderCompare({ container, projects, modeId, taxonomy }) {
 
   container.append(factsTable(usable, modeId));
   container.append(obsTable(usable, modeId, taxonomy));
-  if (modeId === "train") container.append(rewardTable(usable, modeId, taxonomy));
+  if (modeId === "train") {
+    container.append(rewardTable(usable, modeId, taxonomy));
+  } else {
+    container.append(
+      el("p", {
+        class: "reward-scale-note",
+        text: "部署态没有奖励项对照——奖励只在训练期存在，切到训练态可以看逐项对照。",
+      })
+    );
+  }
 }
 
 function tableWrap(children) {
