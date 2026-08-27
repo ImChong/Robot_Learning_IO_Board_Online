@@ -72,6 +72,7 @@ export function renderDetail({ emptyEl, bodyEl, node, taxonomy, onClose }) {
       el("div", { class: "dd-dim", style: { borderLeft: `3px solid ${nodeColor(node, taxonomy)}` } }, [
         el("div", { class: "dd-dim-val", text: `${node.dim} 维` }),
         node.dimExpr ? el("div", { class: "dd-dim-expr", text: node.dimExpr }) : null,
+        node.dimLayout ? el("div", { class: "dd-dim-layout", text: node.dimLayout }) : null,
       ])
     );
   }

@@ -154,6 +154,10 @@
           "type": "string",
           "description": "可读的维度算式。若剥掉中文后是合法算式，校验脚本会求值并与 dim 比对。"
         },
+        "dimLayout": {
+          "type": "string",
+          "description": "这几个数按什么顺序排。只写维数不写顺序，读者没法把这一项和自己代码里的张量对上——四元数写成 4 维，是 (w, x, y, z) 还是 (x, y, z, w) 就丢了。带维度的观测与动作节点必填。"
+        },
         "checkSum": {
           "type": "boolean",
           "description": "为 true 时，校验脚本要求 dim 等于全部入边源节点 dim 之和。"

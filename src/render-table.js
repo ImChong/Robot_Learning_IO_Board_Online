@@ -30,7 +30,7 @@ function nodeTable(graph, taxonomy) {
     el(
       "tr",
       {},
-      ["泳道", "模块", "类别", "维度", "维度构成", "获取方式", "部署可得性", "训练噪声", "可信度", "出处"].map(
+      ["泳道", "模块", "类别", "维度", "维度构成", "分量顺序", "获取方式", "部署可得性", "训练噪声", "可信度", "出处"].map(
         (text) => el("th", { scope: "col", text })
       )
     ),
@@ -54,6 +54,7 @@ function nodeTable(graph, taxonomy) {
           el("td", { text: cls ? `${cls.id} · ${cls.name}` : "—" }),
           el("td", { class: "num", text: node.dim != null ? String(node.dim) : "—" }),
           mathCell(node.dimExpr, exprTex(node.dimExpr)),
+          el("td", { class: "tv-layout", text: node.dimLayout ?? "—" }),
           el("td", { text: acq && acq.id !== "none" ? acq.name : "—" }),
           el("td", { text: avail && avail.id !== "n/a" ? avail.name : "—" }),
           mathCell(node.noise, noiseTex(node.noise)),

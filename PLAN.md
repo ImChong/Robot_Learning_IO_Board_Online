@@ -69,15 +69,17 @@
 
 核对对象：[`xbpeng/MimicKit`](https://github.com/xbpeng/MimicKit)（`main` 分支，commit `2ed1e6c`）。这是同一作者把自己十年来七篇工作收进同一套代码的「方法博物馆」：环境、角色、控制频率、网络规模全部共用，**方法之间的差别被压缩到「奖励从哪来」和「策略额外吃什么」两件事上**。这正好是本页面的两个坐标轴，所以它是数据模型最好的压力测试对象。
 
-| 方法 | 年份 | 与前一方法的增量 | 策略观测（humanoid） | 奖励来源 |
-|---|---|---|---|---|
-| **DeepMimic** | 2018 | 基线：单段参考动作 + 手写 5 项跟踪奖励 | 140 + 3 帧未来参考 324 = **464** | 手写（5 项加权 exp） |
-| **AWR** | 2019 | 只换优化器：PPO → 优势加权回归 | **464**（与 DeepMimic 完全相同） | 手写（同上） |
-| **AMP** | 2021 | 去掉相位/参考观测，奖励改判别器 | **140** | 对抗（判别器，10 帧 × 142 维窗口） |
-| **ASE** | 2022 | 加 64 维技能潜变量 + 编码器互信息奖励 | 140 + z 64 = **204** | 对抗 0.5 + 编码器 0.5 |
-| **LCP** | 2025 | 只加一项 actor 损失：Lipschitz 梯度罚 | G1 上 **849** | 手写（同 DeepMimic） |
-| **ADD** | 2025 | 判别器改吃「参考 − 实测」的差分 | **464** | 对抗（差分判别器，1 帧 × 172 维） |
-| **SMP** | 2026 | 判别器换成冻结的扩散先验，奖励用 SDS 损失 | **140**（+ 任务观测 2/5/6） | 生成式（SDS）：单段 1.0；任务版 SDS 0.5 + 任务 0.5 |
+| 方法 | 年份 | 与前一方法的增量 | 角色 | 策略观测 | 奖励来源 |
+|---|---|---|---|---|---|
+| **DeepMimic** | 2018 | 基线：单段参考动作 + 手写 5 项跟踪奖励 | **G1** | 237 + 3 帧未来参考 612 = **849** | 手写（5 项加权 exp） |
+| **AWR** | 2019 | 只换优化器：PPO → 优势加权回归 | humanoid | **464**（140 + 324） | 手写（同上） |
+| **AMP** | 2021 | 去掉相位/参考观测，奖励改判别器 | **G1** | **237** | 对抗（判别器，10 帧 × 239 维窗口） |
+| **ASE** | 2022 | 加 64 维技能潜变量 + 编码器互信息奖励 | humanoid | 140 + z 64 = **204** | 对抗 0.5 + 编码器 0.5 |
+| **LCP** | 2025 | 只加一项 actor 损失：Lipschitz 梯度罚 | **G1** | **849**（与 DeepMimic 逐项相同） | 手写（同 DeepMimic） |
+| **ADD** | 2025 | 判别器改吃「参考 − 实测」的差分 | **G1** | **849** | 对抗（差分判别器，1 帧 × 317 维） |
+| **SMP** | 2026 | 判别器换成冻结的扩散先验，奖励用 SDS 损失 | humanoid | **140**（+ 任务观测 2/5/6） | 生成式（SDS）：单段 1.0；任务版 SDS 0.5 + 任务 0.5 |
+
+**⟨M7 已落地：角色口径从「统一 humanoid」改成「有 G1 配置就用 G1」⟩** 首版按 §8 第 5 条统一取 humanoid，只有 LCP 例外。后来把 `data/envs` 与 `args/` 逐份数了一遍：DeepMimic、AMP、ADD、LCP 四个方法上游都发了 G1 配置（`deepmimic_g1_env` / `amp_g1_env` / `add_g1_env` + 对应的 agent 与 args），AWR、ASE、SMP 三个只有 humanoid。既然本站的另一半（BeyondMimic / SONIC）画的就是同一台 29 DoF 的 G1，能对齐就该对齐——现在九个项目里六个画 G1，剩下三个在页面上用批注说明「上游没发 G1 配置」，而不是替作者补一份不存在的。
 
 选它的四条理由：
 
@@ -243,6 +245,7 @@ MimicKit 的这条链形状相同但每一环的来源不同，是同一组模�
   "label": "参考 anchor 相对位置",
   "dim": 3,
   "dimExpr": "3",                     // 可读的维度算式，如 "29 × 10"；校验脚本会求值并与 dim 比对
+  "dimLayout": "(x, y, z)，机器人 anchor 系",  // ⟨M7⟩ 这几个数按什么顺序排；观测与动作节点必填
   "unit": "m",
   "acquisition": "estimate",          // direct | filter | estimate | given | sim-only | derived | none | ⟨sampled⟩
   "availability": "deploy-hard",      // deploy-ok | deploy-hard | train-only | n/a | ⟨sim-only⟩
@@ -258,6 +261,15 @@ MimicKit 的这条链形状相同但每一环的来源不同，是同一组模�
   "confidence": "verified"            // verified | derived | inferred
 }
 ```
+
+**⟨M7 新增 `dimLayout`：维度只标大小是不够的⟩** `dim` 回答「几个数」，`dimExpr` 回答「这几个数怎么乘出来的」，但两者都不回答**这几个数按什么顺序排**——而跨仓库搬一条策略时，出错的几乎总是顺序。三处实测到的坑：
+
+- **四元数**。同一台 Unitree G1：MimicKit 跑在 Isaac Gym 上，四元数是 `(x, y, z, w)`（`mimickit/util/torch_util.py` 的 `quat_mul` 逐分量可查，`tools/gmr_to_mimickit/` 的文档字符串也写明了）；BeyondMimic 与 SONIC 跑在 Isaac Lab 上，是 `(w, x, y, z)`（`gear_sonic/isaac_utils/rotations.py` 写在函数注释里）。两边都只写「4 维」的话，实部一个在首位一个在末位这件事在页面上根本看不见，而对拷之后维度对得上、报不出错、姿态整个错掉。
+- **关节顺序**。29 个自由度有三套排法：Isaac Lab 按运动树**广度优先**（左右交替、腰插在腿中间）、MJCF / 真机 SDK 按**深度优先**（左腿 6 → 右腿 6 → 腰 3 → 左臂 7 → 右臂 7）、MimicKit 按它自己 MJCF 的深度优先。SONIC 的部署栈为此专门维护了一张 29 项换序表（`gear_sonic_deploy/.../policy_parameters.hpp`）。
+- **多帧是整块还是交错**。SONIC 的 `command_multi_future` 是 `cat([joint_pos_multi_future, joint_vel_multi_future])`，即 **10 帧位置整块在前、10 帧速度整块在后**，而不是逐帧的 `(位置 29 + 速度 29) × 10`。原来的 `dimExpr` 写成 `(29 + 29) × 10 帧`，乘出来对但顺序读错——已改成 `29 × 10 帧 + 29 × 10 帧`。
+- **6D 旋转的展平方向**。`matrix_from_quat(q)[..., :2].reshape(N, -1)` 是把 3×2 的块**按行**摊平成 `(R₁₁, R₁₂, R₂₁, R₂₂, R₃₁, R₃₂)`，不是「先第一列再第二列」。
+
+所以 `kind` 为 `obs` 或 `act` 且带 `dim` 的节点**必须**写 `dimLayout`，`scripts/validate.mjs` 直接报错；其余带维度的节点（网络拼接、缓冲区）缺了只提示。渲染在节点卡片（夹两行 + `title`）、详情抽屉（不夹行）、表格视图的「分量顺序」列与讲解面板的角标上——四个出口都有，因为四个出口都是读者可能停下来抄数字的地方。
 
 上面用 `⟨⟩` 标出的两个取值是接 MimicKit 时要新增的，其余已上线。三个字段是这个页面的核心表达力，不能省：
 
@@ -365,9 +377,14 @@ MimicKit 里 DeepMimic 与 AWR 共用一份 `deepmimic_humanoid_env.yaml`，LCP 
 
 规则：合并在加载时完成，`validate.mjs` 对合并后的结果做全套校验；`diffSummary` 是必填的一句话，直接渲染在页面顶部，让读者立刻知道「这个项目和它的父项目差在哪」。继承只允许一层，禁止链式继承——两层以上就该老老实实写全量 JSON，否则数据文件会变成没人能读懂的补丁堆。
 
-**⟨M5 已落地，但适用范围比预期窄⟩** 实际只有 **AWR** 用得上继承。原先设想 LCP 也走继承，动手时才发现它随仓库提供的是 **G1** 配置（30 关节 / 29 自由度 / 849 维观测），与 humanoid 的每一个维度都不同——继承在那里帮不上忙，所以 `lcp.json` 写的是全量数据。**继承只在「同一份环境配置」时才划算**，这条边界写在这里，免得下一个人误以为「消融就该用继承」。
+**⟨M5 已落地，但适用范围比预期窄⟩** 首版只有 **AWR** 用得上继承。原先设想 LCP 也走继承，动手时才发现它随仓库提供的是 **G1** 配置（30 关节 / 29 自由度 / 849 维观测），与当时按 humanoid 画的 DeepMimic 每一个维度都不同——继承在那里帮不上忙，所以 `lcp.json` 写的是全量数据。**继承只在「同一份环境配置」时才划算**，这条边界写在这里，免得下一个人误以为「消融就该用继承」。
 
-即便只服务一个项目也值得做：`awr.json` 现在只有 60 行、通篇是差异，而「只有这一个框变了」本身就是这个项目要传达的全部信息。合并结果里被补丁命中的 id 会挂在 `__touched` 上，页面据此给那个框加「改动」角标（§5.2）。
+**⟨M7 更正：用得上继承的是 LCP，不是 AWR⟩** DeepMimic 的页面改画 G1 之后，这条边界把两个项目的位置对调了：
+
+- `args/lcp_g1_ppo_args.txt` 的 `--env_config` 指的正是 `deepmimic_g1_env.yaml`，与 `deepmimic_g1_ppo_args.txt` 同一份；agent 也只多一行 `lcp_weight: 0.002`。这是「同一份环境配置、只换算法」的教科书样本，`lcp.json` 因此从 850 行的全量数据缩成一段 overrides。
+- AWR 反过来：仓库里它只有 `deepmimic_humanoid_awr_args.txt`，环境是 humanoid 版。继承一个 G1 父项目会得到一整套错数字，所以 `awr.json` 改写全量数据，并在页面上说明它为什么留在 humanoid。
+
+边界本身没变，变的是谁落在边界的哪一侧——这恰好说明这条规则值得写下来：换角色就别用继承，维度全都不一样。合并结果里被补丁命中的 id 会挂在 `__touched` 上，页面据此给那个框加「改动」角标（§5.2）。
 
 落地时动了三个地方：
 
@@ -498,10 +515,10 @@ Robot_Learning_IO_Board_Online/
 │   ├── sonic.json
 │   └── mimickit/                # +
 │       ├── deepmimic.json       #   基准项目，AWR / LCP 继承它
-│       ├── awr.json             #   inherits: mimickit-deepmimic
+│       ├── awr.json             #   全量（humanoid，上游没发 G1 配置）
 │       ├── amp.json
 │       ├── ase.json
-│       ├── lcp.json             #   inherits: mimickit-deepmimic（G1 变体）
+│       ├── lcp.json             #   inherits: mimickit-deepmimic（同一份 G1 环境）
 │       ├── add.json
 │       └── smp.json
 ├── schema/
@@ -575,7 +592,7 @@ Robot_Learning_IO_Board_Online/
 **M5.1 手写奖励的三个方法（DeepMimic / AWR / LCP）** ✅
 
 - 落 `mimickit/deepmimic.json`（附录 C.2），用它检验 `sim-only` 可得性与 `modes: { train, test }` 这组开放键在真实数据上成立。
-- 落 `awr.json`（走 `inherits`，60 行、通篇是差异）与 `lcp.json`（G1，写全量——见 §4.6 里关于继承适用范围的说明）。
+- 落 `awr.json`（走 `inherits`，60 行、通篇是差异）与 `lcp.json`（G1，写全量——见 §4.6 里关于继承适用范围的说明）。**⟨M7 后两者对调：`lcp.json` 走继承，`awr.json` 写全量。⟩**
 - `data/projects.json`：加 `mimickit` 分组与三个条目（`file` 写 `mimickit/xxx.json`）。
 - 前端：继承项目在下拉里缩进显示 + 切换时的「只有这两个框变了」高亮。
 - 交付：三张训练态图 + 三张推理态图。数据模型的复用能力得到验证。
@@ -623,6 +640,36 @@ Robot_Learning_IO_Board_Online/
 
 窄屏那段规则本来就写着「顶栏必须保持一行」，但它的条件是 `max-width: 720px`——横屏手机宽 812/844/915，条件不成立，站名副标题还在，顶栏是两行文字、57px 高，在 390px 高的横屏上是一屏的 1/7 常驻。加了两条：矮视口（`max-height: 620px`）收起副标题并收紧上下内边距；「站名整段让位」的断点从 420px 提到 480px，因为 430/440px 的机型上站名一露面就把项目选择器压到 110px，只剩「Beyo… 1/9」。仓库改名为 Robot Learning IO Board Online 后站名更长，该断点再提到 560px。同一段视口范围内，讲解面板也从贴底改成贴右——横屏缺的是高度不是宽度。
 
+### M7 — MimicKit 改画 G1，维度补上分量顺序 ✅
+
+两件事一起做，因为它们指向同一个问题：**页面上的数字要能直接对进读者自己的代码**。
+
+**M7.1 有 G1 配置的方法就画 G1**
+
+首版按 §8 第 5 条统一取 humanoid。把 `data/envs`、`data/agents`、`args/` 三个目录逐份数过之后，这条口径改成「上游发了 G1 配置就取 G1」：
+
+| 方法 | 上游是否有 G1 配置 | 本站画什么 |
+|---|---|---|
+| DeepMimic | `deepmimic_g1_env` + `deepmimic_g1_ppo_agent` + `deepmimic_g1_ppo_args` | **G1**，849 维 |
+| AMP | `amp_g1_env` + `amp_g1_agent` + `amp_g1_args` | **G1**，237 维（判别器窗口 2390） |
+| ADD | `add_g1_env` + `add_g1_agent` + `add_g1_args` | **G1**，849 维（差分窗口 317） |
+| LCP | `deepmimic_g1_env` + `lcp_g1_agent` + `lcp_g1_ppo_args` | **G1**，849 维（本来就是） |
+| AWR | 只有 `deepmimic_humanoid_awr_agent` / `_args` | humanoid，464 维 + 页面批注 |
+| ASE | 只有 `ase_humanoid_env` 与剑盾变体 | humanoid，204 维 + 页面批注 |
+| SMP | 只有 `smp_humanoid_env` 与三个 humanoid 任务变体 | humanoid，146 维 + 页面批注 |
+
+九个项目里六个画同一台 29 DoF 的 Unitree G1，跨族比较不必再先换算角色。留在 humanoid 的三个不是漏做——上游没有那份配置，按 §8 第 6 条不许替作者编，所以在训练态第一条批注里写明「data/envs 下只有 humanoid，这张图以 humanoid 为准」。
+
+顺带把继承关系对调了（§4.6）：`lcp.json` 从 850 行全量缩成一段 overrides（它与 DeepMimic 的 `--env_config` 是同一份 `deepmimic_g1_env.yaml`），`awr.json` 从 60 行补丁展开成全量 humanoid 数据。ADD 的判别器窗口里那 93 维是「全部 31 个连杆的位置」，31 由 `joint_err_w` 长 30 反推（每个非根连杆挂一个关节槽），按 §8 第 6 条整格标 `derived` 并写明依据。
+
+**M7.2 维度加一个 `dimLayout`**
+
+`dim` 和 `dimExpr` 都不回答「这几个数按什么顺序排」，而这正是跨仓库搬策略时最常错的地方（§4.3 列了四类坑：四元数实部位置、三套关节顺序、多帧是整块还是交错、6D 旋转的展平方向）。新增字段 `dimLayout`，观测与动作节点必填，`validate.mjs` 强制；渲染在节点卡片、详情抽屉、表格视图新增的「分量顺序」列与讲解角标上。
+
+顺带纠正了两处 `dimExpr`：SONIC 的 `command_multi_future` 与 `command_multi_future_lower_body` 都是 `cat([位置整块, 速度整块])`，原来写成 `(29 + 29) × 10 帧` 乘出来对但顺序读错，改成 `29 × 10 帧 + 29 × 10 帧`。
+
+- 交付：九个项目 492 个节点全部带分量顺序，校验零警告。
+
 ---
 
 ## 8. 数据准确性规范
@@ -633,9 +680,10 @@ Robot_Learning_IO_Board_Online/
 2. **总维度只能是 `derived`**，由逐项 `verified` 的维度求和得出，并在页面上标 `≈` 角标。求和逻辑写进 `validate.mjs`，防止手算漏项。
 3. **区分「论文口径」与「开源实现口径」**。二者不一致时，以开源实现为图的主体，把论文口径放在节点的 `note` 里。已知的一处不一致：多份二手资料称 BeyondMimic 使用「历史本体感知堆叠」，但上游 `whole_body_tracking` 的策略观测组**没有设置 history_length**，是单帧观测 + 经验归一化。这类差异要在页面上明确写出来，而不是二选一悄悄采用。
 4. **记录核对时间与 commit**。数据文件里带 `verifiedAt` 与 `verifiedRef`（分支或 commit），因为上游仓库还在迭代（SONIC 已有 release / v1.1 / bones_seed / h2 多套配置）。
-5. **同一项目的多套配置要显式选一套并标明**。SONIC 首版以 `sonic_release` 为主，把 `sonic_v1_1` 的差异（heading 归一化、额外 energy 项、更大的 decoder）作为节点批注。MimicKit 每个方法都有 5–6 个角色的配置（humanoid / G1 / SMPL / Go2 / pi_plus），首版**统一以 humanoid 为准**（它是唯一随仓库分发 MJCF 的角色，可逐项核对），其余角色列成一张对照表放在项目详情里（附录 C.1）。LCP 例外：它只提供 G1 配置，就以 G1 为准并注明。
+5. **同一项目的多套配置要显式选一套并标明**。SONIC 首版以 `sonic_release` 为主，把 `sonic_v1_1` 的差异（heading 归一化、额外 energy 项、更大的 decoder）作为节点批注。MimicKit 每个方法都有 5–6 个角色的配置（humanoid / G1 / SMPL / Go2 / pi_plus）。首版统一取 humanoid，**⟨M7 改为：上游发了 G1 配置就取 G1⟩**——DeepMimic / AMP / ADD / LCP 四个方法有（`*_g1_env.yaml` + 对应 agent 与 args），就画 G1；AWR / ASE / SMP 只有 humanoid，就留在 humanoid 并在页面上说明原因。选这条口径是因为本站另一半（BeyondMimic / SONIC）画的就是同一台 29 DoF G1，能对齐的地方对齐，跨族比较才不必先换算角色。其余角色列成一张对照表放在项目详情里（附录 C.1）。
 6. **只在源文件里能读到的数字才算 `verified`**。MimicKit 的资产（除 humanoid 外）与动作数据需要另行下载，`data/assets/` 里只有 `humanoid.xml`。所以 G1 / SMPL / Go2 / pi_plus 的关节数与 DoF 数是从 `joint_err_w` 数组长度和 `init_pose` 数组长度反推的，必须标 `derived` 并在 `note` 里写清反推依据；连杆分组、关节限位、PD 增益这些只存在于未分发 XML 里的量，一律不写进数据文件，宁可留空。
 7. **学习式奖励不许伪造权重**。`rewardKind` 为 `adversarial` / `encoder` / `generative` 的项，`weight` 只能填配置里真实存在的混合系数（`disc_reward_weight` 等），不得为了让权重条好看而编造分项权重。这类项的信息量在 `model` 子对象里，不在权重里。
+8. **⟨M7⟩ 维度必须带分量顺序**。带 `dim` 的观测与动作节点必须写 `dimLayout`（见 §4.3），说明这几个数按什么顺序排；`validate.mjs` 强制。顺序推不出来的时候（如 G1 在 MimicKit 里的左右先后，MJCF 不随仓库分发）就写到能确定的粒度为止并说明依据，不许猜一个具体名字填上去——这条和第 6 条是同一个原则：宁可粗，不许编。
 
 ---
 
@@ -812,7 +860,25 @@ C++ + ONNX/TensorRT 栈（`gear_sonic_deploy/deploy.sh sim|real`），encoder �
 
 核对对象：`xbpeng/MimicKit`，`main` 分支，commit `2ed1e6c093bb0829f55d33cb4f7a1731cfe6cb69`（2026-06-23）。方法与文档入口见 `docs/README_{DeepMimic,AMP,AWR,ASE,LCP,ADD,SMP}.md`。
 
-除特别说明外，所有维度都以 **humanoid 角色**（`data/assets/humanoid/humanoid.xml`，随仓库分发，可逐项核对）+ **Isaac Gym 引擎配置**为准。
+除特别说明外，**本附录的所有维度都以 humanoid 角色**（`data/assets/humanoid/humanoid.xml`，随仓库分发，可逐项核对）+ **Isaac Gym 引擎配置**为准。这是首版核对时的口径，本节保持不动，因为 humanoid 是唯一能逐项核对的角色，反推 G1 的每一步都从这里出发。
+
+**⟨M7：上线数据里有四个方法画的是 G1，不是本附录的 humanoid⟩** DeepMimic / AMP / ADD / LCP 上游都发了 G1 配置，页面按 §8 第 5 条改口径后以 G1 为准；AWR / ASE / SMP 仍是本附录写的 humanoid。读本附录的维度时按这张表换算：
+
+| 量 | humanoid | G1 | 依据 |
+|---|---|---|---|
+| 连杆 / 关节 / DoF | 15 / 14 / 28 | 31 / 30 / 29 | `joint_err_w` 长 30、`init_pose` 长 35 = 6 + 29（`derived`） |
+| 关节旋转（tan-norm） | 14 × 6 = 84 | 30 × 6 = **180** | 含 1 个 0 自由度连杆的恒等旋转 |
+| 关节速度 / 动作 | 28 | **29** | = DoF |
+| 本体观测 `compute_char_obs` | 140 | **237** | 1 + 6 + 3 + 3 + 180 + 29 + 15 |
+| 单帧未来参考 `compute_tar_obs` | 108（×3 = 324） | **204**（×3 = **612**） | 3 + 6 + 180 + 15 |
+| DeepMimic / ADD 策略观测 | 464 | **849** | 237 + 612 |
+| AMP 判别器单帧 | 142（×10 = 1420） | **239**（×10 = **2390**） | 204 + 3 + 3 + 29 |
+| ADD 差分判别器单帧 | 172 | **317** | 3 + 6 + 180 + **31 连杆 × 3 = 93** + 3 + 3 + 29 |
+| key_bodies | 头 · 双手 · 双脚 | 双踝 roll · 头 · 双腕 yaw | `key_bodies` |
+| 允许接触连杆 | 双脚 | 双膝 · 双踝 pitch/roll | `contact_bodies` |
+| `zero_center_action` | `False` | `True` | 1 自由度关节的动作中心强制为 0 |
+
+G1 的 XML 不随仓库分发，所以「31 连杆」是从「每个非根连杆挂一个关节槽」反推的，用到它的那一格（ADD 的判别器窗口）整格标 `derived`。
 
 ### C.1 框架共性（七个方法共用的底座）
 
@@ -1317,14 +1383,17 @@ PPO，actor / critic `[1024, 512] + ReLU`，SGD lr 1e-4，固定 std 0.05，`cri
 
 ---
 
-### C.9 七方法横向对照表（humanoid，30 Hz）
+### C.9 七方法横向对照表（30 Hz）
+
+**⟨M7 更新：角色一列不再统一⟩** 有 G1 配置的四个方法改画 G1，维度随之变化。看这张表要先看第一行。
 
 | | DeepMimic | AWR | AMP | ASE | LCP | ADD | SMP |
 |---|---|---|---|---|---|---|---|
-| 环境文件 | `deepmimic_humanoid` | **同左** | `amp_humanoid` | `ase_humanoid` | `deepmimic_g1` | `add_humanoid` | `smp_humanoid` |
-| 策略观测 | 464 | 464 | 140 | 140 + z 64 = 204 | 849（G1） | 464 | 140（+ 任务 2/5/6） |
+| 角色 | **G1**（30 关节 / 29 DoF） | humanoid（14 / 28） | **G1** | humanoid | **G1** | **G1** | humanoid |
+| 环境文件 | `deepmimic_g1` | `deepmimic_humanoid` | `amp_g1` | `ase_humanoid` | **同 DeepMimic** | `add_g1` | `smp_humanoid` |
+| 策略观测 | 849 | 464 | 237 | 140 + z 64 = 204 | 849 | 849 | 140（+ 任务 2/5/6） |
 | 看得到参考动作 | 是（3 帧前瞻） | 是 | **否** | 否 | 是 | 是 | 否 |
-| 判别器/先验观测 | — | — | 10 帧 × 142 = 1420 | 1420 | — | 1 帧 × 172 | 10 帧 × 114 = 1140 |
+| 判别器/先验观测 | — | — | 10 帧 × 239 = 2390 | 10 帧 × 142 = 1420 | — | 1 帧 × 317 | 10 帧 × 114 = 1140 |
 | 手写奖励项数 | 5 | 5 | **0** | 0 | 5 | **0** | 0（任务项另计） |
 | 奖励来源 | 手写 | 手写 | 对抗 | 对抗 0.5 + 编码器 0.5 | 手写 | 对抗（差分） | 生成式（SDS） |
 | 判别器正样本 | — | — | 参考动作同窗口片段 | 同左 | — | **零向量** | — |
@@ -1333,13 +1402,18 @@ PPO，actor / critic `[1024, 512] + ReLU`，SGD lr 1e-4，固定 std 0.05，`cri
 | 额外损失项 | — | — | — | 多样性 0.01 | **Lipschitz 0.002** | — | — |
 | 主干宽度 | [1024, 512] | [1024, 512] | [1024, 512] | **[1024, 1024, 512]** | [1024, 512] | [1024, 512] | [1024, 512] |
 | 优化器 | SGD 1e-4 | SGD 1e-4 | SGD 1e-4 | **Adam 2e-5** | SGD 1e-4 | SGD 1e-4 | SGD 1e-4 |
-| 梯度罚系数 | — | — | 5 | 5 | — | **2** | — |
+| 梯度罚系数 | — | — | **10**（humanoid 版是 5） | 5 | — | **2** | — |
+| 数据文件 | 全量 | 全量 | 全量 | 全量 | **`inherits` DeepMimic** | 全量 | 全量 |
+
+`zero_center_action` 也随角色走：G1 与 pi_plus 为 `True`（1 自由度关节的动作中心强制为 0），humanoid 为 `False`（取关节量程中点）。这是「换角色」在配置里唯一一处不只是换文件名的开关。
 
 这张表本身就是对比视图要生成的东西。M5 结束时应当能用页面点出表里每一格，反过来说，如果页面点不出某一格，说明数据模型漏了字段。
 
 ### C.10 与第一批的三条跨族观察（M6 的素材）
 
-1. **同一台 G1，两种建模。** MimicKit 的 `deepmimic_g1_env` 与 BeyondMimic 的跟踪环境控制的是同一台 29 DoF Unitree G1：前者观测 849 维（含全局根位置、根线速度、3 帧未来参考）、无噪声无随机化、30 Hz；后者观测 160 维（刻意去掉全局位置，另提供 154 维的无状态估计变体）、逐项注入噪声、50 Hz。同一台机器人的观测维度差 5 倍，方向还相反——**动画路线往观测里加信息，真机路线从观测里减信息**。这一条比任何文字都更能说明「sim-to-real 到底约束了什么」。
+1. **同一台 G1，两种建模。** MimicKit 的 `deepmimic_g1_env` 与 BeyondMimic 的跟踪环境控制的是同一台 29 DoF Unitree G1：前者观测 849 维（含全局根位置、根线速度、3 帧未来参考）、无噪声无随机化、30 Hz；后者观测 160 维（刻意去掉全局位置，另提供 154 维的无状态估计变体）、逐项注入噪声、50 Hz。同一台机器人的观测维度差 5 倍，方向还相反——**动画路线往观测里加信息，真机路线从观测里减信息**。这一条比任何文字都更能说明「sim-to-real 到底约束了什么」。⟨M7 后这条对照从「一个方法对一个方法」扩成「四个对两个」：DeepMimic / AMP / ADD / LCP 都画 G1 了。⟩
+
+   **同一台 G1，还有两套数字表示。** 两条路线连四元数的分量顺序都不一样：MimicKit 在 Isaac Gym 上用 `(x, y, z, w)`，BeyondMimic 与 SONIC 在 Isaac Lab 上用 `(w, x, y, z)`；29 个关节的排列顺序更有三套（Isaac Lab 广度优先、MJCF 深度优先、真机 SDK 顺序，SONIC 的部署栈为此维护了一张换序表）。维度相同、顺序不同，是跨仓库搬策略时最不容易被发现的一类错——`dimLayout`（§4.3）就是为把它画出来加的。
 
 2. **潜空间接口的两种来源。** ASE 的 64 维技能潜变量与 SONIC 的 64 维 FSQ token 维度相同、位置相同（都拼在本体观测后进 actor），但来源相反：ASE 的 z 是**采样出来的**，语义由编码器的互信息目标事后赋予；SONIC 的 token 是**编码出来的**，语义由三个上游编码器事先约定。一个是「给策略一个随机指令，逼它自己划分技能」，一个是「给策略一个统一接口，让不同上游都能接」。两者在图上是同一个位置、同一个维度的同一个框，唯一的区别就写在 `acquisition` 上：ASE 是 `sampled`，SONIC 是 `estimate`（编码器学出来的）。整个数据模型里没有别的字段能承担这个区分——`acquisition` 的价值在这里体现得最充分。
 

@@ -3,10 +3,10 @@
   "name": "AMP",
   "subtitle": "奖励从手写公式换成判别器",
   "tagline": "不再逐帧告诉策略该摆什么姿态，只让一个判别器回答「刚才那 0.3 秒像不像人」。",
-  "robot": { "name": "MimicKit humanoid", "dof": 28, "trackedBodies": 5 },
+  "robot": { "name": "Unitree G1", "dof": 29, "trackedBodies": 5 },
   "rates": { "policyHz": 30, "physicsHz": 120, "note": "decimation=4，Isaac Gym；episode 10 s" },
-  "verifiedAt": "2026-08-26",
-  "verifiedRef": "main@2ed1e6c · amp_humanoid_env + amp_humanoid_agent",
+  "verifiedAt": "2026-08-27",
+  "verifiedRef": "main@2ed1e6c · amp_g1_env + amp_g1_agent",
   "links": {
     "论文": "https://xbpeng.github.io/projects/AMP/index.html",
     "代码": "https://github.com/xbpeng/MimicKit",
@@ -16,16 +16,17 @@
   "modes": {
     "train": {
       "label": "训练态",
-      "summary": "策略观测只剩 140 维本体量——参考动作对策略不可见，全部信息经由一个吃 10 帧 × 142 维窗口的判别器进入奖励。手写奖励项数：0。",
+      "summary": "策略观测只剩 237 维本体量——参考动作对策略不可见，全部信息经由一个吃 10 帧 × 239 维窗口的判别器进入奖励。手写奖励项数：0。",
       "facts": [
-        { "label": "策略观测", "value": "140 维" },
+        { "label": "角色", "value": "Unitree G1 · 29 DoF（MJCF 30 关节序）" },
+        { "label": "策略观测", "value": "237 维" },
         { "label": "本体历史深度", "value": "1 帧（单帧观测）" },
         { "label": "参考前瞻", "value": "无——策略看不到参考动作" },
         { "label": "上游接口", "value": "无，参考信息全部经由奖励进入" },
         { "label": "特权 critic 观测", "value": "无（critic 与 actor 同观测）" },
         { "label": "Actor 网络", "value": "MLP [1024, 512] · ReLU" },
         { "label": "奖励项", "value": "1 项" },
-        { "label": "奖励来源", "value": "对抗（判别器，10 帧 × 142 维窗口）" },
+        { "label": "奖励来源", "value": "对抗（判别器，10 帧 × 239 维窗口）" },
         { "label": "初始状态", "value": "参考状态初始化（RSI）+ 随机时刻" },
         { "label": "终止条件", "value": "2 条 · 无姿态判据" },
         { "label": "观测噪声", "value": "无" },
@@ -34,8 +35,8 @@
         { "label": "地形", "value": "plane" },
         { "label": "并行环境", "value": "4096" },
         { "label": "Actor 学习率", "value": "SGD 1e-4（固定）" },
-        { "label": "参考池", "value": "单段 humanoid_spinkick，或 56 条 locomotion 清单" },
-        { "label": "判别器正则", "value": "logit L2 0.01 · 双侧梯度罚 5" }
+        { "label": "参考池", "value": "单段 g1_walk（GMR 重定向）" },
+        { "label": "判别器正则", "value": "logit L2 0.01 · 双侧梯度罚 10" }
       ],
       "lanes": ["source", "proprio", "policy", "action", "plant", "disc", "learn"],
       "nodes": [
@@ -44,8 +45,9 @@
           "lane": "source",
           "kind": "proc",
           "label": "参考动作库",
-          "sub": "MotionLib",
+          "sub": "MotionLib · g1_walk.pkl",
           "desc": "每帧格式是 [根位置 3, 根旋转 3（指数映射）, 各关节旋转]。motion_file 指向单段 .pkl 或数据集清单。",
+          "note": "G1 的参考动作由 GMR 重定向后用 tools/gmr_to_mimickit/ 转成 MimicKit 格式。转换脚本的文档字符串写明输入四元数是 (x, y, z, w)，落盘前会转成 3 维指数映射——所以动作文件里没有四元数，wxyz / xyzw 之争只发生在转换脚本的入口。",
           "source": { "repo": "MimicKit", "path": "mimickit/anim/motion_lib.py", "symbol": "MotionLib" },
           "confidence": "verified"
         },
@@ -56,9 +58,9 @@
           "label": "动作与时刻采样",
           "sub": "rand_reset: True",
           "desc": "按权重采样一段动作，再在整段时长上均匀采样起始时刻。",
+          "note": "没有失败率反馈。真机路线的两个项目都在这里加了自适应采样。",
           "source": { "repo": "MimicKit", "path": "mimickit/anim/motion_lib.py", "symbol": "sample_motions" },
-          "confidence": "verified",
-          "note": "没有失败率反馈。真机路线的两个项目都在这里加了自适应采样。"
+          "confidence": "verified"
         },
         {
           "id": "s.rsi",
@@ -78,6 +80,7 @@
           "label": "根高度",
           "sub": "root_height_obs",
           "dim": 1,
+          "dimLayout": "(z)，世界系绝对高度",
           "unit": "m",
           "acquisition": "sim-only",
           "availability": "deploy-hard",
@@ -95,11 +98,12 @@
           "label": "根姿态（世界系）",
           "sub": "quat_to_tan_norm",
           "dim": 6,
+          "dimLayout": "(t_x, t_y, t_z, n_x, n_y, n_z)，由 (x, y, z, w) 四元数算出",
           "acquisition": "sim-only",
           "availability": "sim-only",
           "freqHz": 30,
           "desc": "根旋转用切向量 + 法向量的 6 维表示，避免四元数的双覆盖与欧拉角的万向锁。",
-          "note": "世界系姿态含绝对偏航角。真机上没有偏航的绝对参考，这一项没有对应通道——BeyondMimic 用「参考姿态在机体系下的相对表达」正是为了绕开它。",
+          "note": "Isaac Gym 的四元数按 (x, y, z, w) 存放（torch_util.quat_mul 逐分量可查），但喂给策略的不是它，而是把 x 轴与 z 轴各转一次得到的两个三维向量。BeyondMimic 与 SONIC 跑在 Isaac Lab 上，那边的四元数是 (w, x, y, z)——同一台 G1，实部一个在末位一个在首位，跨库搬运时最容易在这里错位。",
           "source": { "repo": "MimicKit", "path": "mimickit/envs/char_env.py", "symbol": "compute_char_obs" },
           "confidence": "verified"
         },
@@ -111,6 +115,7 @@
           "label": "根线速度（世界系）",
           "sub": "root_vel",
           "dim": 3,
+          "dimLayout": "(v_x, v_y, v_z)，世界系",
           "unit": "m/s",
           "acquisition": "sim-only",
           "availability": "deploy-hard",
@@ -128,6 +133,7 @@
           "label": "根角速度（世界系）",
           "sub": "root_ang_vel",
           "dim": 3,
+          "dimLayout": "(ω_x, ω_y, ω_z)，世界系",
           "unit": "rad/s",
           "acquisition": "sim-only",
           "availability": "sim-only",
@@ -143,14 +149,15 @@
           "kind": "obs",
           "class": "A",
           "label": "关节旋转",
-          "sub": "14 关节 × tan-norm 6",
-          "dim": 84,
-          "dimExpr": "14 × 6",
+          "sub": "30 关节 × tan-norm 6",
+          "dim": 180,
+          "dimExpr": "30 × 6",
+          "dimLayout": "关节 1…30（MJCF 深度优先，含 1 个 0 自由度连杆） × (t_x, t_y, t_z, n_x, n_y, n_z)",
           "acquisition": "direct",
           "availability": "deploy-ok",
           "freqHz": 30,
-          "desc": "14 个关节各自的旋转，逐个转成 6 维 tan-norm 表示。",
-          "note": "这里是**关节数**而不是自由度数：28 自由度分布在 14 个关节上，0 自由度的连杆（如手）仍然占一份恒等旋转。算错这一项是 MimicKit 观测维度对不上的头号原因。",
+          "desc": "30 个关节各自的旋转，逐个转成 6 维 tan-norm 表示。",
+          "note": "这里是**关节数**而不是自由度数：29 自由度分布在 30 个关节上，那个 0 自由度的连杆仍然占一份恒等旋转（joint_err_w 里权重为 0 的第 16 项就是它）。算错这一项是 MimicKit 观测维度对不上的头号原因。",
           "source": { "repo": "MimicKit", "path": "mimickit/envs/char_env.py", "symbol": "compute_char_obs" },
           "confidence": "verified"
         },
@@ -161,12 +168,13 @@
           "class": "A",
           "label": "关节速度",
           "sub": "dof_vel",
-          "dim": 28,
+          "dim": 29,
+          "dimLayout": "自由度 1…29（MJCF 深度优先：腿 ×2 各 6 · 腰 3 · 臂 ×2 各 7）",
           "unit": "rad/s",
           "acquisition": "filter",
           "availability": "deploy-ok",
           "freqHz": 30,
-          "desc": "28 个自由度的角速度，与自由度数一致（不含 0 自由度关节）。",
+          "desc": "29 个自由度的角速度，与自由度数一致（不含 0 自由度关节）。",
           "note": "真机上是编码器差分加低通，滤波器参数必须与训练时一致。",
           "source": { "repo": "MimicKit", "path": "mimickit/envs/char_env.py", "symbol": "compute_char_obs" },
           "confidence": "verified"
@@ -177,16 +185,17 @@
           "kind": "obs",
           "class": "A",
           "label": "关键连杆位置",
-          "sub": "key_bodies：head · 双手 · 双脚",
+          "sub": "key_bodies：左踝roll · 右踝roll · 头 · 左腕yaw · 右腕yaw",
           "dim": 15,
           "dimExpr": "5 × 3",
+          "dimLayout": "(左踝roll · 右踝roll · 头 · 左腕yaw · 右腕yaw) × (x, y, z)",
           "unit": "m",
           "acquisition": "sim-only",
           "availability": "sim-only",
           "freqHz": 30,
           "desc": "5 个关键连杆相对根连杆的位置。",
           "note": "关键连杆相对根位置，但保持世界系朝向。机体系的等价量可由前向运动学算出，世界系的不行。",
-          "source": { "repo": "MimicKit", "path": "data/envs/amp_humanoid_env.yaml", "symbol": "key_bodies" },
+          "source": { "repo": "MimicKit", "path": "data/envs/amp_g1_env.yaml", "symbol": "key_bodies" },
           "confidence": "verified"
         },
         {
@@ -195,8 +204,9 @@
           "kind": "net",
           "label": "观测拼接与归一化",
           "sub": "Normalizer · clip 10",
-          "dim": 140,
-          "dimExpr": "1 + 6 + 3 + 3 + 84 + 28 + 15",
+          "dim": 237,
+          "dimExpr": "1 + 6 + 3 + 3 + 180 + 29 + 15",
+          "dimLayout": "拼接顺序：根高 1 · 根姿 6 · 线速 3 · 角速 3 · 关节旋转 180 · 关节速度 29 · 关键连杆 15",
           "checkSum": true,
           "desc": "按固定顺序拼接观测项，再做经验归一化后送入网络。normalizer_samples = 1e8，等于全程在线更新统计量。",
           "note": "测试期归一化统计随模型一起加载，不再更新。",
@@ -209,9 +219,9 @@
           "kind": "net",
           "label": "Actor MLP",
           "sub": "[1024, 512] · ReLU",
-          "desc": "高斯策略，标准差固定为 0.05 且不退火（actor_std_type: FIXED），输出层初始化尺度 0.01。",
+          "desc": "高斯策略，标准差固定为 0.05 且不退火（actor_std_type: FIXED），输出层初始化尺度 0.01。zero_center_action: True——1 自由度关节的动作中心从「量程中点」挪到 0；这个开关只有 G1 与 pi_plus 打开。",
           "note": "训练时按分布采样、测试时取分布众数，所以推理态是确定性的。",
-          "source": { "repo": "MimicKit", "path": "data/agents/amp_humanoid_agent.yaml", "symbol": "actor_net" },
+          "source": { "repo": "MimicKit", "path": "data/agents/amp_g1_agent.yaml", "symbol": "actor_net" },
           "confidence": "verified"
         },
         {
@@ -223,7 +233,7 @@
           "sub": "[1024, 512] · ReLU",
           "availability": "train-only",
           "desc": "状态价值函数，只在训练期存在。",
-          "source": { "repo": "MimicKit", "path": "data/agents/amp_humanoid_agent.yaml", "symbol": "critic_net" },
+          "source": { "repo": "MimicKit", "path": "data/agents/amp_g1_agent.yaml", "symbol": "critic_net" },
           "confidence": "verified"
         },
         {
@@ -233,9 +243,10 @@
           "class": "O1",
           "label": "关节位置目标",
           "sub": "control_mode: pos",
-          "dim": 28,
+          "dim": 29,
+          "dimLayout": "自由度 1…29（MJCF 深度优先：腿 ×2 各 6 · 腰 3 · 臂 ×2 各 7），与 dof_vel 同序",
           "unit": "rad",
-          "desc": "策略输出 28 维关节位置目标，是 PD 控制器的 setpoint 而不是力矩。球关节用指数映射表示，1 自由度关节用转角。",
+          "desc": "策略输出 29 维关节位置目标，是 PD 控制器的 setpoint 而不是力矩。球关节用指数映射表示，1 自由度关节用转角。",
           "source": { "repo": "MimicKit", "path": "data/engines/isaac_gym_engine.yaml", "symbol": "control_mode" },
           "confidence": "verified"
         },
@@ -269,8 +280,8 @@
           "sub": "DOF_MODE_POS · 120 Hz",
           "freqHz": 120,
           "desc": "刚度与阻尼直接取自角色 MJCF 的 stiffness / damping，环境配置里没有增益这一项。所以在 MimicKit 里「换角色」等于「换执行器参数」。",
-          "note": "humanoid：腹 1000/100、颈 100/10、肩 400/40、肘 300/30、髋 500/50、膝 500/50、踝 400/40，每关节 armature 0.01–0.02。",
-          "source": { "repo": "MimicKit", "path": "data/assets/humanoid/humanoid.xml" },
+          "note": "G1 的 stiffness / damping / armature 全部写在 g1.xml 里，该文件不随仓库分发（data/assets/ 下只有 humanoid），所以本项目不给出具体数值。「换角色」在 MimicKit 里等于「换执行器参数」——这一格的值随 char_file 走，环境配置里一个字都没有。",
+          "source": { "repo": "MimicKit", "path": "data/envs/amp_g1_env.yaml", "symbol": "char_file" },
           "confidence": "verified"
         },
         {
@@ -280,8 +291,8 @@
           "label": "力矩限幅",
           "sub": "actuator gear",
           "desc": "上限来自 MJCF <actuator> 的 gear。",
-          "note": "humanoid：腹 200、颈 50、肩 100、肘 70、髋 200、膝 150、踝 90 N·m。",
-          "source": { "repo": "MimicKit", "path": "data/assets/humanoid/humanoid.xml" },
+          "note": "G1 的力矩上限来自 g1.xml 的 <actuator> gear，该文件不随仓库分发，所以本项目不给出具体数值。",
+          "source": { "repo": "MimicKit", "path": "data/envs/amp_g1_env.yaml", "symbol": "char_file" },
           "confidence": "verified"
         },
         {
@@ -310,9 +321,9 @@
           "lane": "plant",
           "kind": "plant",
           "label": "接触检测",
-          "sub": "允许接触：双脚",
+          "sub": "允许接触：双膝 · 双踝 pitch/roll",
           "desc": "除允许列表之外的连杆一旦有地面接触力超过 0.1 N 就判为摔倒。",
-          "source": { "repo": "MimicKit", "path": "data/envs/amp_humanoid_env.yaml", "symbol": "contact_bodies" },
+          "source": { "repo": "MimicKit", "path": "data/envs/amp_g1_env.yaml", "symbol": "contact_bodies" },
           "confidence": "verified"
         },
         {
@@ -332,13 +343,14 @@
           "kind": "obs",
           "label": "策略侧观测窗口",
           "sub": "num_disc_obs_steps: 10 · 0.3 s",
-          "dim": 1420,
-          "dimExpr": "(3 + 6 + 84 + 15 + 3 + 3 + 28) × 10 帧",
+          "dim": 2390,
+          "dimExpr": "(3 + 6 + 180 + 15 + 3 + 3 + 29) × 10 帧",
+          "dimLayout": "帧 t−9…t × [根位置 (x, y, z) 3 · 根姿态 tan-norm 6 · 30 关节 × tan-norm 6 = 180 · (左踝roll · 右踝roll · 头 · 左腕yaw · 右腕yaw) × (x, y, z) = 15 · 线速度 3 · 角速度 3 · 关节速度 29]",
           "acquisition": "sim-only",
           "availability": "train-only",
           "freqHz": 30,
-          "desc": "过去 10 个控制周期（覆盖 0.3 s）的状态窗口，每帧 142 维：根位置 3 + 根姿态 6 + 关节旋转 84 + 关键连杆 15 + 根线速度 3 + 根角速度 3 + 关节速度 28。窗口以**末帧的根位姿**做平移归一化，所以判别器看的是「这 0.3 s 里身体怎么动」，与角色走到哪里无关。",
-          "note": "本项目 global_obs: True，即不做朝向归一化——判别器能分辨朝向。ASE 与三个任务环境用 False，会额外左乘朝向逆旋转。看着是同一个 1420 维窗口，其实不是同一个东西。",
+          "desc": "过去 10 个控制周期（覆盖 0.3 s）的状态窗口，每帧 239 维：根位置 3 + 根姿态 6 + 关节旋转 180 + 关键连杆 15 + 根线速度 3 + 根角速度 3 + 关节速度 29。窗口以**末帧的根位姿**做平移归一化，所以判别器看的是「这 0.3 s 里身体怎么动」，与角色走到哪里无关。",
+          "note": "本项目 global_obs: True，即不做朝向归一化——判别器能分辨朝向。ASE 与三个任务环境用 False，会额外左乘朝向逆旋转。看着是同一个窗口，其实不是同一个东西。",
           "source": { "repo": "MimicKit", "path": "mimickit/envs/amp_env.py", "symbol": "compute_disc_obs" },
           "confidence": "verified"
         },
@@ -348,8 +360,9 @@
           "kind": "obs",
           "label": "参考侧观测窗口",
           "sub": "fetch_disc_obs_demo",
-          "dim": 1420,
-          "dimExpr": "(3 + 6 + 84 + 15 + 3 + 3 + 28) × 10 帧",
+          "dim": 2390,
+          "dimExpr": "(3 + 6 + 180 + 15 + 3 + 3 + 29) × 10 帧",
+          "dimLayout": "帧 t−9…t × [根位置 (x, y, z) 3 · 根姿态 tan-norm 6 · 30 关节 × tan-norm 6 = 180 · (左踝roll · 右踝roll · 头 · 左腕yaw · 右腕yaw) × (x, y, z) = 15 · 线速度 3 · 角速度 3 · 关节速度 29]",
           "acquisition": "given",
           "availability": "train-only",
           "freqHz": 30,
@@ -366,7 +379,7 @@
           "sub": "200k 容量 · 每轮存 1000 条",
           "availability": "train-only",
           "desc": "把历史策略的窗口混进负样本，防止判别器只针对最新策略过拟合。",
-          "source": { "repo": "MimicKit", "path": "data/agents/amp_humanoid_agent.yaml", "symbol": "disc_buffer_size" },
+          "source": { "repo": "MimicKit", "path": "data/agents/amp_g1_agent.yaml", "symbol": "disc_buffer_size" },
           "confidence": "verified"
         },
         {
@@ -379,7 +392,7 @@
           "availability": "train-only",
           "desc": "二分类器：参考片段判 1、策略片段判 0，损失是两边 BCE 各取一半。SGD 2.5e-4、weight_decay 1e-4，每轮 2 个 epoch。",
           "note": "两处正则缺一不可：输出层权重的 L2（0.01）压住 logit 尺度，对**两侧**输入梯度的平方均值罚（5）让判别面平滑。少了梯度罚，判别器会迅速变成一个尖锐的记忆器，奖励信号随之失去梯度。",
-          "source": { "repo": "MimicKit", "path": "data/agents/amp_humanoid_agent.yaml", "symbol": "disc_net" },
+          "source": { "repo": "MimicKit", "path": "data/agents/amp_g1_agent.yaml", "symbol": "disc_net" },
           "confidence": "verified"
         },
         {
@@ -390,9 +403,9 @@
           "sub": "r = 2 · (−log(1 − D)) · 1 项",
           "availability": "train-only",
           "desc": "环境的 _update_reward 是空实现，task_reward_weight 也是 0——总奖励只剩判别器那一项。参考动作的全部信息都从这里进入策略。",
+          "note": "这是 AMP 的整个立论：不再告诉策略「现在该摆成什么姿态」，只告诉它「你刚才那 0.3 秒像不像人」。",
           "source": { "repo": "MimicKit", "path": "mimickit/learning/amp_agent.py", "symbol": "_compute_rewards" },
-          "confidence": "verified",
-          "note": "这是 AMP 的整个立论：不再告诉策略「现在该摆成什么姿态」，只告诉它「你刚才那 0.3 秒像不像人」。"
+          "confidence": "verified"
         },
         {
           "id": "l.term",
@@ -402,9 +415,9 @@
           "sub": "2 条",
           "availability": "train-only",
           "desc": "只剩两条：超时 10 s、允许列表外的连杆接触地面。",
+          "note": "pose_termination 关掉了，动作播完也不再判成功（motion_len_term 全为 False）。AMP 不跟踪具体某一帧，「偏离参考 1 m」这个判据失去了意义。",
           "source": { "repo": "MimicKit", "path": "mimickit/envs/deepmimic_env.py", "symbol": "compute_done" },
-          "confidence": "verified",
-          "note": "pose_termination 关掉了，动作播完也不再判成功（motion_len_term 全为 False）。AMP 不跟踪具体某一帧，「偏离参考 1 m」这个判据失去了意义。"
+          "confidence": "verified"
         },
         {
           "id": "l.ppo",
@@ -414,7 +427,7 @@
           "sub": "clip 0.2",
           "availability": "train-only",
           "desc": "γ 0.99、λ 0.95、clip 0.2、norm_adv_clip 4.0、action_bound_weight 10.0，熵与动作正则权重为 0。 actor 与 critic 都用 SGD 1e-4。",
-          "source": { "repo": "MimicKit", "path": "data/agents/amp_humanoid_agent.yaml", "symbol": "actor_optimizer" },
+          "source": { "repo": "MimicKit", "path": "data/agents/amp_g1_agent.yaml", "symbol": "actor_optimizer" },
           "confidence": "verified"
         }
       ],
@@ -422,7 +435,7 @@
         { "from": "s.motion", "to": "s.sampler", "kind": "flow" },
         { "from": "s.sampler", "to": "s.rsi", "kind": "flow" },
         { "from": "s.rsi", "to": "e.sim", "kind": "init", "label": "RSI 起点" },
-        { "from": "s.motion", "to": "d.demo", "kind": "ref", "label": "1420" },
+        { "from": "s.motion", "to": "d.demo", "kind": "ref", "label": "2390" },
         { "from": "e.sim", "to": "o.root_h", "kind": "obs" },
         { "from": "e.sim", "to": "o.root_rot", "kind": "obs" },
         { "from": "e.sim", "to": "o.root_vel", "kind": "obs" },
@@ -470,26 +483,26 @@
           "weight": 1.0,
           "form": "\\lambda\\,\\bigl(-\\log\\left(1 - D(s)\\right)\\bigr)",
           "params": { "disc_reward_scale": 2.0, "disc_reward_weight": 1.0, "task_reward_weight": 0.0 },
-          "target": "过去 0.3 s 的运动窗口",
+          "target": "过去 0.3 s 的运动窗口（10 帧 × 239 维）",
           "direction": "positive",
           "model": {
             "inputs": ["d.window"],
             "positive": "参考动作库按同一 10 帧窗口随机采样的片段",
             "negative": "策略自己的窗口 + 200k 容量回放缓冲",
             "net": "[1024, 512] ReLU → 1 维 logit",
-            "regularizers": { "logit L2": 0.01, "双侧梯度罚": 5 },
+            "regularizers": { "logit L2": 0.01, "双侧梯度罚": 10 },
             "frozen": false
           },
           "desc": "判别器认为这段运动越像参考数据，奖励越高。整个项目只有这一项奖励。",
-          "note": "值域无上界：D → 1 时奖励发散，靠 1e-4 的下限夹住。这也是对抗奖励难调的原因之一——奖励尺度会随判别器强弱漂移，而手写的 exp 核奖励天然落在 (0, 1]。",
+          "note": "值域无上界：D → 1 时奖励发散，靠 1e-4 的下限夹住。这也是对抗奖励难调的原因之一——奖励尺度会随判别器强弱漂移，而手写的 exp 核奖励天然落在 (0, 1]。 G1 配置把双侧梯度罚从 humanoid 的 5 提到 10——观测维度大了 70%，判别面更容易被少数几维带偏，正则也就跟着加重。",
           "source": { "repo": "MimicKit", "path": "mimickit/learning/amp_agent.py", "symbol": "_calc_disc_rewards" },
           "confidence": "verified"
         }
       ],
       "callouts": [
         {
-          "title": "从 DeepMimic 切过来，看那 324 维去了哪里",
-          "body": "AMP 相对 DeepMimic 做的是减法：enable_tar_obs 关掉，三帧未来参考（324 维）整块消失，策略观测从 464 维降到 140 维。参考动作的信息一点没少，只是改从奖励侧进入——右边多出来的判别器就是它的新入口。代价是策略不再知道「下一步该做什么」，只知道「刚才那 0.3 秒像不像」，所以 AMP 学到的是风格而不是特定动作序列。"
+          "title": "从 DeepMimic 切过来，看那 612 维去了哪里",
+          "body": "AMP 相对 DeepMimic 做的是减法：enable_tar_obs 关掉，三帧未来参考（612 维）整块消失，策略观测从 849 维降到 237 维。参考动作的信息一点没少，只是改从奖励侧进入——右边多出来的判别器就是它的新入口。代价是策略不再知道「下一步该做什么」，只知道「刚才那 0.3 秒像不像」，所以 AMP 学到的是风格而不是特定动作序列。"
         },
         {
           "title": "移动靶奖励",
@@ -503,16 +516,17 @@
     },
     "test": {
       "label": "推理态",
-      "summary": "判别器整条支路退场，剩下 140 维观测 → MLP → 28 维关节目标。判别器只是训练期的脚手架，跑起来的策略比 DeepMimic 还简单。",
+      "summary": "判别器整条支路退场，剩下 237 维观测 → MLP → 29 维关节目标。判别器只是训练期的脚手架，跑起来的策略比 DeepMimic 还简单。",
       "facts": [
-        { "label": "策略观测", "value": "140 维（与训练态相同）" },
+        { "label": "角色", "value": "Unitree G1 · 29 DoF（MJCF 30 关节序）" },
+        { "label": "策略观测", "value": "237 维（与训练态相同）" },
         { "label": "相比训练态去掉", "value": "判别器 · 回放缓冲 · 两个观测窗口 · 奖励 · critic" },
         { "label": "依赖状态估计", "value": "依赖：世界系根姿态与速度都是仿真直读" },
         { "label": "网络", "value": "MLP [1024, 512] · ReLU（权重与归一化统计冻结）" },
         { "label": "运行时", "value": "同一份 Python 栈，--mode test" },
         { "label": "动作选取", "value": "取分布众数，无探索噪声" },
         { "label": "控制频率", "value": "30 Hz（PD 120 Hz）" },
-        { "label": "动作输出", "value": "28 维关节位置目标（O1）" }
+        { "label": "动作输出", "value": "29 维关节位置目标（O1）" }
       ],
       "lanes": ["source", "proprio", "policy", "action", "plant"],
       "nodes": [
@@ -521,8 +535,9 @@
           "lane": "source",
           "kind": "proc",
           "label": "参考动作库",
-          "sub": "MotionLib",
+          "sub": "MotionLib · g1_walk.pkl",
           "desc": "每帧格式是 [根位置 3, 根旋转 3（指数映射）, 各关节旋转]。motion_file 指向单段 .pkl 或数据集清单。",
+          "note": "G1 的参考动作由 GMR 重定向后用 tools/gmr_to_mimickit/ 转成 MimicKit 格式。转换脚本的文档字符串写明输入四元数是 (x, y, z, w)，落盘前会转成 3 维指数映射——所以动作文件里没有四元数，wxyz / xyzw 之争只发生在转换脚本的入口。",
           "source": { "repo": "MimicKit", "path": "mimickit/anim/motion_lib.py", "symbol": "MotionLib" },
           "confidence": "verified"
         },
@@ -544,6 +559,7 @@
           "label": "根高度",
           "sub": "root_height_obs",
           "dim": 1,
+          "dimLayout": "(z)，世界系绝对高度",
           "unit": "m",
           "acquisition": "sim-only",
           "availability": "deploy-hard",
@@ -561,11 +577,12 @@
           "label": "根姿态（世界系）",
           "sub": "quat_to_tan_norm",
           "dim": 6,
+          "dimLayout": "(t_x, t_y, t_z, n_x, n_y, n_z)，由 (x, y, z, w) 四元数算出",
           "acquisition": "sim-only",
           "availability": "sim-only",
           "freqHz": 30,
           "desc": "根旋转用切向量 + 法向量的 6 维表示，避免四元数的双覆盖与欧拉角的万向锁。",
-          "note": "世界系姿态含绝对偏航角。真机上没有偏航的绝对参考，这一项没有对应通道——BeyondMimic 用「参考姿态在机体系下的相对表达」正是为了绕开它。",
+          "note": "Isaac Gym 的四元数按 (x, y, z, w) 存放（torch_util.quat_mul 逐分量可查），但喂给策略的不是它，而是把 x 轴与 z 轴各转一次得到的两个三维向量。BeyondMimic 与 SONIC 跑在 Isaac Lab 上，那边的四元数是 (w, x, y, z)——同一台 G1，实部一个在末位一个在首位，跨库搬运时最容易在这里错位。",
           "source": { "repo": "MimicKit", "path": "mimickit/envs/char_env.py", "symbol": "compute_char_obs" },
           "confidence": "verified"
         },
@@ -577,6 +594,7 @@
           "label": "根线速度（世界系）",
           "sub": "root_vel",
           "dim": 3,
+          "dimLayout": "(v_x, v_y, v_z)，世界系",
           "unit": "m/s",
           "acquisition": "sim-only",
           "availability": "deploy-hard",
@@ -594,6 +612,7 @@
           "label": "根角速度（世界系）",
           "sub": "root_ang_vel",
           "dim": 3,
+          "dimLayout": "(ω_x, ω_y, ω_z)，世界系",
           "unit": "rad/s",
           "acquisition": "sim-only",
           "availability": "sim-only",
@@ -609,14 +628,15 @@
           "kind": "obs",
           "class": "A",
           "label": "关节旋转",
-          "sub": "14 关节 × tan-norm 6",
-          "dim": 84,
-          "dimExpr": "14 × 6",
+          "sub": "30 关节 × tan-norm 6",
+          "dim": 180,
+          "dimExpr": "30 × 6",
+          "dimLayout": "关节 1…30（MJCF 深度优先，含 1 个 0 自由度连杆） × (t_x, t_y, t_z, n_x, n_y, n_z)",
           "acquisition": "direct",
           "availability": "deploy-ok",
           "freqHz": 30,
-          "desc": "14 个关节各自的旋转，逐个转成 6 维 tan-norm 表示。",
-          "note": "这里是**关节数**而不是自由度数：28 自由度分布在 14 个关节上，0 自由度的连杆（如手）仍然占一份恒等旋转。算错这一项是 MimicKit 观测维度对不上的头号原因。",
+          "desc": "30 个关节各自的旋转，逐个转成 6 维 tan-norm 表示。",
+          "note": "这里是**关节数**而不是自由度数：29 自由度分布在 30 个关节上，那个 0 自由度的连杆仍然占一份恒等旋转（joint_err_w 里权重为 0 的第 16 项就是它）。算错这一项是 MimicKit 观测维度对不上的头号原因。",
           "source": { "repo": "MimicKit", "path": "mimickit/envs/char_env.py", "symbol": "compute_char_obs" },
           "confidence": "verified"
         },
@@ -627,12 +647,13 @@
           "class": "A",
           "label": "关节速度",
           "sub": "dof_vel",
-          "dim": 28,
+          "dim": 29,
+          "dimLayout": "自由度 1…29（MJCF 深度优先：腿 ×2 各 6 · 腰 3 · 臂 ×2 各 7）",
           "unit": "rad/s",
           "acquisition": "filter",
           "availability": "deploy-ok",
           "freqHz": 30,
-          "desc": "28 个自由度的角速度，与自由度数一致（不含 0 自由度关节）。",
+          "desc": "29 个自由度的角速度，与自由度数一致（不含 0 自由度关节）。",
           "note": "真机上是编码器差分加低通，滤波器参数必须与训练时一致。",
           "source": { "repo": "MimicKit", "path": "mimickit/envs/char_env.py", "symbol": "compute_char_obs" },
           "confidence": "verified"
@@ -643,16 +664,17 @@
           "kind": "obs",
           "class": "A",
           "label": "关键连杆位置",
-          "sub": "key_bodies：head · 双手 · 双脚",
+          "sub": "key_bodies：左踝roll · 右踝roll · 头 · 左腕yaw · 右腕yaw",
           "dim": 15,
           "dimExpr": "5 × 3",
+          "dimLayout": "(左踝roll · 右踝roll · 头 · 左腕yaw · 右腕yaw) × (x, y, z)",
           "unit": "m",
           "acquisition": "sim-only",
           "availability": "sim-only",
           "freqHz": 30,
           "desc": "5 个关键连杆相对根连杆的位置。",
           "note": "关键连杆相对根位置，但保持世界系朝向。机体系的等价量可由前向运动学算出，世界系的不行。",
-          "source": { "repo": "MimicKit", "path": "data/envs/amp_humanoid_env.yaml", "symbol": "key_bodies" },
+          "source": { "repo": "MimicKit", "path": "data/envs/amp_g1_env.yaml", "symbol": "key_bodies" },
           "confidence": "verified"
         },
         {
@@ -661,8 +683,9 @@
           "kind": "net",
           "label": "观测拼接与归一化",
           "sub": "Normalizer · clip 10",
-          "dim": 140,
-          "dimExpr": "1 + 6 + 3 + 3 + 84 + 28 + 15",
+          "dim": 237,
+          "dimExpr": "1 + 6 + 3 + 3 + 180 + 29 + 15",
+          "dimLayout": "拼接顺序：根高 1 · 根姿 6 · 线速 3 · 角速 3 · 关节旋转 180 · 关节速度 29 · 关键连杆 15",
           "checkSum": true,
           "desc": "按固定顺序拼接观测项，再做经验归一化后送入网络。normalizer_samples = 1e8，等于全程在线更新统计量。",
           "note": "测试期归一化统计随模型一起加载，不再更新。",
@@ -675,9 +698,9 @@
           "kind": "net",
           "label": "Actor MLP",
           "sub": "[1024, 512] · ReLU",
-          "desc": "高斯策略，标准差固定为 0.05 且不退火（actor_std_type: FIXED），输出层初始化尺度 0.01。",
+          "desc": "高斯策略，标准差固定为 0.05 且不退火（actor_std_type: FIXED），输出层初始化尺度 0.01。zero_center_action: True——1 自由度关节的动作中心从「量程中点」挪到 0；这个开关只有 G1 与 pi_plus 打开。",
           "note": "训练时按分布采样、测试时取分布众数，所以推理态是确定性的。",
-          "source": { "repo": "MimicKit", "path": "data/agents/amp_humanoid_agent.yaml", "symbol": "actor_net" },
+          "source": { "repo": "MimicKit", "path": "data/agents/amp_g1_agent.yaml", "symbol": "actor_net" },
           "confidence": "verified"
         },
         {
@@ -687,9 +710,10 @@
           "class": "O1",
           "label": "关节位置目标",
           "sub": "control_mode: pos",
-          "dim": 28,
+          "dim": 29,
+          "dimLayout": "自由度 1…29（MJCF 深度优先：腿 ×2 各 6 · 腰 3 · 臂 ×2 各 7），与 dof_vel 同序",
           "unit": "rad",
-          "desc": "策略输出 28 维关节位置目标，是 PD 控制器的 setpoint 而不是力矩。球关节用指数映射表示，1 自由度关节用转角。",
+          "desc": "策略输出 29 维关节位置目标，是 PD 控制器的 setpoint 而不是力矩。球关节用指数映射表示，1 自由度关节用转角。",
           "source": { "repo": "MimicKit", "path": "data/engines/isaac_gym_engine.yaml", "symbol": "control_mode" },
           "confidence": "verified"
         },
@@ -723,8 +747,8 @@
           "sub": "DOF_MODE_POS · 120 Hz",
           "freqHz": 120,
           "desc": "刚度与阻尼直接取自角色 MJCF 的 stiffness / damping，环境配置里没有增益这一项。所以在 MimicKit 里「换角色」等于「换执行器参数」。",
-          "note": "humanoid：腹 1000/100、颈 100/10、肩 400/40、肘 300/30、髋 500/50、膝 500/50、踝 400/40，每关节 armature 0.01–0.02。",
-          "source": { "repo": "MimicKit", "path": "data/assets/humanoid/humanoid.xml" },
+          "note": "G1 的 stiffness / damping / armature 全部写在 g1.xml 里，该文件不随仓库分发（data/assets/ 下只有 humanoid），所以本项目不给出具体数值。「换角色」在 MimicKit 里等于「换执行器参数」——这一格的值随 char_file 走，环境配置里一个字都没有。",
+          "source": { "repo": "MimicKit", "path": "data/envs/amp_g1_env.yaml", "symbol": "char_file" },
           "confidence": "verified"
         },
         {
@@ -734,8 +758,8 @@
           "label": "力矩限幅",
           "sub": "actuator gear",
           "desc": "上限来自 MJCF <actuator> 的 gear。",
-          "note": "humanoid：腹 200、颈 50、肩 100、肘 70、髋 200、膝 150、踝 90 N·m。",
-          "source": { "repo": "MimicKit", "path": "data/assets/humanoid/humanoid.xml" },
+          "note": "G1 的力矩上限来自 g1.xml 的 <actuator> gear，该文件不随仓库分发，所以本项目不给出具体数值。",
+          "source": { "repo": "MimicKit", "path": "data/envs/amp_g1_env.yaml", "symbol": "char_file" },
           "confidence": "verified"
         },
         {
@@ -764,9 +788,9 @@
           "lane": "plant",
           "kind": "plant",
           "label": "接触检测",
-          "sub": "允许接触：双脚",
+          "sub": "允许接触：双膝 · 双踝 pitch/roll",
           "desc": "除允许列表之外的连杆一旦有地面接触力超过 0.1 N 就判为摔倒。",
-          "source": { "repo": "MimicKit", "path": "data/envs/amp_humanoid_env.yaml", "symbol": "contact_bodies" },
+          "source": { "repo": "MimicKit", "path": "data/envs/amp_g1_env.yaml", "symbol": "contact_bodies" },
           "confidence": "verified"
         }
       ],
@@ -800,7 +824,7 @@
       "callouts": [
         {
           "title": "对抗训练的产物是一个普通策略",
-          "body": "判别器、回放缓冲、两个 1420 维窗口全部消失，留下的是一个和 DeepMimic 同样规模的 MLP。对抗只发生在训练期——这一点在图上一目了然，也是「AMP 推理开销比 DeepMimic 更低」（少了 324 维参考观测）这个反直觉事实的来源。"
+          "body": "判别器、回放缓冲、两个 2390 维窗口全部消失，留下的是一个和 DeepMimic 同样规模的 MLP。对抗只发生在训练期——这一点在图上一目了然，也是「AMP 推理开销比 DeepMimic 更低」（少了 612 维参考观测）这个反直觉事实的来源。"
         }
       ]
     }

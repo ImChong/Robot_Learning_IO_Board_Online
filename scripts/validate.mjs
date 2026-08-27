@@ -94,6 +94,15 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
       if (!node.availability) fail(at, "观测节点带维度但缺少 availability");
     }
 
+    // 只标大小不标顺序，读者没法把这一格和自己代码里的张量对上：同一台 G1，
+    // MimicKit（Isaac Gym）的四元数是 (x, y, z, w)，BeyondMimic / SONIC（Isaac Lab）是 (w, x, y, z)，
+    // 两边都只写「4 维」的话，这处最容易踩的坑在页面上根本看不见。
+    if (node.dim != null && node.dim > 0 && !node.dimLayout) {
+      const msg = `dim=${node.dim} 但没有 dimLayout（写清这几个数按什么顺序排）`;
+      if (node.kind === "obs" || node.kind === "act") fail(at, msg);
+      else warn(at, msg);
+    }
+
     // 每个带维度的节点都要能追溯到出处（同项目其他模式里的同 id 节点可以继承）。
     if (node.dim != null && node.confidence !== "derived" && !sourceIndex.has(node.id)) {
       fail(at, `dim=${node.dim} 但没有 source（且其他模式里也没有同 id 节点提供出处）`);

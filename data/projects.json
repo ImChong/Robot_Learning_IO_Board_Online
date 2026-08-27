@@ -86,8 +86,9 @@
         "PPO",
         "RSI",
         "早停",
-        "humanoid",
-        "spinkick",
+        "Unitree G1",
+        "g1_walk",
+        "GMR",
         "参考状态初始化",
         "手写奖励",
         "SFU",
@@ -111,6 +112,7 @@
         "off-policy",
         "Isaac Gym",
         "消融",
+        "humanoid",
         "SFU",
         "1910.00177"
       ]
@@ -132,6 +134,7 @@
         "梯度罚",
         "回放缓冲",
         "Isaac Gym",
+        "Unitree G1",
         "SFU",
         "TOG 2021",
         "2104.02180"
@@ -155,6 +158,7 @@
         "互信息",
         "多样性损失",
         "剑盾",
+        "humanoid",
         "NVIDIA",
         "TOG 2022",
         "2205.01906"
@@ -175,6 +179,8 @@
         "平滑",
         "抖动",
         "Unitree G1",
+        "消融",
+        "继承",
         "GMR",
         "重定向",
         "IROS 2025",
@@ -196,6 +202,7 @@
         "零向量正样本",
         "DiffNormalizer",
         "跟踪误差",
+        "Unitree G1",
         "SIGGRAPH Asia 2025",
         "2505.04961"
       ]
@@ -220,6 +227,7 @@
         "GSI",
         "生成式状态初始化",
         "dodgeball",
+        "humanoid",
         "2512.03028",
         "LaFAN1",
         "SIGGRAPH 2026"
