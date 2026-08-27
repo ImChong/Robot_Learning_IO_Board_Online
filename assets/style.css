@@ -1757,6 +1757,11 @@ table.cmp td.prose {
   padding: 12px var(--pad-x) 0;
   /* 宽屏故意不写 overflow-x。这一层一旦变成滚动容器，sticky 表头的包含块
      就不再是视口：原先 top: var(--header-h) 会把整行表头错位到第一行数据上。 */
+  /* KaTeX 每条公式都带一份 position: absolute 的 MathML（读屏与复制用，视觉上
+     裁成 1px）。没有这条 relative，它的包含块是初始包含块，窄屏下就绕过本层的
+     overflow-x 跑到表外，把整页撑出一条横向滚动。relative 不会让本层变成滚动
+     容器，上面那条约束仍然成立。 */
+  position: relative;
 }
 
 /* 表格比屏幕宽是刻意的（列不能合并，合并了就没法逐项核对），但横滑这件事
@@ -1805,8 +1810,37 @@ table.tv thead th {
 table.tv td.num {
   font-family: var(--font-mono);
   text-align: right;
+  /* KaTeX 会在二元运算符处断行，−2.5×10⁻⁶ 断成两行就不像一个数了。 */
+  white-space: nowrap;
 }
 table.tv td.mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+/* 「形式」「维度构成」「训练噪声」整格一条公式，交给 KaTeX 排，不走等宽字体
+   （等宽是源码的样子）。公式可能比列宽长：让这一格自己横滑，而不是把整张表撑宽。 */
+.tv-formula {
+  max-width: 320px;
+  overflow-x: auto;
+  font-size: 12px;
+}
+/* 「参数」列一格可能并排好几条，行内排；一条参数内部不断行，要断在两条之间。 */
+.tv-inline {
+  display: inline-block;
+  white-space: nowrap;
+}
+.tv-params {
+  font-size: 11.5px;
+}
+.tv-formula .katex,
+.tv-inline .katex,
+table.tv td.num .katex {
+  color: var(--text);
+}
+/* KaTeX 没加载出来时的兜底文本，仍按等宽排。 */
+.tv-formula code,
+.tv-inline code,
+.tv-params code {
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -2274,6 +2308,11 @@ table.tv caption {
   }
   .tv-wrap,
   .cmp-table-wrap {
+    overflow: visible;
+  }
+  /* 纸上没法横滑，公式该多宽就多宽。 */
+  .tv-formula {
+    max-width: none;
     overflow: visible;
   }
   table.tv thead th {

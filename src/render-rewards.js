@@ -1,14 +1,12 @@
 /** 奖励面板：按六类折叠，权重用对数刻度条，公式走 KaTeX。 */
 
-import { el, clear, renderMath } from "./dom.js";
+import { el, clear, queueMath } from "./dom.js";
 
 // 权重条的对数定义域。取 10^-4 ~ 10^1：上界覆盖 joint_limit 的 -10，
 // 下界不取更小是因为跨度一拉大，0.5 与 1.0 这类常用权重就几乎一样长了；
 // 比 10^-4 更小的权重（如 feet_acc 的 -2.5e-6）夹到最短，读作「基本可忽略」。
 const LOG_MIN = -4;
 const LOG_MAX = 1;
-
-const pendingFormulas = new Set();
 
 function barWidth(weight) {
   const mag = Math.log10(Math.abs(weight));
@@ -34,7 +32,6 @@ const LEARNED_LABEL = {
 
 export function renderRewards({ container, graph, taxonomy, project }) {
   clear(container);
-  pendingFormulas.clear();
 
   const rewards = graph.rewards ?? [];
   if (!rewards.length) {
@@ -86,8 +83,6 @@ export function renderRewards({ container, graph, taxonomy, project }) {
         "权重条用对数刻度（10⁻⁴ ~ 10¹）：各项权重跨了好几个数量级，线性刻度下小权重会完全看不见。绿色向右为正向奖励，红色向左为惩罚；比 10⁻⁴ 更小的权重夹到最短一格。",
     })
   );
-
-  flushFormulas();
 }
 
 function buildGroup(group, items, project) {
@@ -133,7 +128,7 @@ function buildItem(reward, group, project) {
   const body = el("div", { class: "ri-body" });
   if (reward.form) {
     const holder = el("div", { class: "ri-formula" });
-    pendingFormulas.add([holder, reward.form]);
+    queueMath(holder, reward.form);
     body.append(holder);
   }
   if (reward.desc) body.append(el("p", { text: reward.desc }));
@@ -208,21 +203,4 @@ function buildModelCard(reward) {
     dl.append(el("dt", { text: key }), el("dd", { text: value }));
   }
   return dl;
-}
-
-/** KaTeX 可能还没加载完，先记账，等 load 之后统一补渲染。 */
-function flushFormulas() {
-  let allDone = true;
-  for (const entry of pendingFormulas) {
-    const [holder, tex] = entry;
-    if (renderMath(holder, tex)) pendingFormulas.delete(entry);
-    else allDone = false;
-  }
-  if (!allDone && !flushFormulas.scheduled) {
-    flushFormulas.scheduled = true;
-    window.addEventListener("load", () => {
-      flushFormulas.scheduled = false;
-      flushFormulas();
-    });
-  }
 }
