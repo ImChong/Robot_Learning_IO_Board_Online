@@ -295,18 +295,37 @@ export function createGraphView({
 
   /* ---------- 筛选 ---------- */
 
+  function cancelOpacityAnimations(element) {
+    for (const animation of element.getAnimations()) {
+      const frames = animation.effect?.getKeyframes?.() ?? [];
+      if (frames.some((frame) => frame.opacity != null)) animation.cancel();
+    }
+  }
+
   function paintFilters() {
     if (!graph) return;
+    const hidden = new Set();
     for (const node of graph.nodes) {
       const element = nodeEls.get(node.id);
       if (!element) continue;
-      element.classList.toggle("filtered-out", !passesFilters(node, filters));
+      const hide = !passesFilters(node, filters);
+      if (hide) {
+        hidden.add(node.id);
+        // 入场淡入若残留 fill:forwards 的 opacity 动画，会压过 .filtered-out。
+        cancelOpacityAnimations(element);
+      }
+      element.classList.toggle("filtered-out", hide);
+    }
+    for (const path of svg.querySelectorAll("[data-from]")) {
+      const out = Boolean(filters) && (hidden.has(path.dataset.from) || hidden.has(path.dataset.to));
+      path.classList.toggle("filtered-out", out);
     }
   }
 
   function passesFilters(node, active) {
     if (!active) return true;
-    if (active.classes?.size && node.class && !active.classes.has(node.class)) return false;
+    // 「只看 A」= 只要 A。没有类别的结构节点也压暗，否则图上大半仍是亮的。
+    if (active.classes?.size && !active.classes.has(node.class)) return false;
     if (active.availability?.size) {
       const key = node.availability ?? "n/a";
       if (!active.availability.has(key)) return false;
@@ -548,14 +567,15 @@ export function createGraphView({
       const fresh = element.dataset.new === "1";
       if (fresh) {
         element.style.transform = target;
-        element.style.opacity = "0";
-        element.animate([{ opacity: 0 }, { opacity: 1 }], {
-          duration: animate ? 260 : 0,
-          delay: animate ? 140 : 0,
-          easing: "ease-out",
-          fill: "forwards",
-        });
-        element.style.opacity = "";
+        // 不要 fill:forwards：动画效果的 opacity:1 会压过 .filtered-out / .dimmed，
+        // 筛选与 hover 的明暗就都看不见了。未开补间时也不要跑 0ms 动画。
+        if (animate) {
+          element.animate([{ opacity: 0 }, { opacity: 1 }], {
+            duration: 260,
+            delay: 140,
+            easing: "ease-out",
+          });
+        }
       } else if (animate) {
         const from = element.style.transform || target;
         element.style.transform = target;

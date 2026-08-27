@@ -917,7 +917,8 @@ kbd {
   filter: grayscale(0.6);
 }
 .node.filtered-out {
-  opacity: 0.1;
+  opacity: 0.12;
+  filter: grayscale(0.75);
   pointer-events: none;
 }
 
@@ -1030,7 +1031,8 @@ kbd {
 .edge.dashed {
   stroke-dasharray: 5 4;
 }
-.edge.dimmed {
+.edge.dimmed,
+.edge.filtered-out {
   opacity: 0.1;
 }
 .edge.active {
@@ -1042,7 +1044,8 @@ kbd {
   fill: var(--text-faint);
   transition: opacity 0.25s;
 }
-.edge-label.dimmed {
+.edge-label.dimmed,
+.edge-label.filtered-out {
   opacity: 0.08;
 }
 .channel-label {
