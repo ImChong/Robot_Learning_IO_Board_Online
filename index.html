@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <!-- viewport-fit=cover：刘海屏横屏时页面铺到边，安全区由 CSS 的 env() 让出。 -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#151a22" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <title>Robot Learning IO Board · 人形机器人 RL 输入输出分析板</title>
     <meta
@@ -13,7 +13,7 @@
     />
     <link
       rel="icon"
-      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔌</text></svg>"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232d74da'/%3E%3Cg stroke='%23fff' fill='%23fff'%3E%3Cpath d='M9 10H15M9 22H15M15 10V22M15 16H23' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='9' cy='10' r='2.6' stroke='none'/%3E%3Ccircle cx='9' cy='22' r='2.6' stroke='none'/%3E%3Ccircle cx='23' cy='16' r='2.6' stroke='none'/%3E%3C/g%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="assets/style.css" />
     <!-- KaTeX 本地自带（vendor/katex，MIT）：不走 CDN，页面在离线与受限网络下也能正确排公式。 -->
@@ -23,55 +23,81 @@
   <body>
     <a class="skip-link" href="#canvas">跳到节点图</a>
 
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true">◨</span>
-        <span class="brand-text">
-          <strong>Robot Learning IO Board</strong>
-          <small>人形机器人 RL 的输入 · 输出 · 奖励函数分析板</small>
-        </span>
-      </div>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="site-title" href="./" aria-label="Robot Learning IO Board 首页">
+          <svg class="site-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="7" fill="currentColor" />
+            <g stroke="#fff" fill="#fff">
+              <path
+                d="M9 10H15M9 22H15M15 10V22M15 16H23"
+                stroke-width="2.2"
+                fill="none"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <circle cx="9" cy="10" r="2.6" stroke="none" />
+              <circle cx="9" cy="22" r="2.6" stroke="none" />
+              <circle cx="23" cy="16" r="2.6" stroke="none" />
+            </g>
+          </svg>
+          <span class="site-title-text">
+            <strong
+              >Robot Learning IO Board<span class="site-title-zh"> | 输入输出分析板</span></strong
+            >
+            <small>人形机器人 RL 的输入 · 输出 · 奖励函数分析板</small>
+          </span>
+        </a>
 
-      <div class="project-picker">
-        <button
-          class="picker-trigger"
-          id="picker-trigger"
-          type="button"
-          aria-haspopup="listbox"
-          aria-expanded="false"
-          title="切换项目（快捷键 P，[ ] 上下一个）"
-        >
-          <span class="picker-current" id="picker-current"></span>
-          <span class="picker-caret" aria-hidden="true">▾</span>
-        </button>
-
-        <div class="picker-panel" id="picker-panel" hidden>
-          <input
-            class="picker-search"
-            id="picker-search"
-            type="search"
-            role="combobox"
-            autocomplete="off"
-            aria-controls="picker-list"
+        <div class="project-picker">
+          <button
+            class="picker-trigger"
+            id="picker-trigger"
+            type="button"
+            aria-haspopup="listbox"
             aria-expanded="false"
-            placeholder="搜索项目、机器人、算法、机构…"
-            aria-label="搜索项目"
-          />
-          <div class="picker-list" id="picker-list" role="listbox" aria-label="项目列表"></div>
-          <p class="picker-empty" id="picker-empty" hidden>没有匹配的项目</p>
-        </div>
-      </div>
+            title="切换项目（快捷键 P，[ ] 上下一个）"
+          >
+            <span class="picker-current" id="picker-current"></span>
+            <span class="picker-caret" aria-hidden="true">▾</span>
+          </button>
 
-      <div class="topbar-actions">
-        <a
-          class="icon-btn"
-          href="https://github.com/ImChong/Robot_Learning_IO_Board"
-          target="_blank"
-          rel="noopener"
-          title="源码仓库"
-          >仓库</a
-        >
-        <button class="icon-btn" id="theme-toggle" type="button" title="切换主题">主题</button>
+          <div class="picker-panel" id="picker-panel" hidden>
+            <input
+              class="picker-search"
+              id="picker-search"
+              type="search"
+              role="combobox"
+              autocomplete="off"
+              aria-controls="picker-list"
+              aria-expanded="false"
+              placeholder="搜索项目、机器人、算法、机构…"
+              aria-label="搜索项目"
+            />
+            <div class="picker-list" id="picker-list" role="listbox" aria-label="项目列表"></div>
+            <p class="picker-empty" id="picker-empty" hidden>没有匹配的项目</p>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <a
+            class="github-link"
+            href="https://github.com/ImChong/Robot_Learning_IO_Board"
+            target="_blank"
+            rel="noopener"
+            title="源码仓库"
+            >GitHub</a
+          >
+          <button
+            class="theme-toggle"
+            id="theme-toggle"
+            type="button"
+            title="切换主题"
+            aria-label="切换主题"
+          >
+            <span aria-hidden="true">◐</span>
+          </button>
+        </div>
       </div>
     </header>
 
@@ -145,7 +171,7 @@
 
     <section class="table-view" id="table-view" hidden></section>
 
-    <footer class="footer" id="footer"></footer>
+    <footer class="site-footer" id="footer"></footer>
 
     <script defer src="vendor/katex/katex.min.js"></script>
     <script type="module" src="src/main.js"></script>

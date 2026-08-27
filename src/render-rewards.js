@@ -116,7 +116,8 @@ function buildItem(reward, group, project) {
     el("span", {
       style: {
         width: barWidth(reward.weight),
-        background: positive ? "#3ddc97" : "#ff8a7a",
+        // 走色板里的语义色，深浅两个主题各有一套，别在这里写死。
+        background: positive ? "var(--ok)" : "var(--bad)",
         [positive ? "left" : "right"]: "0",
       },
     }),
