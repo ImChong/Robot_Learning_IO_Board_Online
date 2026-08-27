@@ -1877,7 +1877,7 @@ table.tv caption {
   }
 
   /* 顶栏必须保持一行：它是粘性的，换成两行就等于常驻吃掉一屏的 1/6。
-     让位顺序是「副标题 → 站名的中文半 → GitHub 链接 → 站名」，项目选择器一直
+     让位顺序是「副标题 → 站名的中文半 → 站名英文 → GitHub 链接」，项目选择器一直
      留着，它是这个页面唯一的导航。 */
   .header-inner {
     gap: 10px;
@@ -2127,14 +2127,17 @@ table.tv caption {
   }
 }
 
-/* ---------- 小屏手机（480px 及以下，含 430/440 的「Pro Max」一档） ---------- */
+/* ---------- 小屏手机（560px 及以下，含 430/440 的「Pro Max」一档） ---------- */
 
-/* 480 而不是 420：站名一露出来就要占掉 210px 左右，430px 的机器上项目选择器
-   会被压到 110px，只剩「Beyo… 1/9」——那时它已经不是导航了。 */
-@media (max-width: 480px) {
+/* 560 而不是 480：站名改成「Robot Learning IO Board Online」后一露出来约 250px，
+   520px 的机器上项目选择器会被压到只剩「Beyo… 1/9」——那时它已经不是导航了。 */
+@media (max-width: 560px) {
   .site-title-text {
     display: none;
   }
+}
+
+@media (max-width: 480px) {
   /* 仓库链接在页脚还有一份，顶栏这一行先让给项目选择器。 */
   .header-right .github-link {
     display: none;

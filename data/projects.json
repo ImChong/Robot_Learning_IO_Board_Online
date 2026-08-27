@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "title": "Robot Learning IO Board",
+  "title": "Robot Learning IO Board Online",
   "subtitle": "人形机器人强化学习项目的输入 · 输出 · 奖励函数分析板",
   "defaultProject": "beyondmimic",
   "defaultMode": "train",

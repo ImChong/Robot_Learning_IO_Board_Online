@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://imchong.github.io/Robot_Learning_IO_Board/schema/project.schema.json",
-  "title": "Robot Learning IO Board — 项目数据",
+  "$id": "https://imchong.github.io/Robot_Learning_IO_Board_Online/schema/project.schema.json",
+  "title": "Robot Learning IO Board Online — 项目数据",
   "description": "一个人形 RL 项目的输入/输出/奖励节点图。枚举值的权威定义在 data/taxonomy.json，语义检查在 scripts/validate.mjs。",
   "type": "object",
   "required": ["id", "name"],
