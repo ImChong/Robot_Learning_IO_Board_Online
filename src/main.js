@@ -37,7 +37,7 @@ const dom = {
   tourBtn: document.getElementById("tour-btn"),
   tour: document.getElementById("tour"),
   themeBtn: document.getElementById("theme-toggle"),
-  topbar: document.querySelector(".topbar"),
+  header: document.querySelector(".site-header"),
   toolbar: document.querySelector(".toolbar"),
   stage: document.querySelector(".stage"),
   canvas: document.getElementById("canvas"),
@@ -376,19 +376,33 @@ function renderCallouts() {
 function renderFooter() {
   clear(dom.footer);
   dom.footer.append(
-    el("span", {
-      text: `${current.name} 数据核对于 ${current.verifiedAt ?? "—"}（${current.verifiedRef ?? "—"}）`,
+    el("p", {
+      text:
+        `${current.name} 数据核对于 ${current.verifiedAt ?? "—"}（${current.verifiedRef ?? "—"}）` +
+        ` · 共收录 ${core.entries.length} 个项目`,
     }),
-    el("span", { text: `共收录 ${core.entries.length} 个项目` }),
-    ...(core.registry.references ?? []).map((ref) =>
-      el("a", { href: ref.url, target: "_blank", rel: "noopener", text: ref.label })
-    ),
-    el("a", {
-      href: "https://github.com/ImChong/Robot_Learning_IO_Board",
-      target: "_blank",
-      rel: "noopener",
-      text: "源码与数据",
-    })
+    el("p", { class: "footer-links" }, [
+      ...(core.registry.references ?? []).map((ref) =>
+        el("a", { href: ref.url, target: "_blank", rel: "noopener", text: ref.label })
+      ),
+      el("a", {
+        href: "https://github.com/ImChong/Robot_Learning_IO_Board",
+        target: "_blank",
+        rel: "noopener",
+        text: "源码与数据",
+      }),
+    ]),
+    // 署名行的写法和 imchong.github.io / Robot_Joint_Order_Check_Tool 一致。
+    el("p", { class: "footer-copyright" }, [
+      "© ",
+      el("a", {
+        href: "https://imchong.github.io/index.html",
+        target: "_blank",
+        rel: "noopener",
+        text: "刘冲",
+      }),
+      ` ${new Date().getFullYear()} · Robot Learning IO Board`,
+    ])
   );
 }
 
@@ -690,7 +704,7 @@ function setView(view) {
  */
 function syncStickyMetrics() {
   const root = document.documentElement.style;
-  root.setProperty("--topbar-h", `${Math.round(dom.topbar.offsetHeight)}px`);
+  root.setProperty("--header-h", `${Math.round(dom.header.offsetHeight)}px`);
   root.setProperty("--toolbar-h", `${Math.round(dom.toolbar.offsetHeight)}px`);
 }
 
@@ -705,7 +719,7 @@ function liftCanvasForSheet() {
   if (sheet.hidden) return;
   if (getComputedStyle(sheet).position !== "fixed") return;
   const top =
-    dom.canvas.getBoundingClientRect().top + window.scrollY - dom.topbar.offsetHeight - 6;
+    dom.canvas.getBoundingClientRect().top + window.scrollY - dom.header.offsetHeight - 6;
   if (window.scrollY < top - 4) window.scrollTo(0, top);
 }
 
@@ -794,7 +808,7 @@ async function boot() {
   writeUrl({ replace: true });
 
   syncStickyMetrics();
-  new ResizeObserver(syncStickyMetrics).observe(dom.topbar);
+  new ResizeObserver(syncStickyMetrics).observe(dom.header);
   new ResizeObserver(syncStickyMetrics).observe(dom.toolbar);
   setupCanvasHint();
 

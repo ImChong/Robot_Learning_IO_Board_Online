@@ -44,6 +44,7 @@ node scripts/validate.mjs
 | 图例 | 展开全部视觉编码的含义 |
 | 画布 | 滚轮缩放、拖拽平移，`适应窗口` 或 `F` 复位。触屏上单指平移、双指捏合缩放，画布右下角还有一组缩放按钮 |
 | 手机 | 顶栏在任何手机尺寸下都只占一行（含横屏）。详情与讲解都从底部升起，同时把画布顶到顶栏底下，读者始终看得见自己点的是图上的哪一格；横屏时讲解改贴右侧，因为那种视口缺的是高度不是宽度。`适应窗口` 在窄屏保留可读比例而不是把整张图压到看不清——想看全景就捏合缩小 |
+| 主题 | 顶栏右上角切换深浅色，选择记在 `localStorage`。色板、站点顶栏与页脚沿用 [imchong.github.io](https://github.com/ImChong/ImChong.github.io) 与 [Robot_Joint_Order_Check_Tool](https://github.com/ImChong/Robot_Joint_Order_Check_Tool)：Notion 风暖中性色 + 同一支蓝作强调色 |
 
 ## 目录结构
 

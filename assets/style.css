@@ -1,59 +1,125 @@
+/* 配色与站点头尾沿用 imchong.github.io / Robot_Joint_Order_Check_Tool 的
+   Notion 风暖中性色板：中性色偏暖（#37352f / #191919 一系），强调色是同一支蓝
+   （亮 #2d74da、暗 #5b9cf6）。节点与连线的分类色由 data/taxonomy.json 提供，
+   不在这里改——那是数据语义，不是站点外观。 */
+
 :root {
   --node-w: 208px;
   --col-gap: 92px;
   --row-gap: 14px;
 
   /* 全站左右内边距。窄屏改小，并且不小于刘海屏横屏时的安全区。 */
-  --pad-base: 20px;
+  --pad-base: 24px;
   --pad-x: max(var(--pad-base), env(safe-area-inset-left), env(safe-area-inset-right));
   /* 顶栏与工具栏的实测高度，由 main.js 写入；粘性定位的偏移都读这两个值，
-     否则顶栏一换行，下面的东西就会压在它底下。 */
-  --topbar-h: 53px;
+     否则顶栏一换行，下面的东西就会压在它底下。这里的初值是量到之前的兜底，
+     取参考站的 56px 顶栏高度。 */
+  --header-h: 56px;
   --toolbar-h: 45px;
 
-  --font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui,
-    -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --radius: 8px;
+  --transition: 0.2s ease;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", "Noto Sans SC",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 /* color-scheme 管的是浏览器自己画的那部分：滚动条、下拉列表、输入框内的按钮。
    不声明的话它们一律按浅色画，深色主题下滚动条会是一条白槽。 */
 html[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0e1117;
-  --bg-soft: #151a22;
-  --bg-raised: #1a212b;
-  --bg-hover: #212a36;
-  --border: #262f3d;
-  --border-strong: #38455a;
-  --text: #e4e8ef;
-  --text-soft: #a3adbd;
-  --text-faint: #6f7b8d;
-  --accent: #4cc2ff;
-  --accent-soft: rgba(76, 194, 255, 0.14);
-  --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
-  --grid: rgba(255, 255, 255, 0.03);
+  --bg: #191919;
+  --bg-soft: #222222;
+  --bg-raised: #222222;
+  --bg-hover: #2f2f2f;
+  --border: #3d3d3d;
+  --border-strong: #4e4e4c;
+  --text: #e8e8e4;
+  --text-soft: #aaa9a5;
+  --text-faint: #9b9a97;
+  --accent: #5b9cf6;
+  --accent-hover: #7ab3ff;
+  --accent-soft: rgba(91, 156, 246, 0.16);
+  --accent-weak: #22344d;
+  --ok: #6cc48f;
+  --bad: #e8918a;
+  --warn: #d6a55c;
+  --warn-border: #56462a;
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --shadow-up: 0 -10px 30px rgba(0, 0, 0, 0.35);
+  --grid: rgba(255, 255, 255, 0.035);
 }
 
 html[data-theme="light"] {
   color-scheme: light;
-  --bg: #f6f7f9;
+  --bg: #f7f6f3;
   --bg-soft: #ffffff;
   --bg-raised: #ffffff;
-  --bg-hover: #f0f3f7;
-  --border: #dfe3ea;
-  --border-strong: #b9c2d0;
-  --text: #1a2231;
-  --text-soft: #55617a;
-  --text-faint: #8b95a8;
-  --accent: #0b73c4;
-  --accent-soft: rgba(11, 115, 196, 0.1);
-  --shadow: 0 2px 10px rgba(20, 32, 54, 0.1);
-  --grid: rgba(20, 32, 54, 0.035);
+  --bg-hover: #f1f0ec;
+  --border: #e8e8e4;
+  --border-strong: #d6d5d0;
+  --text: #37352f;
+  --text-soft: #6b6b6b;
+  --text-faint: #787774;
+  --accent: #2d74da;
+  --accent-hover: #1a5bb8;
+  --accent-soft: rgba(45, 116, 218, 0.1);
+  --accent-weak: #eaf1fc;
+  --ok: #2c7a52;
+  --bad: #c4554d;
+  --warn: #9a6b12;
+  --warn-border: #e8d3a3;
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.14);
+  --shadow-up: 0 -10px 30px rgba(0, 0, 0, 0.12);
+  --grid: rgba(55, 53, 47, 0.05);
+}
+
+:root {
+  /* 分类色（节点、通道、奖励分组）来自 data/taxonomy.json，是数据语义不是站点外观，
+     所以两个主题共用一份。这个变量是压在那些亮色上的文字色：它必须固定成深色，
+     跟着主题翻转反而会在浅色主题下变成亮字压亮底。取值是暖中性色板的最深一档。 */
+  --on-data-color: #1f1e1b;
+
+  /* 滚动条：轨道一律透明，深色面板上就不会透出一条浅色槽。
+     scrollbar-* 会继承，从根上写一次即可覆盖 Firefox。 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+  background: transparent;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-faint);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* 顶栏与工具栏都是粘性的，锚点跳转（顶上的「跳到节点图」）要把这两条的高度让出来，
+   否则落点会被压在它们底下。和参考站同一个做法，只是这里多算一层工具栏。
+   不开 scroll-behavior: smooth：详情浮层升起时那次 scrollTo 是要立刻到位的。 */
+html {
+  scroll-padding-top: calc(var(--header-h) + var(--toolbar-h) + 8px);
 }
 
 /* 本文件里多个可折叠区块都设了 display: grid/flex，会盖掉 hidden 属性自带的
@@ -100,9 +166,26 @@ kbd {
   border-radius: 6px;
 }
 
-/* ---------- 顶栏 ---------- */
+/* ---------- 站点顶栏 ---------- */
 
-.topbar {
+/* 结构与 imchong.github.io / Robot_Joint_Order_Check_Tool 一致：
+   .site-header 粘性 + 毛玻璃，里面一条 .header-inner 把「站名 — 内容 — 右侧动作」
+   排成一行。区别只有一处：那两个站的 header-inner 有 max-width 居中，这里的画布
+   是通栏的，所以顶栏也跟着通栏，只留 --pad-x 的左右内边距。 */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+  padding-top: env(safe-area-inset-top, 0px);
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.header-inner {
+  min-height: 56px;
+  padding: 8px var(--pad-x);
   display: flex;
   align-items: center;
   /* 顶栏永远是一行。它是粘性的，多出来的每一行都会在每一屏上常驻。
@@ -110,40 +193,51 @@ kbd {
      谁要往顶栏里再加东西，得先想清楚让谁先走（见下面两段窄屏规则）。 */
   flex-wrap: nowrap;
   gap: 20px;
-  padding: 10px var(--pad-x);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-soft);
-  position: sticky;
-  top: 0;
-  z-index: 30;
 }
 
-.brand {
+.site-title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   min-width: 0;
+  color: var(--text);
+  text-decoration: none;
 }
-.brand-mark {
-  font-size: 20px;
+.site-mark {
+  width: 28px;
+  height: 28px;
+  flex: none;
   color: var(--accent);
+  transition: color var(--transition);
 }
-.brand-text {
+.site-title-text {
   display: flex;
   flex-direction: column;
-  line-height: 1.3;
+  line-height: 1.25;
   min-width: 0;
 }
-.brand-text strong {
-  font-size: 14px;
-  letter-spacing: 0.01em;
+/* 站名本身是中英并置的，两半读的是同一件事；窄屏先丢中文那半，再丢副标题。 */
+.site-title-text strong {
+  font-size: 1rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.brand-text small {
-  font-size: 11.5px;
+.site-title-text small {
+  font-size: 12px;
+  font-weight: 400;
   color: var(--text-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.site-title:hover {
+  color: var(--accent);
+  text-decoration: none;
+}
+.site-title:hover .site-mark {
+  color: var(--accent-hover);
 }
 
 /* ---------- 项目选择器 ---------- */
@@ -163,7 +257,7 @@ kbd {
   color: var(--text);
   font: inherit;
   padding: 5px 10px 5px 13px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
@@ -205,9 +299,9 @@ kbd {
   width: min(380px, 88vw);
   padding: 8px;
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--bg-raised);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-lg);
   z-index: 40;
 }
 
@@ -308,31 +402,76 @@ kbd {
   color: var(--text-faint);
 }
 
-.topbar-actions {
+.header-right {
   display: flex;
-  flex: 0 0 auto;
-  gap: 6px;
+  align-items: center;
+  flex: none;
+  gap: 0.75rem;
 }
 
-.icon-btn {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-soft);
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 2px;
+  font-size: 0.85rem;
+  color: var(--text-faint);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--transition);
+}
+.github-link:hover {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.theme-toggle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 30px;
+  padding: 0 0.6rem;
   font: inherit;
-  font-size: 12.5px;
-  padding: 5px 11px;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-faint);
+  background: none;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color var(--transition), color var(--transition);
+}
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* 工具栏与讲解面板里的按钮。和参考站的 .btn 同一套：面板底色、深一档的描边、
+   8px 圆角，hover 只把描边换成强调色。 */
+.icon-btn {
+  border: 1px solid var(--border-strong);
+  background: var(--bg-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 7px 12px;
+  border-radius: var(--radius);
   cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.13s, color 0.13s, border-color 0.13s;
 }
 .icon-btn:hover {
   background: var(--bg-hover);
+  border-color: var(--accent);
   color: var(--text);
 }
 .icon-btn[aria-pressed="true"] {
-  background: var(--accent-soft);
+  background: var(--accent-weak);
   border-color: var(--accent);
   color: var(--text);
 }
@@ -342,7 +481,7 @@ kbd {
 /* 项目文件是按需加载的，切换到没缓存过的项目会有真实延迟，用一条细进度线兜住。 */
 .load-bar {
   position: sticky;
-  top: var(--topbar-h);
+  top: var(--header-h);
   z-index: 25;
   height: 2px;
   overflow: hidden;
@@ -439,7 +578,7 @@ kbd {
   border-bottom: 1px solid var(--border);
   background: var(--bg-soft);
   position: sticky;
-  top: var(--topbar-h);
+  top: var(--header-h);
   z-index: 20;
 }
 
@@ -448,7 +587,7 @@ kbd {
   gap: 2px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 2px;
 }
 .mode-btn {
@@ -490,7 +629,7 @@ kbd {
   color: var(--text-faint);
 }
 .chip {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--text-soft);
   font: inherit;
@@ -504,6 +643,8 @@ kbd {
 }
 .chip:hover {
   background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text);
 }
 .chip[aria-pressed="true"] {
   color: var(--text);
@@ -530,8 +671,9 @@ kbd {
   margin: 12px var(--pad-x) 0;
   padding: 14px 16px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--bg-soft);
+  box-shadow: var(--shadow-sm);
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px 28px;
@@ -707,7 +849,7 @@ kbd {
   padding: 8px 10px 9px;
   border: 1px solid var(--border-strong);
   border-left: 3px solid var(--node-color, var(--border-strong));
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--bg-raised);
   box-shadow: var(--shadow);
   text-align: left;
@@ -785,7 +927,7 @@ kbd {
    跳出来，而不是靠别人变暗——否则往回翻步时整张图会忽明忽暗。 */
 .node.tour-current {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft), 0 6px 20px rgba(0, 0, 0, 0.32);
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-lg);
   z-index: 2;
 }
 .node.tour-current::before {
@@ -835,7 +977,7 @@ kbd {
   line-height: 1.4;
   padding: 0 4px;
   border-radius: 3px;
-  color: #08101a;
+  color: var(--on-data-color);
   background: var(--node-color, var(--text-faint));
 }
 .node-acq {
@@ -922,7 +1064,7 @@ kbd {
   overflow-y: auto;
   overscroll-behavior: contain;
   position: sticky;
-  top: calc(var(--topbar-h) + var(--toolbar-h) + 14px);
+  top: calc(var(--header-h) + var(--toolbar-h) + 14px);
 }
 
 .tour-head {
@@ -1159,7 +1301,7 @@ kbd {
   max-height: min(70vh, 720px);
   overflow-y: auto;
   position: sticky;
-  top: calc(var(--topbar-h) + var(--toolbar-h) + 14px);
+  top: calc(var(--header-h) + var(--toolbar-h) + 14px);
 }
 .drawer-empty h2 {
   margin: 0 0 8px;
@@ -1220,17 +1362,17 @@ kbd {
   color: var(--text-soft);
 }
 .badge.strong {
-  color: #08101a;
+  color: var(--on-data-color);
   border-color: transparent;
 }
 .badge.warn {
-  border-color: #d68a3a;
-  color: #e5a765;
+  border-color: var(--warn-border);
+  color: var(--warn);
 }
 
 .dd-dim {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 10px 12px;
   margin-bottom: 12px;
   background: var(--bg);
@@ -1303,9 +1445,10 @@ kbd {
 .callout {
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   background: var(--bg-soft);
+  box-shadow: var(--shadow-sm);
 }
 .callout h3 {
   margin: 0 0 4px;
@@ -1342,8 +1485,9 @@ kbd {
 }
 .reward-group {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--bg-soft);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 .reward-group > summary {
@@ -1372,7 +1516,7 @@ kbd {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
-  color: #08101a;
+  color: var(--on-data-color);
   background: var(--group-color, var(--accent));
   padding: 0 5px;
   border-radius: 3px;
@@ -1422,7 +1566,8 @@ kbd {
   margin-top: 3px;
 }
 /* 学习式奖励：双线左框 + 来源标签，与手写项一眼分开。
-   双线需要 ≥4px 才看得出是两条，3px 会退化成一条细线。 */
+   双线需要 ≥4px 才看得出是两条，3px 会退化成一条细线。
+   这里的黄同样是 taxonomy 的分类色，不随主题变。 */
 .reward-item.learned {
   border-left: 4px double #ffd166;
   background: color-mix(in srgb, #ffd166 6%, transparent);
@@ -1471,10 +1616,10 @@ kbd {
   font-weight: 600;
 }
 .ri-weight-val.pos {
-  color: #3ddc97;
+  color: var(--ok);
 }
 .ri-weight-val.neg {
-  color: #ff8a7a;
+  color: var(--bad);
 }
 .ri-bar {
   height: 5px;
@@ -1597,10 +1742,10 @@ table.cmp td.prose {
   color: var(--text-faint);
 }
 .cmp-mark.only {
-  color: #e5a765;
+  color: var(--warn);
 }
 .cmp-diff {
-  color: #e5a765;
+  color: var(--warn);
 }
 
 /* ---------- 表格视图 ---------- */
@@ -1638,7 +1783,7 @@ table.tv td {
 table.tv thead th {
   background: var(--bg-soft);
   position: sticky;
-  top: var(--topbar-h);
+  top: var(--header-h);
   font-size: 11.5px;
   color: var(--text-soft);
 }
@@ -1659,18 +1804,37 @@ table.tv caption {
 
 /* ---------- 页脚 ---------- */
 
-.footer {
+/* ---------- 站点页脚 ---------- */
+
+/* 同样对齐参考站：一条上边框把页脚和正文分开，字号压到 12.5px、用最淡的一档
+   字色，最后一行是署名。 */
+.site-footer {
   margin-top: 34px;
-  padding: 18px var(--pad-x) calc(34px + env(safe-area-inset-bottom));
+  padding: 22px var(--pad-x) calc(40px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   color: var(--text-faint);
-  font-size: 12px;
+  font-size: 12.5px;
+}
+.site-footer p {
+  margin: 0 0 6px;
+}
+.site-footer a {
+  color: var(--accent);
+}
+.footer-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 22px;
+  gap: 4px 18px;
 }
-.footer a {
-  color: var(--text-soft);
+/* 署名行和上面的正文信息拉开一档，和参考站的 .footer-copyright 一致：
+   链接不抢强调色，只留一条下划线。 */
+.footer-copyright {
+  margin-top: 14px;
+}
+.footer-copyright a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* ---------- 响应式 ---------- */
@@ -1698,25 +1862,26 @@ table.tv caption {
   }
 
   /* 顶栏必须保持一行：它是粘性的，换成两行就等于常驻吃掉一屏的 1/6。
-     让位顺序是「副标题 → 仓库链接 → 站名」，项目选择器一直留着，
-     它是这个页面唯一的导航。 */
-  .topbar {
+     让位顺序是「副标题 → 站名的中文半 → GitHub 链接 → 站名」，项目选择器一直
+     留着，它是这个页面唯一的导航。 */
+  .header-inner {
     gap: 10px;
-    padding: 8px var(--pad-x);
   }
-  .brand {
+  .site-title {
     flex: 0 1 auto;
     min-width: 0;
     gap: 8px;
   }
-  .brand-text small {
+  .site-mark {
+    width: 24px;
+    height: 24px;
+  }
+  .site-title-text small,
+  .site-title-zh {
     display: none;
   }
-  .brand-text strong {
+  .site-title-text strong {
     font-size: 13px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
   .project-picker {
     flex: 1 1 auto;
@@ -1732,12 +1897,12 @@ table.tv caption {
     position: fixed;
     left: var(--pad-x);
     right: var(--pad-x);
-    top: calc(var(--topbar-h) + 6px);
+    top: calc(var(--header-h) + 6px);
     width: auto;
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - var(--topbar-h) - 24px);
-    max-height: calc(100dvh - var(--topbar-h) - 24px);
+    max-height: calc(100vh - var(--header-h) - 24px);
+    max-height: calc(100dvh - var(--header-h) - 24px);
   }
   .picker-list {
     flex: 1;
@@ -1756,7 +1921,7 @@ table.tv caption {
   }
 
   .icon-btn {
-    padding: 7px 11px;
+    padding: 8px 12px;
   }
 
   /* 工具栏不再粘性：模式、视图、筛选三组加起来至少两行，粘着就把画布挤没了。 */
@@ -1839,7 +2004,7 @@ table.tv caption {
     height: min(52vh, 460px);
     height: min(52dvh, 460px);
     min-height: 300px;
-    border-radius: 10px;
+    border-radius: var(--radius);
   }
   .cz-btn {
     width: 38px;
@@ -1865,7 +2030,7 @@ table.tv caption {
     border: 1px solid var(--border-strong);
     border-radius: 14px 14px 0 0;
     padding: 10px var(--pad-x) calc(16px + env(safe-area-inset-bottom));
-    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.28);
+    box-shadow: var(--shadow-up);
     /* 收起时一并 visibility: hidden——详情为空时浮层本身只有把手那么高，
        只靠 translateY(101%) 挪不出屏幕，会在底边露出一条白。 */
     visibility: hidden;
@@ -1946,11 +2111,11 @@ table.tv caption {
 /* 480 而不是 420：站名一露出来就要占掉 210px 左右，430px 的机器上项目选择器
    会被压到 110px，只剩「Beyo… 1/9」——那时它已经不是导航了。 */
 @media (max-width: 480px) {
-  .brand-text {
+  .site-title-text {
     display: none;
   }
   /* 仓库链接在页脚还有一份，顶栏这一行先让给项目选择器。 */
-  .topbar-actions .icon-btn[href] {
+  .header-right .github-link {
     display: none;
   }
 }
@@ -1963,10 +2128,11 @@ table.tv caption {
   /* 横屏手机宽度往往超过 720px，窄屏那段规则不生效，于是站名副标题还在，
      顶栏是两行文字、57px 高——在 390px 高的横屏上就是一屏的 1/7 常驻。
      副标题在页脚与文档里都有，顶栏这一行只留站名。 */
-  .brand-text small {
+  .site-title-text small {
     display: none;
   }
-  .topbar {
+  .header-inner {
+    min-height: 0;
     padding-top: 6px;
     padding-bottom: 6px;
   }
@@ -2003,7 +2169,7 @@ table.tv caption {
     border: 1px solid var(--accent);
     border-radius: 14px 14px 0 0;
     padding: 10px var(--pad-x) calc(14px + env(safe-area-inset-bottom));
-    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.28);
+    box-shadow: var(--shadow-up);
   }
   /* 手指够得着才算能用：这三个按钮是这块面板的主要交互。 */
   .tour-controls .icon-btn {
@@ -2018,7 +2184,7 @@ table.tv caption {
   .tour {
     position: fixed;
     left: auto;
-    top: calc(var(--topbar-h) + 8px);
+    top: calc(var(--header-h) + 8px);
     right: max(8px, env(safe-area-inset-right));
     bottom: max(8px, env(safe-area-inset-bottom));
     width: min(340px, 40vw);
@@ -2027,7 +2193,7 @@ table.tv caption {
     overflow-y: auto;
     overscroll-behavior: contain;
     border-radius: 12px;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
+    box-shadow: var(--shadow-lg);
   }
 }
 
@@ -2050,7 +2216,7 @@ table.tv caption {
 }
 
 @media print {
-  .topbar,
+  .site-header,
   .toolbar,
   .tour,
   .stage,
