@@ -1755,7 +1755,8 @@ table.cmp td.prose {
 
 .tv-wrap {
   padding: 12px var(--pad-x) 0;
-  overflow-x: auto;
+  /* 宽屏故意不写 overflow-x。这一层一旦变成滚动容器，sticky 表头的包含块
+     就不再是视口：原先 top: var(--header-h) 会把整行表头错位到第一行数据上。 */
 }
 
 /* 表格比屏幕宽是刻意的（列不能合并，合并了就没法逐项核对），但横滑这件事
@@ -1768,7 +1769,10 @@ table.cmp td.prose {
   color: var(--text-faint);
 }
 table.tv {
-  border-collapse: collapse;
+  /* collapse + sticky th 在 Chromium 里会让表头列宽跟表体脱节。
+     separate + 0 间距画出同一套 1px 格线，粘性定位才跟列对齐。 */
+  border-collapse: separate;
+  border-spacing: 0;
   width: 100%;
   min-width: 900px;
   font-size: 12.5px;
@@ -1776,6 +1780,7 @@ table.tv {
 table.tv th,
 table.tv td {
   border: 1px solid var(--border);
+  border-width: 0 1px 1px 0;
   padding: 5px 9px;
   text-align: left;
   vertical-align: top;
@@ -1783,10 +1788,17 @@ table.tv td {
      keep-all 让列宽跟着词走，宽度不够时由外层横向滚动兜住。 */
   word-break: keep-all;
 }
+table.tv tr > *:first-child {
+  border-left-width: 1px;
+}
 table.tv thead th {
+  border-top-width: 1px;
   background: var(--bg-soft);
   position: sticky;
-  top: var(--header-h);
+  /* 视口是包含块时，贴在顶栏 + 工具栏下面。窄屏 wrap 自己横滑时，
+     下面的媒体查询会把 top 改成 0，避免再按顶栏高度把表头推下去。 */
+  top: calc(var(--header-h) + var(--toolbar-h));
+  z-index: 2;
   font-size: 11.5px;
   color: var(--text-soft);
 }
@@ -2092,10 +2104,16 @@ table.tv caption {
   .table-scroll-hint {
     display: block;
   }
-  /* 表格右侧不留内边距：宽度全给列，横滑到底就是表格的真实边界。 */
+  /* 表格右侧不留内边距：宽度全给列，横滑到底就是表格的真实边界。
+     overflow-x 只在这里打开：宽屏若也写成 auto，sticky 表头会以 wrap
+     为包含块，再叠顶栏高度就会整行错位。 */
   .tv-wrap,
   .cmp-table-wrap {
     padding-right: 0;
+    overflow-x: auto;
+  }
+  table.tv thead th {
+    top: 0;
   }
   table.tv {
     font-size: 12px;
@@ -2142,10 +2160,26 @@ table.tv caption {
   .toolbar {
     position: static;
   }
+  table.tv thead th {
+    top: var(--header-h);
+  }
   .canvas {
     height: min(78vh, 720px);
     height: min(78dvh, 720px);
     min-height: 260px;
+  }
+}
+
+/* 表 min-width 是 900px，720px 以上、约 980px 以下也会横溢。overflow-x 开在
+   wrap 上好让人横滑；一旦开了，sticky 包含块就是这一层，top 只能是 0。
+   放在矮视口规则后面，避免横屏手机被改回顶栏高度后又把表头推到第一行上。 */
+@media (max-width: 980px) {
+  .tv-wrap,
+  .cmp-table-wrap {
+    overflow-x: auto;
+  }
+  table.tv thead th {
+    top: 0;
   }
 }
 
@@ -2229,6 +2263,13 @@ table.tv caption {
   }
   .table-view {
     display: block !important;
+  }
+  .tv-wrap,
+  .cmp-table-wrap {
+    overflow: visible;
+  }
+  table.tv thead th {
+    position: static;
   }
 }
 
