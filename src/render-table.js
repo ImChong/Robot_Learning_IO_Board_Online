@@ -1,6 +1,6 @@
 /** 表格视图：与节点图同数据的无障碍 / 打印 / 无 JS 降级形态。 */
 
-import { el, clear } from "./dom.js";
+import { el, clear, queueMath } from "./dom.js";
 
 export function renderTable({ container, project, modeId, taxonomy }) {
   clear(container);
@@ -94,7 +94,7 @@ function rewardTable(graph, taxonomy) {
           el("td", { text: `${group.id} · ${group.name}` }),
           el("td", {}, [el("div", { text: reward.label }), el("code", { text: reward.id })]),
           el("td", { class: "num", text: String(reward.weight) }),
-          el("td", { class: "mono", text: reward.form ?? "—" }),
+          formulaCell(reward.form),
           el("td", { class: "mono", text: params || "—" }),
           el("td", { text: reward.target ?? "—" }),
           el("td", { class: "mono", text: sourceText(reward.source) }),
@@ -110,6 +110,18 @@ function rewardTable(graph, taxonomy) {
       body,
     ]),
   ]);
+}
+
+/**
+ * 「形式」列。form 存的是 LaTeX 源码，直接当文本摆出来就是一串反斜杠，
+ * 所以和奖励面板走同一套 KaTeX；holder 单独一层是因为公式可能比列宽长，
+ * 让它自己横滑，别把整张表撑宽。
+ */
+function formulaCell(tex) {
+  if (!tex) return el("td", { class: "mono", text: "—" });
+  const holder = el("div", { class: "tv-formula" });
+  queueMath(holder, tex);
+  return el("td", {}, [holder]);
 }
 
 function sourceText(source) {

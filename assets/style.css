@@ -1810,6 +1810,21 @@ table.tv td.mono {
   font-family: var(--font-mono);
   font-size: 11px;
 }
+/* 「形式」列是 KaTeX 排出来的公式，不走等宽字体（那是 LaTeX 源码的样子）。
+   公式可能比列宽长：让这一格自己横滑，而不是把整张表一起撑宽。 */
+.tv-formula {
+  max-width: 320px;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.tv-formula .katex {
+  color: var(--text);
+}
+/* KaTeX 没加载出来时的兜底源码，仍按等宽排。 */
+.tv-formula code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
 table.tv caption {
   text-align: left;
   padding: 10px 0 6px;
@@ -2266,6 +2281,11 @@ table.tv caption {
   }
   .tv-wrap,
   .cmp-table-wrap {
+    overflow: visible;
+  }
+  /* 纸上没法横滑，公式该多宽就多宽。 */
+  .tv-formula {
+    max-width: none;
     overflow: visible;
   }
   table.tv thead th {
