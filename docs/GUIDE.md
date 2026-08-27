@@ -35,7 +35,8 @@ src/                  原生 ES modules
   ├── render-rewards.js 奖励面板（六类折叠、权重条、学习式奖励的来源卡、KaTeX 公式）
   ├── render-detail.js  详情抽屉
   ├── render-compare.js 当前项目 vs 选定对比对象的对照表
-  └── render-table.js   表格降级视图（奖励「形式」列与奖励面板同一套 KaTeX）
+  ├── render-table.js   表格降级视图（公式列与奖励面板同一套 KaTeX）
+  └── mathtext.js       可读表达式（`(29 + 29) × 10 帧`、`U(−0.05, 0.05)`）翻成 TeX
 data/
   ├── taxonomy.json     观测五类 / 输出五类 / 奖励六类等全部枚举的权威定义
   ├── projects.json     项目注册表与分组
