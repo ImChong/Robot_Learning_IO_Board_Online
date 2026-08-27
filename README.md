@@ -11,11 +11,12 @@
 
 **在线使用：** <https://imchong.github.io/Robot_Learning_IO_Board_Online/>
 
-用「模块 + 连线」的节点图，把一条策略**吃什么、吐什么、被什么奖励塑形**画成可点开的网页。覆盖真机路线的 **BeyondMimic**、**SONIC**，与 [MimicKit](https://github.com/xbpeng/MimicKit) 方法族的 **DeepMimic → AWR → AMP → ASE → LCP → ADD → SMP**。
+用「模块 + 连线」的节点图，把一条策略**吃什么、吐什么、被什么奖励塑形**画成可点开的网页。覆盖真机路线的 **BeyondMimic**、**SONIC**，与 [MimicKit](https://github.com/xbpeng/MimicKit) 方法族的 **DeepMimic → AWR → AMP → ASE → LCP → ADD → SMP**。除 AWR / ASE / SMP 三个上游只发了 humanoid 配置的方法外，其余全部以 **Unitree G1** 为准——九个项目里有六个画的是同一台 29 自由度的 G1。
 
 ## 重点
 
 - **每个数字都能点到出处**：维度与权重都带仓库文件路径 + 配置项名，可信度分「已核对 / 推导 / 推断」三档；总维度由校验脚本求和验证，不是凭印象画的示意图。
+- **维度不只标大小，还标分量顺序**：四元数写「4 维」等于没写——每个带维度的观测与动作都注明这几个数按什么排（`(w, x, y, z)` 还是 `(x, y, z, w)`、关节按哪套顺序、多帧是整块还是交错），校验脚本强制要求。
 - **以开源实现为准**：论文口径与实现口径不一致时，图画实现，差异写在模块备注里。
 - **训练态 / 部署态可切换**：同 id 的模块做位置补间，仅训练可见的模块淡出——「部署时什么消失了」是看得见的。
 - **奖励来源是一等公民**：手写公式、对抗判别器、编码器互信息、冻结的扩散先验分开渲染，而不是画成同一种框。
@@ -26,6 +27,7 @@
 - 同一台 29 自由度 Unitree G1，LCP 的策略观测 849 维、BeyondMimic 160 维，方向还相反——**动画路线往观测里加信息，真机路线从观测里减信息**。
 - ASE 的 64 维技能潜变量与 SONIC 的 64 维 FSQ token 同维度、同位置，但一个是**采样**出来的、一个是**编码**出来的。
 - 「动作抖动伤硬件」同一个问题：BeyondMimic 与 SONIC 加奖励项，LCP 改损失函数。
+- 同一台 G1 的四元数，MimicKit（Isaac Gym）是 `(x, y, z, w)`、BeyondMimic 与 SONIC（Isaac Lab）是 `(w, x, y, z)`；29 个关节的排列顺序更有三套（Isaac Lab 广度优先 / MJCF 深度优先 / 真机 SDK）。维度对得上、顺序错了，是不会报错的那类 bug。
 
 ## 本地运行
 

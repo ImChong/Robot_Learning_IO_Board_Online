@@ -129,6 +129,7 @@ export function renderTour({
   const badges = [
     cls ? el("span", { class: "badge strong", style: { background: cls.color }, text: `${cls.id} · ${cls.name}`, title: cls.desc }) : el("span", { class: "badge", text: kindName ?? node.kind }),
     node.dim != null ? el("span", { class: "badge", text: node.dimExpr ? `${node.dim} 维 = ${node.dimExpr}` : `${node.dim} 维` }) : null,
+    node.dimLayout ? el("span", { class: "badge", text: node.dimLayout, title: "分量顺序" }) : null,
     acq && acq.id !== "none" ? el("span", { class: "badge", text: `${acq.icon} ${acq.name}`, title: acq.desc }) : null,
     avail && avail.id !== "n/a" && avail.id !== "deploy-ok" ? el("span", { class: "badge warn", text: avail.name, title: avail.desc }) : null,
     node.freqHz ? el("span", { class: "badge", text: `${node.freqHz} Hz` }) : null,

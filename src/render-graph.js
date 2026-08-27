@@ -369,6 +369,10 @@ export function createGraphView({
               node.dimExpr ? ` = ${node.dimExpr}` : " 维",
             ])
           : null,
+        // 只标大小不标顺序，读者没法把这一格和自己代码里的张量对上，所以分量顺序上卡片。
+        node.dimLayout
+          ? el("div", { class: "node-layout", text: node.dimLayout, title: node.dimLayout })
+          : null,
       ]
     );
     return button;
