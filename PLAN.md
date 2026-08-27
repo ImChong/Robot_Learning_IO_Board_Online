@@ -1,4 +1,4 @@
-# Robot Learning IO Board — 建设计划
+# Robot Learning IO Board Online — 机器人学习输入输出分析板
 
 > 用「模块 + 连线」的节点图，把热门人形机器人强化学习项目的**输入、输出、奖励函数**画成可交互的网页。
 > 规划范围两批：**真机路线**的 **SONIC** 与 **BeyondMimic**（已上线），**动画路线**的 **MimicKit** 方法族 7 个方法（DeepMimic、AWR、AMP、ASE、LCP、ADD、SMP，内容已核对、待落数据）。每个项目可在**训练态**（含奖励函数设置）与**部署态 / 推理态**之间切换。
@@ -472,7 +472,7 @@ MimicKit 里 DeepMimic 与 AWR 共用一份 `deepmimic_humanoid_env.yaml`，LCP 
 下面是**当前实际结构**，`+` 标出接 MimicKit 时要新增的文件（`docs/GUIDE.md` 里有面向使用者的同一份说明）：
 
 ```
-Robot_Learning_IO_Board/
+Robot_Learning_IO_Board_Online/
 ├── index.html                   # 页面骨架
 ├── .nojekyll                    # 让 Pages 原样发布 vendor/ 等目录
 ├── .github/workflows/pages.yml  # Pages 部署
@@ -621,7 +621,7 @@ Robot_Learning_IO_Board/
 
 **M6.3 顶栏在移动端恒为一行** ✅
 
-窄屏那段规则本来就写着「顶栏必须保持一行」，但它的条件是 `max-width: 720px`——横屏手机宽 812/844/915，条件不成立，站名副标题还在，顶栏是两行文字、57px 高，在 390px 高的横屏上是一屏的 1/7 常驻。加了两条：矮视口（`max-height: 620px`）收起副标题并收紧上下内边距；「站名整段让位」的断点从 420px 提到 480px，因为 430/440px 的机型上站名一露面就把项目选择器压到 110px，只剩「Beyo… 1/9」。同一段视口范围内，讲解面板也从贴底改成贴右——横屏缺的是高度不是宽度。
+窄屏那段规则本来就写着「顶栏必须保持一行」，但它的条件是 `max-width: 720px`——横屏手机宽 812/844/915，条件不成立，站名副标题还在，顶栏是两行文字、57px 高，在 390px 高的横屏上是一屏的 1/7 常驻。加了两条：矮视口（`max-height: 620px`）收起副标题并收紧上下内边距；「站名整段让位」的断点从 420px 提到 480px，因为 430/440px 的机型上站名一露面就把项目选择器压到 110px，只剩「Beyo… 1/9」。仓库改名为 Robot Learning IO Board Online 后站名更长，该断点再提到 560px。同一段视口范围内，讲解面板也从贴底改成贴右——横屏缺的是高度不是宽度。
 
 ---
 

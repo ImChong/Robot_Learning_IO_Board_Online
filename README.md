@@ -1,15 +1,15 @@
-# Robot_Learning_IO_Board
+# Robot_Learning_IO_Board_Online
 
-人形机器人强化学习项目的输入 / 输出 / 奖励函数分析板
+机器人学习输入输出分析板
 
-[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-Live-brightgreen?logo=github)](https://imchong.github.io/Robot_Learning_IO_Board/)
-[![Deploy GitHub Pages](https://github.com/ImChong/Robot_Learning_IO_Board/actions/workflows/pages.yml/badge.svg)](https://github.com/ImChong/Robot_Learning_IO_Board/actions/workflows/pages.yml)
+[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-Live-brightgreen?logo=github)](https://imchong.github.io/Robot_Learning_IO_Board_Online/)
+[![Deploy GitHub Pages](https://github.com/ImChong/Robot_Learning_IO_Board_Online/actions/workflows/pages.yml/badge.svg)](https://github.com/ImChong/Robot_Learning_IO_Board_Online/actions/workflows/pages.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![收录](https://img.shields.io/badge/收录-9_个项目_%7C_492_个模块_%7C_42_个奖励项-informational)](#重点)
 [![数据口径](https://img.shields.io/badge/数据口径-以开源实现为准-blue?logo=github&logoColor=white)](#重点)
 [![零构建](https://img.shields.io/badge/零构建-原生_ES_modules-lightgrey?logo=javascript&logoColor=white)](#本地运行)
 
-**在线使用：** <https://imchong.github.io/Robot_Learning_IO_Board/>
+**在线使用：** <https://imchong.github.io/Robot_Learning_IO_Board_Online/>
 
 用「模块 + 连线」的节点图，把一条策略**吃什么、吐什么、被什么奖励塑形**画成可点开的网页。覆盖真机路线的 **BeyondMimic**、**SONIC**，与 [MimicKit](https://github.com/xbpeng/MimicKit) 方法族的 **DeepMimic → AWR → AMP → ASE → LCP → ADD → SMP**。
 

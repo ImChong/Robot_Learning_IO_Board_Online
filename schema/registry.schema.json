@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://imchong.github.io/Robot_Learning_IO_Board/schema/registry.schema.json",
-  "title": "Robot Learning IO Board — 项目注册表（data/projects.json）",
+  "$id": "https://imchong.github.io/Robot_Learning_IO_Board_Online/schema/registry.schema.json",
+  "title": "Robot Learning IO Board Online — 项目注册表（data/projects.json）",
   "description": "站点的项目索引。项目文件按需加载，所以选择器要用到的展示信息（name / subtitle / group / published / venue / keywords）放在这里，不必先下载每个项目文件。name 与 subtitle 是项目文件里同名字段的冗余，scripts/validate.mjs 会校验两处一致。",
   "type": "object",
   "required": ["projects"],

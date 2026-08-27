@@ -386,7 +386,7 @@ function renderFooter() {
         el("a", { href: ref.url, target: "_blank", rel: "noopener", text: ref.label })
       ),
       el("a", {
-        href: "https://github.com/ImChong/Robot_Learning_IO_Board",
+        href: "https://github.com/ImChong/Robot_Learning_IO_Board_Online",
         target: "_blank",
         rel: "noopener",
         text: "源码与数据",
@@ -401,7 +401,7 @@ function renderFooter() {
         rel: "noopener",
         text: "刘冲",
       }),
-      ` ${new Date().getFullYear()} · Robot Learning IO Board`,
+      ` ${new Date().getFullYear()} · 机器人学习输入输出分析板`,
     ])
   );
 }
