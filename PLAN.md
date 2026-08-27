@@ -1,4 +1,4 @@
-# Robot Learning IO Board Online — 建设计划
+# Robot Learning IO Board Online — 机器人学习输入输出分析板
 
 > 用「模块 + 连线」的节点图，把热门人形机器人强化学习项目的**输入、输出、奖励函数**画成可交互的网页。
 > 规划范围两批：**真机路线**的 **SONIC** 与 **BeyondMimic**（已上线），**动画路线**的 **MimicKit** 方法族 7 个方法（DeepMimic、AWR、AMP、ASE、LCP、ADD、SMP，内容已核对、待落数据）。每个项目可在**训练态**（含奖励函数设置）与**部署态 / 推理态**之间切换。

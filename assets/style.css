@@ -1867,6 +1867,11 @@ table.tv caption {
     grid-template-columns: 1fr;
     gap: 6px;
   }
+  /* 中文站名「机器人学习输入输出分析板」比原先短名长一截，
+     这一档先收起中文半，把横向空间留给项目选择器。 */
+  .site-title-zh {
+    display: none;
+  }
 }
 
 /* ---------- 窄屏（手机竖屏为主） ---------- */

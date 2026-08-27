@@ -1,6 +1,6 @@
 # Robot_Learning_IO_Board_Online
 
-人形机器人强化学习项目的输入 / 输出 / 奖励函数分析板
+机器人学习输入输出分析板
 
 [![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-Live-brightgreen?logo=github)](https://imchong.github.io/Robot_Learning_IO_Board_Online/)
 [![Deploy GitHub Pages](https://github.com/ImChong/Robot_Learning_IO_Board_Online/actions/workflows/pages.yml/badge.svg)](https://github.com/ImChong/Robot_Learning_IO_Board_Online/actions/workflows/pages.yml)

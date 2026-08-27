@@ -401,7 +401,7 @@ function renderFooter() {
         rel: "noopener",
         text: "刘冲",
       }),
-      ` ${new Date().getFullYear()} · Robot Learning IO Board Online`,
+      ` ${new Date().getFullYear()} · 机器人学习输入输出分析板`,
     ])
   );
 }
