@@ -469,7 +469,7 @@ MimicKit 里 DeepMimic 与 AWR 共用一份 `deepmimic_humanoid_env.yaml`，LCP 
 | 数据 | 静态 JSON，运行时 `fetch` | 便于外部校验脚本读取；也让「加一个项目 = 加一个 JSON + 一行注册」成立 |
 | 校验 | JSON Schema + 一个 Node 脚本 | 在 CI 里检查节点 id 唯一、边两端存在、维度求和自洽、`source` 必填、`inherits` 只有一层、学习式奖励的 `model.inputs` 指向存在的节点 |
 
-下面是**当前实际结构**，`+` 标出接 MimicKit 时要新增的文件（`README.md` 里有面向使用者的同一份说明）：
+下面是**当前实际结构**，`+` 标出接 MimicKit 时要新增的文件（`docs/GUIDE.md` 里有面向使用者的同一份说明）：
 
 ```
 Robot_Learning_IO_Board/
