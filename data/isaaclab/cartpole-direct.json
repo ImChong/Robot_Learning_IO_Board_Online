@@ -1,0 +1,939 @@
+{
+  "id": "isaaclab-cartpole-direct",
+  "name": "Cartpole · direct",
+  "subtitle": "同一根杆：一句 torch.cat 拼出 4 维，顺序却反了",
+  "tagline": "同一个倒立摆，观测写成一句 torch.cat——顺序看得见，但和 manager-based 版反着来。",
+  "robot": {
+    "name": "Cartpole（滑块 + 摆杆）",
+    "dof": 2
+  },
+  "rates": {
+    "policyHz": 60,
+    "physicsHz": 120,
+    "note": "decimation=2，sim_dt=1/120 s，episode 5 s（300 步）"
+  },
+  "verifiedAt": "2026-08-28",
+  "verifiedRef": "isaac-sim/IsaacLab@main · Isaac-Cartpole-Direct-v0（direct/cartpole）",
+  "links": {
+    "环境实现 cartpole_env.py": "https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab_tasks/isaaclab_tasks/direct/cartpole/cartpole_env.py",
+    "同任务的 manager-based 版": "https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab_tasks/isaaclab_tasks/manager_based/classic/cartpole/cartpole_env_cfg.py",
+    "代码 IsaacLab": "https://github.com/isaac-sim/IsaacLab"
+  },
+  "modes": {
+    "train": {
+      "label": "训练态",
+      "summary": "Isaac Lab 4096 并行环境，4 维策略观测、1 维推力动作、5 项奖励、2 项终止。整个环境是一个继承 DirectRLEnv 的类，观测与奖励各是一个方法。",
+      "facts": [
+        {
+          "label": "工作流",
+          "value": "direct（Python 方法式）"
+        },
+        {
+          "label": "角色",
+          "value": "Cartpole · 2 DoF（滑块 + 摆杆，只驱动滑块）"
+        },
+        {
+          "label": "策略观测",
+          "value": "4 维"
+        },
+        {
+          "label": "观测分量顺序",
+          "value": "(θ, θ̇, x, ẋ)——摆杆两项在前、滑块两项在后"
+        },
+        {
+          "label": "观测口径",
+          "value": "绝对关节读数（joint_pos / joint_vel，不减默认位姿）"
+        },
+        {
+          "label": "上游接口",
+          "value": "无（任务就是「别倒」，没有指令输入）"
+        },
+        {
+          "label": "观测怎么声明",
+          "value": "一个 _get_observations 方法，torch.cat 手写顺序"
+        },
+        {
+          "label": "本体历史深度",
+          "value": "1 帧"
+        },
+        {
+          "label": "观测噪声",
+          "value": "无（direct 工作流没有 corruption 机制）"
+        },
+        {
+          "label": "观测归一化",
+          "value": "无（actor_obs_normalization=False）"
+        },
+        {
+          "label": "特权 critic 观测",
+          "value": "无（state_space=0，critic 与 actor 同吃 4 维）"
+        },
+        {
+          "label": "Actor 网络",
+          "value": "MLP [32, 32] · ELU"
+        },
+        {
+          "label": "动作输出",
+          "value": "1 维滑块推力（O2）· action_scale=100 N"
+        },
+        {
+          "label": "奖励项",
+          "value": "5 项 · 1 正 4 负"
+        },
+        {
+          "label": "奖励来源",
+          "value": "手写（5 个标量系数，在一个 torch.jit 函数里加完）"
+        },
+        {
+          "label": "终止条件",
+          "value": "2 项 · time_out(5 s) + 越界（|x| > 3 m 或 |θ| > π/2）"
+        },
+        {
+          "label": "初始状态",
+          "value": "摆角在默认位姿上叠加 U(−0.25π, 0.25π) rad（约 ±45°），其余取默认"
+        },
+        {
+          "label": "质量随机化",
+          "value": "无"
+        },
+        {
+          "label": "推力扰动",
+          "value": "无"
+        },
+        {
+          "label": "地形",
+          "value": "平面（spawn_ground_plane 默认尺寸，只作视觉参照）"
+        },
+        {
+          "label": "并行环境",
+          "value": "4096 · env_spacing 4.0"
+        },
+        {
+          "label": "控制频率",
+          "value": "60 Hz（物理 120 Hz）"
+        },
+        {
+          "label": "Actor 学习率",
+          "value": "1e-3 自适应（desired_kl=0.01）"
+        },
+        {
+          "label": "训练规模",
+          "value": "150 轮 × 16 步/环境"
+        }
+      ],
+      "lanes": [
+        "source",
+        "proprio",
+        "policy",
+        "action",
+        "plant",
+        "learn"
+      ],
+      "nodes": [
+        {
+          "id": "s.scene",
+          "lane": "source",
+          "kind": "proc",
+          "label": "场景搭建",
+          "sub": "_setup_scene() · 4096 envs",
+          "desc": "手写的一个方法：实例化 Articulation(CARTPOLE_CFG)、铺地面、clone_environments、按需过滤碰撞、挂一盏 DomeLight。env_spacing 4.0，replicate_physics 与 clone_in_fabric 都开着。",
+          "note": "manager-based 那边这一整段是一个 CartpoleSceneCfg 配置类，三个字段就是三个 prim；direct 这边是一段过程式代码。多出来的一句 if self.device == \"cpu\": filter_collisions —— CPU 后端要显式关掉环境之间的碰撞，这类细节在 direct 工作流里由作者自己负责。两边的灯光也不一样：这边 DomeLight intensity=2000，那边 500。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "CartpoleEnv._setup_scene"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "s.reset",
+          "lane": "source",
+          "kind": "proc",
+          "label": "复位采样",
+          "sub": "_reset_idx()",
+          "availability": "train-only",
+          "desc": "摆杆角度在默认位姿上叠加 U(−0.25π, 0.25π) rad（约 ±45°），关节速度、根位姿与根速度全部取默认值（滑块居中静止，摆杆立在 z=2 m 处）。",
+          "note": "整个环境唯一的随机性来源就是这一行摆角采样：滑块永远从轨道正中静止起步。manager-based 版的 EventCfg 有两个 EventTerm、四个量全随机（滑块位置 U(−1, 1) m、滑块速度 U(−0.5, 0.5) m/s、摆角与摆杆角速度各 U(−0.25π, 0.25π)）。同样 150 轮训练，两边见到的初始状态集合根本不是一回事。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "CartpoleEnv._reset_idx"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.pole_pos",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "摆杆角度",
+          "sub": "joint_pos[cart_to_pole]",
+          "dim": 1,
+          "dimLayout": "标量：cart_to_pole 关节角，0 为竖直向上（默认位姿），符号由 USD 的关节轴方向决定",
+          "unit": "rad",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "摆杆偏离竖直的角度。任务的核心量：奖励里罚它的平方，终止条件里 |θ| > π/2 就判负。",
+          "note": "拼接时排在最前面。关节下标由 find_joints(\"cart_to_pole\") 在运行时查出来，所以顺序写在 torch.cat 里、不从关节序继承——这正是它与 manager-based 版排列相反的原因：那边的 joint_pos_rel 整块按 articulation 关节序（滑块在前），这边是手写的、摆杆在前。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "CartpoleEnv._get_observations"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.pole_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "摆杆角速度",
+          "sub": "joint_vel[cart_to_pole]",
+          "dim": 1,
+          "dimLayout": "标量：cart_to_pole 关节角速度，与角度同号约定",
+          "unit": "rad/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "摆杆的角速度。单看角度是部分可观测的（同一个倾角，正在倒下和正在扶正要推的方向相反），这一项补上的正是那个方向。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "CartpoleEnv._get_observations"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.cart_pos",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "滑块位置",
+          "sub": "joint_pos[slider_to_cart]",
+          "dim": 1,
+          "dimLayout": "标量：slider_to_cart 关节位移，0 为轨道中点",
+          "unit": "m",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "滑块在导轨上的位置。超过 ±3 m 就终止，所以策略必须一边扶杆一边把自己留在轨道上。",
+          "note": "这一项传进了 compute_rewards 的参数列表（cart_pos），但函数体里一次都没用到——滑块位置只经由终止条件起作用，奖励里没有任何一项管它跑多远。manager-based 版同样没有滑块位置的奖励项，两边在这一点上一致：越界代价由 −2.0 一次性支付，不给渐进的位置罚。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "CartpoleEnv._get_observations"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.cart_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "滑块速度",
+          "sub": "joint_vel[slider_to_cart]",
+          "dim": 1,
+          "dimLayout": "标量：slider_to_cart 关节速度",
+          "unit": "m/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "滑块速度。奖励里带一项 −0.01·|ẋ| 的惩罚，压住「靠一路加速把杆撑住」这种解。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "CartpoleEnv._get_observations"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "n.concat",
+          "lane": "policy",
+          "kind": "net",
+          "label": "观测拼接",
+          "sub": "_get_observations() · torch.cat",
+          "dim": 4,
+          "dimExpr": "1 + 1 + 1 + 1",
+          "dimLayout": "(θ, θ̇, x, ẋ)——摆杆角度、摆杆角速度、滑块位置、滑块速度。注意是「摆杆两项在前、滑块两项在后」，与 Gym 经典 CartPole 的 (x, ẋ, θ, θ̇) 正好前后对调",
+          "checkSum": true,
+          "desc": "四个标量按 torch.cat 里写死的顺序拼成 4 维，包成 {\"policy\": obs} 返回。observation_space=4 在配置里显式声明，与拼出来的维度必须一致（对不上会在 DirectRLEnv 初始化时报错）。",
+          "note": "这一格是本站最短的一个「顺序反了照样跑、只是学不出来」的样本。同一个仓库、同一个任务、同为 4 维：direct 这边手写的 torch.cat 拼出 (θ, θ̇, x, ẋ)，manager-based 那边 ObservationManager 按字段顺序拼出 (x, θ, ẋ, θ̇)（joint_pos_rel 整块接 joint_vel_rel 整块，块内按关节序）。四个位置里只有第一个和最后一个恰好错开成不同的量，两边都不报错。顺带一提，Gym 经典 CartPole 的顺序是 (x, ẋ, θ, θ̇)，和这两个都不同——三份实现，三种排列。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "CartpoleEnv._get_observations"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "n.actor",
+          "lane": "policy",
+          "kind": "net",
+          "label": "Actor MLP",
+          "sub": "[32, 32] · ELU",
+          "desc": "两层各 32 个单元，本站最小的一张网络。输出 1 维动作分布的均值，init_noise_std=1.0。",
+          "note": "与 manager-based 版的 CartpolePPORunnerCfg 一字不差——网络与算法两边完全相同，所以这两张图之间的每一处差别都只可能来自环境定义本身。再对照 Ant 的 [400, 200, 100]、BeyondMimic 的 [512, 256, 128]：网络多大在这块板上从来是任务复杂度的读数，不是方法先进程度的读数。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/agents/rsl_rl_ppo_cfg.py",
+            "symbol": "CartpolePPORunnerCfg.policy"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "n.critic",
+          "lane": "policy",
+          "kind": "net",
+          "label": "Critic MLP",
+          "sub": "[32, 32] · ELU",
+          "availability": "train-only",
+          "desc": "价值网络，与 Actor 同结构、同输入。配置里 state_space=0，意思是「不提供额外的 critic 状态」，于是 critic 吃的就是那 4 维策略观测。",
+          "note": "direct 工作流里非对称 Actor-Critic 是通过 state_space > 0 加一个 _get_states() 方法打开的；manager-based 那边是在 ObservationsCfg 里加一个 critic 观测组。两个示例都没打开。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "CartpoleEnvCfg.state_space"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "a.raw",
+          "lane": "action",
+          "kind": "act",
+          "class": "O2",
+          "label": "滑块推力",
+          "sub": "action_space = 1",
+          "dim": 1,
+          "dimLayout": "标量：施加在 slider_to_cart 上的力（缩放前），正负代表推向导轨的两端",
+          "desc": "策略只输出一个数：往左推还是往右推、推多大。摆杆那个关节没有驱动，只能靠滑块的加速度间接把它甩回来。",
+          "note": "欠驱动系统的教科书样本——2 个自由度、1 个执行器。本站其余项目全部是全驱动（关节数 = 动作数）。manager-based 版靠 JointEffortActionCfg 的 joint_names=[\"slider_to_cart\"] 正则匹配到一个关节来得到同样的 1 维；这边是 action_space = 1 加 set_joint_effort_target(..., joint_ids=self._cart_dof_idx)，一个写在配置里、一个写在方法里。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "CartpoleEnvCfg.action_space"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "a.scale",
+          "lane": "action",
+          "kind": "act",
+          "label": "推力缩放",
+          "sub": "action_scale = 100.0 N",
+          "desc": "_pre_physics_step 里一句 self.actions = 100.0 × actions.clone()，每个策略步算一次。",
+          "note": "与 manager-based 版 JointEffortActionCfg 的 scale=100.0 数值完全相同，只是一个写在 _pre_physics_step 里、一个写在配置项里。网络输出是无界的高斯采样，乘 100 之后由执行器的 effort_limit_sim=400 N 兜底截断——|a| > 4 的动作在物理上没有区别，而这个饱和区不出现在任何奖励项里。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "CartpoleEnv._pre_physics_step"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "a.actuator",
+          "lane": "action",
+          "kind": "act",
+          "label": "隐式执行器",
+          "sub": "cart: damping=10 · pole: 无驱动",
+          "freqHz": 120,
+          "desc": "cart_actuator 刚度 0、阻尼 10.0、力矩上限 400 N；pole_actuator 刚度与阻尼都是 0，即摆杆完全被动。set_joint_effort_target 在 _apply_action 里调用，每个物理步一次。",
+          "note": "两个版本共用同一份 CARTPOLE_CFG，这一格完全一样。两处要点：一是滑块那 10.0 的阻尼一直在，等于导轨自带摩擦，策略不出力时滑块会自己停下来；二是 _apply_action 每个物理步都跑，decimation=2 意味着同一个力在一个策略步里被施加两次——这件事在所有 Isaac Lab 环境里都成立，但只有 direct 工作流把它写在了明面上。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_assets/.../robots/cartpole.py",
+            "symbol": "CARTPOLE_CFG.actuators"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "e.sim",
+          "lane": "plant",
+          "kind": "plant",
+          "label": "Isaac Lab 并行环境",
+          "sub": "4096 envs · 平面",
+          "freqHz": 120,
+          "desc": "物理步长 1/120 s，decimation=2 → 策略 60 Hz，episode 5 s（300 步）。地面只是视觉参照，滑块与摆杆都不与它接触。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "CartpoleEnvCfg.sim"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "l.term",
+          "lane": "learn",
+          "kind": "signal",
+          "label": "终止条件",
+          "sub": "_get_dones() · 2 项",
+          "availability": "train-only",
+          "desc": "out_of_bounds（|滑块位置| > 3.0 m 或 |摆角| > π/2）是真终止；time_out（episode_length_buf ≥ 299）是超时。方法返回的就是这两个布尔张量。",
+          "note": "这里比 manager-based 版多一条规则：除滑块越界外，|θ| > π/2 也终止。那边的 TerminationsCfg 只管滑块，杆倒下去、甚至转过头，episode 都还在跑。两个官方示例对「什么算失败」的定义不一样。另外，在 direct 工作流里 _get_dones 是每一拍最先跑的方法，而且它顺手把 joint_pos / joint_vel 从物理引擎刷了一遍——所以同一拍里奖励和观测用的是同一份刚更新的状态。这个安排在别的 direct 环境里也照抄，是约定俗成而非语言强制的顺序。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "CartpoleEnv._get_dones"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "l.reward",
+          "lane": "learn",
+          "kind": "signal",
+          "label": "总奖励",
+          "sub": "compute_rewards() · @torch.jit.script",
+          "availability": "train-only",
+          "desc": "5 项在一个被 torch.jit.script 编译的自由函数里逐项算出来再相加：存活 +1.0、终止 −2.0、摆角平方 −1.0、滑块速度 −0.01、摆杆角速度 −0.005。",
+          "note": "五项的权重与 manager-based 版一个不差，但两项的算法不同（见奖励面板）。写法上的差别是：RewardManager 逐项乘权重求和、给每一项单独记曲线；这边是一个 torch.jit.script 函数一次算完，没有分项统计。加一项要改函数签名（当前已经是 10 个参数），但省掉了每步遍历配置项的开销，整条计算被 JIT 编译成一个 kernel。奖励规模小的时候这笔账是划算的。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "compute_rewards"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "l.ppo",
+          "lane": "learn",
+          "kind": "signal",
+          "label": "PPO 更新",
+          "sub": "rsl_rl · 150 迭代",
+          "availability": "train-only",
+          "desc": "num_steps_per_env=16，5 个学习轮次 × 4 个 minibatch，lr 1e-3 自适应（desired_kl=0.01），clip 0.2，entropy 0.005，γ=0.99，λ=0.95，max_grad_norm=1.0。",
+          "note": "与 manager-based 版逐字段相同。150 轮 × 16 步 × 4096 环境 ≈ 1000 万步就收敛，是本站训练量最小的一条（对照 Ant 的 1000 轮 × 32 步、BeyondMimic 的 30000 轮 × 24 步）。manager-based 那边还多一份 CartpolePPORunnerWithSymmetryCfg：把观测与动作整体取负当作数据增广（倒立摆左右对称），这是 direct 版没有的变体。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/agents/rsl_rl_ppo_cfg.py",
+            "symbol": "CartpolePPORunnerCfg"
+          },
+          "confidence": "verified"
+        }
+      ],
+      "edges": [
+        {
+          "from": "s.scene",
+          "to": "e.sim",
+          "kind": "flow"
+        },
+        {
+          "from": "s.reset",
+          "to": "e.sim",
+          "kind": "init",
+          "style": "dashed",
+          "label": "reset 起点"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.pole_pos",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.pole_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.cart_pos",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.cart_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "o.pole_pos",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.pole_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.cart_pos",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.cart_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "n.concat",
+          "to": "n.actor",
+          "kind": "obs",
+          "label": "4"
+        },
+        {
+          "from": "n.concat",
+          "to": "n.critic",
+          "kind": "obs",
+          "style": "dashed",
+          "label": "4（同一份）"
+        },
+        {
+          "from": "n.actor",
+          "to": "a.raw",
+          "kind": "action",
+          "label": "1"
+        },
+        {
+          "from": "a.raw",
+          "to": "a.scale",
+          "kind": "action"
+        },
+        {
+          "from": "a.scale",
+          "to": "a.actuator",
+          "kind": "action"
+        },
+        {
+          "from": "a.actuator",
+          "to": "e.sim",
+          "kind": "action"
+        },
+        {
+          "from": "e.sim",
+          "to": "l.term",
+          "kind": "reward"
+        },
+        {
+          "from": "o.pole_pos",
+          "to": "l.reward",
+          "kind": "reward",
+          "style": "dashed"
+        },
+        {
+          "from": "o.pole_vel",
+          "to": "l.reward",
+          "kind": "reward",
+          "style": "dashed"
+        },
+        {
+          "from": "o.cart_vel",
+          "to": "l.reward",
+          "kind": "reward",
+          "style": "dashed"
+        },
+        {
+          "from": "l.term",
+          "to": "l.reward",
+          "kind": "flow",
+          "label": "terminated 进奖励"
+        },
+        {
+          "from": "l.reward",
+          "to": "l.ppo",
+          "kind": "reward"
+        },
+        {
+          "from": "l.term",
+          "to": "l.ppo",
+          "kind": "reward"
+        },
+        {
+          "from": "n.critic",
+          "to": "l.ppo",
+          "kind": "grad",
+          "style": "dashed"
+        },
+        {
+          "from": "l.ppo",
+          "to": "n.actor",
+          "kind": "grad",
+          "style": "dashed",
+          "label": "策略更新"
+        },
+        {
+          "from": "l.term",
+          "to": "s.reset",
+          "kind": "feedback",
+          "style": "dashed",
+          "label": "触发复位"
+        }
+      ],
+      "rewards": [
+        {
+          "id": "rew_scale_alive",
+          "canonical": "alive",
+          "group": "A",
+          "label": "存活",
+          "weight": 1.0,
+          "form": "1-\\mathbb{1}\\!\\left[\\text{terminated}\\right]",
+          "target": "整个 episode",
+          "direction": "positive",
+          "desc": "没出界就每步 +1.0。这是唯一的正向项——「把杆立住」这个任务，全部正向激励就是「活着」。",
+          "note": "terminated 指的是 out_of_bounds，不含超时。跑满 300 步的 episode 每一步都拿得到这 1.0。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "rew_scale_alive"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "rew_scale_terminated",
+          "canonical": "termination_penalty",
+          "group": "E",
+          "label": "越界惩罚",
+          "weight": -2.0,
+          "form": "\\mathbb{1}\\!\\left[\\text{terminated}\\right]",
+          "target": "越界那一步",
+          "direction": "negative",
+          "desc": "|滑块| > 3 m 或 |摆角| > π/2 的那一步扣 2.0。和存活项配成一对：出界那一拍的收益从 +1 掉到 −2，一次落差 3.0。",
+          "note": "这是「安全与硬件」类在示例环境里的最简形态——没有关节限位、没有自碰撞、没有力矩超限，只有一条「出了这个范围就重来」的硬边界，代价一次性支付。注意这个 −2.0 覆盖的是「滑块越界或摆角超过 π/2」两种情况；manager-based 版的同名系数只管滑块越界，因为那边根本没有摆角终止。同一个 −2.0，管的事不一样。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "rew_scale_terminated"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "rew_scale_pole_pos",
+          "canonical": "upright",
+          "group": "B",
+          "label": "摆角惩罚",
+          "weight": -1.0,
+          "form": "\\theta^{2}",
+          "target": "摆杆角度",
+          "direction": "negative",
+          "desc": "摆角的平方，权重 −1.0。这是塑形的主力：越偏离竖直罚得越狠，而且是二次的，所以靠近竖直时梯度自然变小。",
+          "note": "与 manager-based 版的 pole_pos 权重相同（−1.0），但那边用的是 joint_pos_target_l2，会先把角度 wrap 到 (−π, π] 再平方；这边直接对原始角度取平方，不做 wrap。这边不需要 wrap，因为 |θ| > π/2 就终止，压根走不到会绕圈的区间；那边没有摆角终止，所以必须靠 wrap 把这一项的上界钉在 π² ≈ 9.87。同一个惩罚，两种边界处理。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "rew_scale_pole_pos"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "rew_scale_cart_vel",
+          "canonical": "cart_vel",
+          "group": "D",
+          "label": "滑块速度惩罚",
+          "weight": -0.01,
+          "form": "\\lvert\\dot{x}\\rvert",
+          "target": "滑块速度",
+          "direction": "negative",
+          "desc": "滑块速度的绝对值，权重很小。作用是压住「一路加速把杆撑住」这类解——那样虽然杆是直的，但很快就撞上 ±3 m 的边界。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "rew_scale_cart_vel"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "rew_scale_pole_vel",
+          "canonical": "pole_vel",
+          "group": "D",
+          "label": "摆杆角速度惩罚",
+          "weight": -0.005,
+          "form": "\\lvert\\dot{\\theta}\\rvert",
+          "target": "摆杆角速度",
+          "direction": "negative",
+          "desc": "摆杆角速度的绝对值，权重是全部五项里最小的。它罚的是「来回晃着维持平均直立」，逼策略把杆真正稳住而不是让它在竖直附近高频摆动。",
+          "note": "四项负向里三项都是 L1（绝对值）而不是 L2，只有摆角那项是平方。L1 在零点附近仍有恒定梯度，对「彻底停住」比 L2 更有效——L2 越接近零推力越弱。manager-based 版这两项复用同一个 joint_vel_l1 函数、只换 SceneEntityCfg 选中的关节，数值上与这边等价。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/cartpole/cartpole_env.py",
+            "symbol": "rew_scale_pole_vel"
+          },
+          "confidence": "verified"
+        }
+      ],
+      "callouts": [
+        {
+          "title": "同一个任务，两份官方实现，四个数的顺序不一样",
+          "body": "direct 这边一句 torch.cat 拼出 (θ, θ̇, x, ẋ)：摆杆两项在前、滑块两项在后。manager-based 那边 ObservationManager 按字段顺序拼出 (x, θ, ẋ, θ̇)：joint_pos_rel 整块接 joint_vel_rel 整块，块内按关节序。两边都是 4 维，observation_space 都对，权重互换跑得起来，就是学不出来。整块分析板反复讲「维度对得上而顺序错了，是不会报错的那类 bug」——这是它最短的一个例子，四个数就够了，不必等到 29 个关节。第三种排列还在外面等着：Gym 经典 CartPole 是 (x, ẋ, θ, θ̇)。"
+        },
+        {
+          "title": "两边不是同一个 MDP",
+          "body": "网络 [32, 32]、PPO 超参、决策频率、episode 长度、执行器、动作缩放 100 N——这些两边一字不差。但环境定义差了四处：观测顺序（摆杆/滑块分块 vs 位置/速度分块）、观测口径（绝对读数 vs 相对默认位姿）、复位随机化（只有摆角 vs 四个量）、终止条件（滑块加摆角 vs 只管滑块）。所以「manager-based 和 direct 是同一个环境的两种写法」这句话只对了一半：写法确实是两种，环境也确实是两个。拿两边的曲线直接比训练效率，比的其实是这四处 MDP 差异。"
+        },
+        {
+          "title": "direct 的取舍：顺序看得见，但改不动",
+          "body": "这张图上 4 维观测的排列，是 _get_observations 里一句显式的 torch.cat——读代码的人一眼就能对上自己的张量。代价是加一项观测要改方法体、还要同步改 observation_space，两处不一致会在 DirectRLEnv 初始化时报错（这一点比 manager-based 的静默错位友好）。manager-based 那边加一项是加一行配置，但那 4 维的排列没有任何一处代码显式表达过——它是配置类字段书写次序加关节序叠出来的副产品。这是两种工作流最根本的一处取舍,在 4 维上就已经能看清。"
+        },
+        {
+          "title": "2 个自由度、1 个执行器",
+          "body": "本站其余十张图全是全驱动的（关节数 = 动作数）。这里摆杆没有电机，策略只能通过晃动滑块把角动量间接传给它。观测里 4 个数有 2 个在描述一个自己控制不了的物体——欠驱动系统的观测里必然要留出位置给「我影响不了但必须知道」的那部分状态，这一点在更复杂的机器人上会以「基座位姿」「负载状态」的形式重新出现。"
+        }
+      ]
+    },
+    "test": {
+      "label": "推理态",
+      "summary": "导出后真正要复现的那段计算：4 维观测 → [32, 32] MLP → 1 维推力 → ×100 N。Critic、5 项奖励、2 项终止与复位采样都不在里面。",
+      "facts": [
+        {
+          "label": "工作流",
+          "value": "direct（Python 方法式）"
+        },
+        {
+          "label": "角色",
+          "value": "Cartpole · 2 DoF（滑块 + 摆杆，只驱动滑块）"
+        },
+        {
+          "label": "策略观测",
+          "value": "4 维（与训练态完全相同）"
+        },
+        {
+          "label": "观测分量顺序",
+          "value": "(θ, θ̇, x, ẋ)——与 manager-based 版的 (x, θ, ẋ, θ̇) 不同"
+        },
+        {
+          "label": "相比训练态去掉",
+          "value": "Critic MLP · 5 项奖励 · 2 项终止 · 复位摆角采样"
+        },
+        {
+          "label": "相比训练态保留",
+          "value": "全部 4 项观测——一项都没有因为「真机拿不到」被摘掉"
+        },
+        {
+          "label": "上游接口",
+          "value": "无（没有指令输入）"
+        },
+        {
+          "label": "依赖状态估计",
+          "value": "不依赖（四个量都是关节编码器级别的读数）"
+        },
+        {
+          "label": "网络",
+          "value": "MLP [32, 32] · ELU"
+        },
+        {
+          "label": "运行时",
+          "value": "rsl_rl 导出的 TorchScript / ONNX"
+        },
+        {
+          "label": "控制频率",
+          "value": "60 Hz（物理 120 Hz）"
+        },
+        {
+          "label": "动作输出",
+          "value": "1 维滑块推力（O2）"
+        }
+      ],
+      "lanes": [
+        "proprio",
+        "policy",
+        "action",
+        "plant"
+      ],
+      "nodes": [
+        {
+          "id": "o.pole_pos",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "摆杆角度",
+          "sub": "joint_pos[cart_to_pole]",
+          "dim": 1,
+          "dimLayout": "标量：cart_to_pole 关节角，0 为竖直向上",
+          "unit": "rad",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "拼接时排第一位。这个「第一位」是导出文件里读不到的信息，只能回去看 _get_observations。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.pole_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "摆杆角速度",
+          "sub": "joint_vel[cart_to_pole]",
+          "dim": 1,
+          "dimLayout": "标量：cart_to_pole 关节角速度",
+          "unit": "rad/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "排第二位。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.cart_pos",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "滑块位置",
+          "sub": "joint_pos[slider_to_cart]",
+          "dim": 1,
+          "dimLayout": "标量：slider_to_cart 关节位移，0 为轨道中点",
+          "unit": "m",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "排第三位。训练时它只经由终止条件起作用，推理时终止条件没了，但策略仍在用它判断「还能往哪边推多久」。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.cart_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "滑块速度",
+          "sub": "joint_vel[slider_to_cart]",
+          "dim": 1,
+          "dimLayout": "标量：slider_to_cart 关节速度",
+          "unit": "m/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "排第四位。",
+          "confidence": "verified"
+        },
+        {
+          "id": "n.concat",
+          "lane": "policy",
+          "kind": "net",
+          "label": "观测拼接",
+          "sub": "4 维 · 顺序固定",
+          "dim": 4,
+          "dimExpr": "1 + 1 + 1 + 1",
+          "dimLayout": "(θ, θ̇, x, ẋ)——摆杆两项在前、滑块两项在后；manager-based 版是 (x, θ, ẋ, θ̇)，Gym 经典 CartPole 是 (x, ẋ, θ, θ̇)",
+          "checkSum": true,
+          "desc": "导出的策略只认这一个 4 维向量。它和 manager-based 版导出的策略输入张量都是 [N, 4]、输出都是 [N, 1]，元数据里没有任何东西能区分它们——区分只能靠回去读环境定义。",
+          "confidence": "verified"
+        },
+        {
+          "id": "n.actor",
+          "lane": "policy",
+          "kind": "net",
+          "label": "Actor MLP",
+          "sub": "[32, 32] · ELU",
+          "desc": "与训练时同一套权重。推理时只取分布均值，不再采样。",
+          "confidence": "verified"
+        },
+        {
+          "id": "a.raw",
+          "lane": "action",
+          "kind": "act",
+          "class": "O2",
+          "label": "滑块推力",
+          "dim": 1,
+          "dimLayout": "标量：施加在 slider_to_cart 上的力（缩放前）",
+          "desc": "网络原始输出，缩放前。",
+          "confidence": "verified"
+        },
+        {
+          "id": "a.scale",
+          "lane": "action",
+          "kind": "act",
+          "label": "推力缩放",
+          "sub": "action_scale = 100.0 N",
+          "desc": "这一步在导出的网络之外——_pre_physics_step 做的事，搬到别处必须自己补上。",
+          "confidence": "verified"
+        },
+        {
+          "id": "a.actuator",
+          "lane": "action",
+          "kind": "act",
+          "label": "隐式执行器",
+          "sub": "cart: damping=10 · 力矩上限 400 N",
+          "freqHz": 120,
+          "desc": "同一个力在一个策略步里被施加两次（decimation=2）。导轨阻尼 10.0 一直在。",
+          "confidence": "verified"
+        },
+        {
+          "id": "e.sim",
+          "lane": "plant",
+          "kind": "plant",
+          "label": "Isaac Lab 环境（play.py）",
+          "sub": "少量并行环境 · 开渲染",
+          "freqHz": 120,
+          "desc": "环境本身没变，物理步长与 decimation 都与训练一致。",
+          "note": "play.py 跑的还是同一个 DirectRLEnv，_get_rewards 与 _get_dones 每拍照跑，只是没人用返回值。这张图画的是导出的策略真正要复现的那段计算。",
+          "confidence": "verified"
+        }
+      ],
+      "edges": [
+        {
+          "from": "e.sim",
+          "to": "o.pole_pos",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.pole_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.cart_pos",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.cart_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "o.pole_pos",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.pole_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.cart_pos",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.cart_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "n.concat",
+          "to": "n.actor",
+          "kind": "obs",
+          "label": "4"
+        },
+        {
+          "from": "n.actor",
+          "to": "a.raw",
+          "kind": "action",
+          "label": "1"
+        },
+        {
+          "from": "a.raw",
+          "to": "a.scale",
+          "kind": "action"
+        },
+        {
+          "from": "a.scale",
+          "to": "a.actuator",
+          "kind": "action"
+        },
+        {
+          "from": "a.actuator",
+          "to": "e.sim",
+          "kind": "action"
+        }
+      ],
+      "callouts": [
+        {
+          "title": "两个 ONNX，四个数，顺序不同",
+          "body": "这个环境和它的 manager-based 双胞胎各自导出一个策略，输入张量都是 [N, 4]，输出都是 [N, 1]，元数据里没有任何东西能区分它们。区分它们的唯一办法是回去读环境定义。这就是本站坚持给每个带维度的模块写「分量顺序」的原因——它是导出物里丢掉的那一半信息。同一批示例里的那对 Ant 反倒好办：36 维对 60 维，接错了当场报错。"
+        },
+        {
+          "title": "整条推理链只有五格",
+          "body": "四个标量、一个两层 MLP、一次乘 100。本站最长的那条链（SONIC 的部署态）要走编码器、FSQ、token 接口、decoder、动作后处理与 ONNX 运行时。把这两张图并排看，「一条 RL 策略部署时到底是什么」这件事的下限与上限就都在这儿了——中间的差别全部来自任务，不来自框架。"
+        }
+      ]
+    }
+  }
+}

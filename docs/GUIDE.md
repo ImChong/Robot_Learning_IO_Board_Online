@@ -42,6 +42,9 @@ data/
   ├── projects.json     项目注册表与分组
   ├── beyondmimic.json  节点、连线、奖励项、关键指标
   ├── sonic.json
+  ├── isaaclab/         Isaac Lab 官方示例，两个任务 × 两种工作流
+  │   ├── cartpole-manager.json  cartpole-direct.json
+  │   └── ant-manager.json       ant-direct.json
   └── mimickit/         MimicKit 方法族七个方法
       ├── deepmimic.json    基线；awr.json 继承它
       ├── awr.json          只写与 DeepMimic 的差异（inherits + overrides）
