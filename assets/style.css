@@ -409,16 +409,24 @@ kbd {
   gap: 0.75rem;
 }
 
+/* 仓库入口。宽屏是「图标 + GitHub」的文字链接，窄屏只留图标（见响应式那一节）：
+   图标那份认得出来的是同一个标记，不依赖读得懂那五个字母。 */
 .github-link {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   height: 30px;
   padding: 0 2px;
   font-size: 0.85rem;
   color: var(--text-faint);
   text-decoration: none;
   white-space: nowrap;
-  transition: color var(--transition);
+  transition: color var(--transition), border-color var(--transition);
+}
+.github-mark {
+  width: 17px;
+  height: 17px;
+  flex: none;
 }
 .github-link:hover {
   color: var(--accent);
@@ -1948,8 +1956,8 @@ table.tv caption {
   }
 
   /* 顶栏必须保持一行：它是粘性的，换成两行就等于常驻吃掉一屏的 1/6。
-     让位顺序是「副标题 → 站名的中文半 → 站名英文 → GitHub 链接」，项目选择器一直
-     留着，它是这个页面唯一的导航。 */
+     让位顺序是「副标题 → 站名的中文半 → 站名英文 → GitHub 那五个字母」，项目选择器
+     一直留着，它是这个页面唯一的导航；GitHub 只让出文字，图标按钮留在顶栏里。 */
   .header-inner {
     gap: 10px;
   }
@@ -1977,6 +1985,25 @@ table.tv caption {
     width: 100%;
     min-width: 0;
     padding: 7px 10px 7px 12px;
+  }
+  /* 顶栏的 GitHub 入口收成图标：文字那半约 48px，收掉之后剩一个和主题按钮
+     同尺寸的方钮，省下的宽度全归项目选择器——它是这个页面唯一的导航。
+     标记本身留着，源码入口在手机上和在桌面上一样是一眼能找到的东西。 */
+  .header-right {
+    gap: 8px;
+  }
+  .github-link {
+    justify-content: center;
+    min-width: 36px;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+  }
+  .github-link:hover {
+    border-color: var(--accent);
+  }
+  .github-label {
+    display: none;
   }
   /* 下拉在窄屏上贴着两边铺开，并且用 fixed 脱离顶栏，免得列表被顶栏裁掉。 */
   .picker-panel {
@@ -2208,13 +2235,6 @@ table.tv caption {
   }
 }
 
-@media (max-width: 480px) {
-  /* 仓库链接在页脚还有一份，顶栏这一行先让给项目选择器。 */
-  .header-right .github-link {
-    display: none;
-  }
-}
-
 /* ---------- 矮视口（横屏手机、分屏窗口） ---------- */
 
 /* 宽度够而高度不够时，粘性工具栏会常驻吃掉小半个屏幕，让它跟着页面滚走，
@@ -2323,6 +2343,11 @@ table.tv caption {
   .icon-btn,
   .cz-btn {
     min-height: 36px;
+  }
+  /* 顶栏右侧这两个在窄屏上都是方钮，一起长高，免得并排的两个按钮不一样高。 */
+  .github-link,
+  .theme-toggle {
+    height: 36px;
   }
 }
 
