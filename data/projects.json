@@ -4,8 +4,12 @@
   "subtitle": "机器人学习输入输出分析板",
   "defaultProject": "beyondmimic",
   "defaultMode": "train",
-
   "groups": [
+    {
+      "id": "isaaclab",
+      "name": "Isaac Lab 官方示例（两种工作流）",
+      "desc": "同样两个基准任务各写了 manager-based 与 direct 两份实现。同一个仿真器、同一台机器人、同一套 PPO 超参，差别集中在「谁来组织每一拍」——以及顺带差出来的观测顺序、复位随机化与终止条件"
+    },
     {
       "id": "wbt",
       "name": "全身运动跟踪（真机路线）",
@@ -17,8 +21,144 @@
       "desc": "同一套代码里的七个方法，环境与网络全部共用，差别集中在「奖励从哪来」和「策略额外吃什么」"
     }
   ],
-
   "projects": [
+    {
+      "id": "isaaclab-cartpole-manager",
+      "file": "isaaclab/cartpole-manager.json",
+      "name": "Cartpole · manager-based",
+      "subtitle": "倒立摆：两个 ObsTerm 拼出 4 维",
+      "group": "isaaclab",
+      "published": "2023-01-17",
+      "venue": "Isaac Lab 示例 · isaaclab_tasks 0.1.0（Isaac-Cartpole-v0）",
+      "keywords": [
+        "Isaac Lab",
+        "IsaacLab",
+        "Isaac Sim",
+        "NVIDIA",
+        "英伟达",
+        "PPO",
+        "rsl_rl",
+        "示例环境",
+        "入门",
+        "benchmark",
+        "基准任务",
+        "Cartpole",
+        "倒立摆",
+        "manager-based",
+        "ObservationManager",
+        "RewardManager",
+        "ObsTerm",
+        "RewTerm",
+        "configclass",
+        "欠驱动",
+        "分量顺序",
+        "ORBIT",
+        "Isaac-Cartpole-v0"
+      ]
+    },
+    {
+      "id": "isaaclab-ant-manager",
+      "file": "isaaclab/ant-manager.json",
+      "name": "Ant · manager-based",
+      "subtitle": "四足行走：11 个 ObsTerm 拼出 60 维",
+      "group": "isaaclab",
+      "published": "2023-01-17",
+      "venue": "Isaac Lab 示例 · isaaclab_tasks 0.1.0（Isaac-Ant-v0）",
+      "keywords": [
+        "Isaac Lab",
+        "IsaacLab",
+        "Isaac Sim",
+        "NVIDIA",
+        "英伟达",
+        "PPO",
+        "rsl_rl",
+        "示例环境",
+        "入门",
+        "benchmark",
+        "基准任务",
+        "Ant",
+        "蚂蚁",
+        "四足",
+        "MuJoCo Ant",
+        "manager-based",
+        "ObservationManager",
+        "RewardManager",
+        "ObsTerm",
+        "RewTerm",
+        "关节力矩",
+        "body_incoming_wrench",
+        "足端力",
+        "ORBIT",
+        "Isaac-Ant-v0"
+      ]
+    },
+    {
+      "id": "isaaclab-cartpole-direct",
+      "file": "isaaclab/cartpole-direct.json",
+      "name": "Cartpole · direct",
+      "subtitle": "同一根杆：一句 torch.cat 拼出 4 维，顺序却反了",
+      "group": "isaaclab",
+      "published": "2024-05-07",
+      "venue": "Isaac Lab 示例 · isaaclab_tasks 0.7.0（Isaac-Cartpole-Direct-v0）",
+      "keywords": [
+        "Isaac Lab",
+        "IsaacLab",
+        "Isaac Sim",
+        "NVIDIA",
+        "英伟达",
+        "PPO",
+        "rsl_rl",
+        "示例环境",
+        "入门",
+        "benchmark",
+        "基准任务",
+        "Cartpole",
+        "倒立摆",
+        "direct",
+        "DirectRLEnv",
+        "torch.cat",
+        "torch.jit.script",
+        "欠驱动",
+        "分量顺序",
+        "Gym",
+        "观测顺序",
+        "Isaac-Cartpole-Direct-v0"
+      ]
+    },
+    {
+      "id": "isaaclab-ant-direct",
+      "file": "isaaclab/ant-direct.json",
+      "name": "Ant · direct",
+      "subtitle": "同一只蚂蚁：一句 torch.cat 拼出 36 维",
+      "group": "isaaclab",
+      "published": "2024-05-07",
+      "venue": "Isaac Lab 示例 · isaaclab_tasks 0.7.0（Isaac-Ant-Direct-v0）",
+      "keywords": [
+        "Isaac Lab",
+        "IsaacLab",
+        "Isaac Sim",
+        "NVIDIA",
+        "英伟达",
+        "PPO",
+        "rsl_rl",
+        "示例环境",
+        "入门",
+        "benchmark",
+        "基准任务",
+        "Ant",
+        "蚂蚁",
+        "四足",
+        "MuJoCo Ant",
+        "direct",
+        "DirectRLEnv",
+        "LocomotionEnv",
+        "torch.cat",
+        "torch.jit.script",
+        "关节力矩",
+        "joint_gears",
+        "Isaac-Ant-Direct-v0"
+      ]
+    },
     {
       "id": "beyondmimic",
       "file": "beyondmimic.json",
@@ -71,7 +211,6 @@
         "2511.07820"
       ]
     },
-
     {
       "id": "mimickit-deepmimic",
       "file": "mimickit/deepmimic.json",
@@ -234,7 +373,6 @@
       ]
     }
   ],
-
   "references": [
     {
       "label": "观测输入五类划分",

@@ -1,0 +1,1436 @@
+{
+  "id": "isaaclab-ant-manager",
+  "name": "Ant · manager-based",
+  "subtitle": "四足行走：11 个 ObsTerm 拼出 60 维",
+  "tagline": "观测、奖励、终止、事件全部写成配置项，由四个 Manager 在运行时拼起来。",
+  "robot": {
+    "name": "MuJoCo Ant（Isaac Sim 资产）",
+    "dof": 8
+  },
+  "rates": {
+    "policyHz": 60,
+    "physicsHz": 120,
+    "note": "decimation=2，sim_dt=1/120 s，episode 16 s（960 步）"
+  },
+  "verifiedAt": "2026-08-28",
+  "verifiedRef": "isaac-sim/IsaacLab@main · Isaac-Ant-v0（manager_based/classic/ant）",
+  "links": {
+    "环境配置 ant_env_cfg.py": "https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab_tasks/isaaclab_tasks/manager_based/classic/ant/ant_env_cfg.py",
+    "同任务的 direct 版": "https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab_tasks/isaaclab_tasks/direct/ant/ant_env.py",
+    "代码 IsaacLab": "https://github.com/isaac-sim/IsaacLab"
+  },
+  "modes": {
+    "train": {
+      "label": "训练态",
+      "summary": "Isaac Lab 4096 并行环境，60 维策略观测（11 个 ObsTerm 拼接）、8 维关节力矩动作、7 项奖励、2 项终止。没有特权观测、没有域随机化、没有观测噪声——manager-based 工作流的骨架被剥到只剩必要件。",
+      "facts": [
+        {
+          "label": "工作流",
+          "value": "manager-based（配置声明式）"
+        },
+        {
+          "label": "角色",
+          "value": "MuJoCo Ant · 8 DoF（4 髋 + 4 踝）"
+        },
+        {
+          "label": "策略观测",
+          "value": "60 维"
+        },
+        {
+          "label": "观测分量顺序",
+          "value": "高度 1 · 线速度 3 · 角速度 3 · yaw+roll 2 · 方位角 1 · 直立投影 1 · 航向投影 1 · 关节位置 8 · 关节速度 8 · 足端力 24 · 上一动作 8"
+        },
+        {
+          "label": "观测口径",
+          "value": "绝对关节读数按限位归一化；速度在机体系"
+        },
+        {
+          "label": "观测怎么声明",
+          "value": "11 个 ObsTerm，由 ObservationManager 按声明顺序拼接"
+        },
+        {
+          "label": "上游接口",
+          "value": "无（目标点 (1000, 0, 0) 为世界系常量，不随环境原点偏移）"
+        },
+        {
+          "label": "本体历史深度",
+          "value": "1 帧（未设 history_length）"
+        },
+        {
+          "label": "观测噪声",
+          "value": "无（enable_corruption=False）"
+        },
+        {
+          "label": "观测归一化",
+          "value": "无（actor_obs_normalization=False）"
+        },
+        {
+          "label": "特权 critic 观测",
+          "value": "无——只有 policy 一个观测组，critic 与 actor 同吃 60 维"
+        },
+        {
+          "label": "Actor 网络",
+          "value": "MLP [400, 200, 100] · ELU"
+        },
+        {
+          "label": "动作输出",
+          "value": "8 维关节力矩（O2）· scale=7.5"
+        },
+        {
+          "label": "奖励项",
+          "value": "7 项 · 3 正 4 负"
+        },
+        {
+          "label": "奖励来源",
+          "value": "手写（7 个 RewTerm，由 RewardManager 逐项加权求和）"
+        },
+        {
+          "label": "终止条件",
+          "value": "2 项 · time_out(16 s) + 躯干高度 < 0.31 m"
+        },
+        {
+          "label": "初始状态",
+          "value": "关节位置 ±0.2 rad、关节速度 ±0.1 rad/s；根状态取默认（z=0.5，静止）"
+        },
+        {
+          "label": "质量随机化",
+          "value": "无"
+        },
+        {
+          "label": "推力扰动",
+          "value": "无"
+        },
+        {
+          "label": "地形",
+          "value": "plane · 静/动摩擦 1.0 · restitution 0"
+        },
+        {
+          "label": "并行环境",
+          "value": "4096 · env_spacing 5.0"
+        },
+        {
+          "label": "控制频率",
+          "value": "60 Hz（物理 120 Hz）"
+        },
+        {
+          "label": "Actor 学习率",
+          "value": "5e-4 自适应（desired_kl=0.01）"
+        },
+        {
+          "label": "训练规模",
+          "value": "1000 轮 × 32 步/环境"
+        }
+      ],
+      "lanes": [
+        "source",
+        "task",
+        "proprio",
+        "policy",
+        "action",
+        "plant",
+        "learn"
+      ],
+      "nodes": [
+        {
+          "id": "s.scene",
+          "lane": "source",
+          "kind": "proc",
+          "label": "场景资产",
+          "sub": "MySceneCfg · 4096 envs",
+          "desc": "地面（plane 地形，静/动摩擦 1.0、restitution 0）、机器人（ANT_CFG）与一盏平行光。env_spacing 5.0，clone_in_fabric 开启。",
+          "note": "manager-based 工作流里场景也是一个 configclass：InteractiveSceneCfg 的每个字段就是一个 prim，加一个传感器就是加一个字段，不用改 Python 逻辑。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/ant/ant_env_cfg.py",
+            "symbol": "MySceneCfg"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "s.reset",
+          "lane": "source",
+          "kind": "proc",
+          "label": "复位事件",
+          "sub": "EventCfg · mode=\"reset\"",
+          "availability": "train-only",
+          "desc": "reset_base 的 pose_range 与 velocity_range 都是空字典，等于根状态原样取默认（z=0.5、静止）；reset_robot_joints 在默认关节角上叠加 U(−0.2, 0.2) rad，关节速度叠加 U(−0.1, 0.1) rad/s。",
+          "note": "整份配置里 EventCfg 只有 reset 两项，没有 startup 也没有 interval——摩擦、质量、推力扰动一概没有。但对照同任务的 direct 版，这已经算多的了：那边的 _reset_idx 关节、根位姿、根速度一律取默认，一个随机量都没有。两个官方示例对「初始状态该铺多宽」的答案不一样。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/ant/ant_env_cfg.py",
+            "symbol": "EventCfg"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "t.target",
+          "lane": "task",
+          "kind": "proc",
+          "label": "目标点",
+          "sub": "target_pos = (1000, 0, 0)",
+          "desc": "「往 +x 方向走」这个任务被写成一个 1 km 外的固定目标点，由三个观测项与两项奖励共享同一个常量。",
+          "note": "距离取到 1000 m 是为了让「朝目标的方向」在整个 episode 里几乎不变，实际起的是「恒定航向指令」的作用。它写在四处 params 里而不是一个共享常量，改方向要同时改四个地方。还有一处比写法更要紧：这里的 (1000, 0, 0) 是**世界系**常量，减的是含环境原点的 root_pos_w——4096 个环境铺成约 64×64 的网格、间距 5 m，边角上的环境到目标的方向会偏出接近 9°。direct 版把 targets 逐环境加上了 env_origins，每个环境的目标都精确落在它自己的正前方 1000 m。同一个「往 +x 走」，一边是所有环境共享一个远点，一边是各自的 +x。这处差异不写在任何配置项里。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/ant/ant_env_cfg.py",
+            "symbol": "params[\"target_pos\"]"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.angle_to_target",
+          "lane": "task",
+          "kind": "obs",
+          "class": "B",
+          "label": "到目标的方位角",
+          "sub": "base_angle_to_target",
+          "dim": 1,
+          "dimLayout": "标量：atan2(y_tgt − y_root, x_tgt − x_root) − 根 yaw，归一化到 [−π, π]",
+          "unit": "rad",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "机体前向与「指向目标点」之间的夹角。带符号，告诉策略该往左转还是往右转。",
+          "note": "根 yaw 取自 euler_xyz_from_quat 的第三个分量，是世界系欧拉角——真机上要拿到它需要全局定位，这个示例环境不考虑这件事。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/humanoid/mdp/observations.py",
+            "symbol": "base_angle_to_target"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.heading_proj",
+          "lane": "task",
+          "kind": "obs",
+          "class": "B",
+          "label": "航向投影",
+          "sub": "base_heading_proj",
+          "dim": 1,
+          "dimLayout": "标量：机体前向轴（FORWARD_VEC_B 经根四元数旋转）与「指向目标点的水平单位向量」的点积，取值 [−1, 1]",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "与上一项是同一件事的两种写法：夹角的余弦。对着目标是 +1，背对目标是 −1。",
+          "note": "两项都留在观测里，是因为 cos 在 0 附近平坦、在 ±π 附近陡，而角度本身线性——网络两个都拿到，不必自己补三角函数。move_to_target 奖励用的正是这一项。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/humanoid/mdp/observations.py",
+            "symbol": "base_heading_proj"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.base_height",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干高度",
+          "sub": "base_pos_z",
+          "dim": 1,
+          "dimLayout": "标量：root_pos_w 的 z 分量，世界系绝对高度",
+          "unit": "m",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "躯干在世界系下的高度。与 torso_height 终止条件（< 0.31 m）看的是同一个量。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab/.../envs/mdp/observations.py",
+            "symbol": "base_pos_z"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.base_lin_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干线速度",
+          "sub": "base_lin_vel",
+          "dim": 3,
+          "dimLayout": "(v_x, v_y, v_z)，机体系（root_lin_vel_b）",
+          "unit": "m/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "躯干在机体系下的线速度，仿真状态直读。",
+          "note": "在真机路线的项目里这一项是「部署困难」的头号陷阱（BeyondMimic 专门提供了把它置空的变体）；示例环境不面向真机，所以整张图的可得性一律标「仅仿真存在」而不是「仅训练可见」——它在推理时并不消失。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab/.../envs/mdp/observations.py",
+            "symbol": "base_lin_vel"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.base_ang_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干角速度",
+          "sub": "base_ang_vel",
+          "dim": 3,
+          "dimLayout": "(ω_x, ω_y, ω_z)，机体系（root_ang_vel_b）",
+          "unit": "rad/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "躯干在机体系下的角速度，对应真机上的 IMU 陀螺仪。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab/.../envs/mdp/observations.py",
+            "symbol": "base_ang_vel"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.yaw_roll",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干 yaw 与 roll",
+          "sub": "base_yaw_roll",
+          "dim": 2,
+          "dimLayout": "(yaw, roll)——yaw 在前、roll 在后，都是世界系欧拉角，各自用 atan2(sin, cos) 归一化到 [−π, π]；中间的 pitch 被丢掉",
+          "unit": "rad",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "从根四元数解出的世界系 roll-pitch-yaw，只取 yaw 与 roll 两个数送进观测。",
+          "note": "这两个数的顺序是这张图上最容易搬错的一处：函数名叫 base_yaw_roll，返回的也确实是 cat((yaw, roll))，但 euler_xyz_from_quat 的返回顺序是 (roll, pitch, yaw)——源码里写的是 roll, _, yaw = ...，取完再对调。丢掉 pitch 而留下绝对 yaw，也和腿式策略常见的做法相反（后者通常用重力投影替掉全部欧拉角，正因为全局 yaw 不可观测）。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/humanoid/mdp/observations.py",
+            "symbol": "base_yaw_roll"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.up_proj",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "直立投影",
+          "sub": "base_up_proj",
+          "dim": 1,
+          "dimLayout": "标量：−projected_gravity_b 的 z 分量，即机体 up 轴与世界 up 轴的点积，取值 [−1, 1]",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "机体「上」方向与世界「上」方向的点积。完全直立是 1，翻个底朝天是 −1。",
+          "note": "这正是重力投影的 z 分量取反，只是这里只留一个数而不是三维向量。upright 奖励用的也是这一项（阈值 0.93，约 21.5°）。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/humanoid/mdp/observations.py",
+            "symbol": "base_up_proj"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.joint_pos",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "关节位置（限位归一化）",
+          "sub": "joint_pos_limit_normalized",
+          "dim": 8,
+          "dimLayout": "8 个关节按 Isaac Lab 的广度优先关节序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）。同一层里左右前后的先后由 ant_instanceable.usd 的 prim 顺序决定，该 USD 走 Nucleus 资产服务器、不随仓库分发，所以本站只写到这个粒度",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "8 个关节角按各自的 soft 限位线性映射到 [−1, 1]。不是减默认位姿，是按限位归一化——这一点和 BeyondMimic / SONIC 的 joint_pos_rel 不同。",
+          "note": "8 这个数字可以在同仓库的 direct 版蚂蚁里读到：action_space = 8，joint_gears 也正好 8 项。按 §「宁可粗，不许编」的口径，顺序只写到「4 髋在前、4 踝在后」，不替 USD 排出具体的左右名次。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/ant/ant_env.py",
+            "symbol": "action_space=8 · joint_gears"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.joint_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "关节速度",
+          "sub": "joint_vel_rel · scale=0.2",
+          "dim": 8,
+          "dimLayout": "与关节位置同序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "unit": "rad/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "关节速度减默认关节速度（默认全 0，所以等于原值），再整体乘 0.2 送进观测。",
+          "note": "0.2 这个缩放写在 ObsTerm 的 scale 上而不是函数里——manager-based 工作流把「量纲对齐」也做成了配置项，换一组缩放不用碰代码。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/ant/ant_env_cfg.py",
+            "symbol": "PolicyCfg.joint_vel_rel"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.feet_wrench",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "足端受力",
+          "sub": "body_incoming_wrench · scale=0.1",
+          "dim": 24,
+          "dimExpr": "4 足端 × 6",
+          "dimLayout": "4 个足端连杆 × (f_x, f_y, f_z, τ_x, τ_y, τ_z)。连杆顺序不是配置里 body_names 那个列表的书写顺序——SceneEntityCfg 的 preserve_order 默认为 False，find_bodies 返回的是按 body 索引升序排好的下标",
+          "unit": "N, N·m",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "四个足端连杆各自的 6 维入关节力旋量（力 3 + 力矩 3），整体乘 0.1。60 维观测里 24 维是这一项，占了四成。",
+          "note": "三处值得单独记：一是顺序——写成 body_names=[\"front_left_foot\", …] 不代表出来就是这个顺序，SceneEntityCfg 的 preserve_order 默认关着，真实顺序是 articulation 的 body 索引序，维度对得上而顺序错了是不会报错的那类 bug；二是坐标系——字段名是 body_incoming_joint_wrench_b（带 _b 后缀），但 docstring 写的是 world frame，本站按 docstring 记；三是这 24 维在同任务的 direct 版里根本不存在——那边的观测是 36 维，少的正好是这一项。真机上它要靠四个足端各一套六维力/力矩传感器换来，两个官方示例对「策略需不需要知道脚上受了多大力」给出了相反的答案。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab/.../envs/mdp/observations.py",
+            "symbol": "body_incoming_wrench"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.last_action",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "上一动作",
+          "sub": "last_action",
+          "dim": 8,
+          "dimLayout": "与动作同序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "acquisition": "derived",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "上一步送进 ActionManager 的原始动作（缩放前）。零成本，但让策略能感知自己刚才推了多大力。",
+          "note": "action_l2 与 energy 两项惩罚也是拿这个原始动作算的，所以「观测里的上一动作」和「奖励里的动作」在数值上是同一个张量。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab/.../envs/mdp/observations.py",
+            "symbol": "last_action"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "n.concat",
+          "lane": "policy",
+          "kind": "net",
+          "label": "观测拼接",
+          "sub": "ObservationManager · concatenate_terms=True",
+          "dim": 60,
+          "dimExpr": "1 + 3 + 3 + 2 + 1 + 1 + 1 + 8 + 8 + 24 + 8",
+          "dimLayout": "拼接顺序 = PolicyCfg 里 ObsTerm 的书写顺序：base_height 1 · base_lin_vel 3 · base_ang_vel 3 · base_yaw_roll 2 · base_angle_to_target 1 · base_up_proj 1 · base_heading_proj 1 · joint_pos_norm 8 · joint_vel_rel 8 · feet_body_forces 24 · actions 8",
+          "checkSum": true,
+          "desc": "ObservationManager 按类里字段的声明顺序把 11 项拼成 60 维。enable_corruption=False，不注入观测噪声；rsl_rl 侧 actor/critic 的经验归一化也都关着。",
+          "note": "这是 manager-based 工作流最要紧的一条隐式约定：拼接顺序就是你在 ObsGroup 里写字段的顺序。挪一行字段的位置，导出的策略就对不上了，而且不会报错。与同任务 direct 版的 36 维是「前缀相同」的关系：前 28 维（高度到关节速度）两边逐位对齐，之后这边插进 24 维足端力再接 8 维上一动作，那边直接接上一动作。60 = 36 + 24 不是巧合，是两边前 10 项顺序恰好一致。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/ant/ant_env_cfg.py",
+            "symbol": "ObservationsCfg.PolicyCfg"
+          },
+          "confidence": "derived"
+        },
+        {
+          "id": "n.actor",
+          "lane": "policy",
+          "kind": "net",
+          "label": "Actor MLP",
+          "sub": "[400, 200, 100] · ELU",
+          "desc": "三层 MLP，输出 8 维动作分布的均值；init_noise_std=1.0，标准差是可学习的全局参数。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/ant/agents/rsl_rl_ppo_cfg.py",
+            "symbol": "AntPPORunnerCfg.policy"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "n.critic",
+          "lane": "policy",
+          "kind": "net",
+          "label": "Critic MLP",
+          "sub": "[400, 200, 100] · ELU",
+          "availability": "train-only",
+          "desc": "价值网络，吃的是与 Actor 完全相同的 60 维观测——这份配置只声明了 policy 一个观测组，没有 critic 组。",
+          "note": "对称 Actor-Critic，同任务的 direct 版（state_space=0）也是同一个结论。真机路线的项目几乎都用非对称结构（BeyondMimic 的 critic 吃 286 维、比策略多出连杆位姿真值），因为那里「仿真读得到、真机读不到」的量必须挡在策略之外；示例环境没有这个约束，也就没有这一层设计。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/ant/agents/rsl_rl_ppo_cfg.py",
+            "symbol": "critic_hidden_dims"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "a.raw",
+          "lane": "action",
+          "kind": "act",
+          "class": "O2",
+          "label": "关节力矩动作",
+          "sub": "JointEffortActionCfg",
+          "dim": 8,
+          "dimLayout": "8 个关节按 Isaac Lab 广度优先序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "desc": "策略直接输出 8 维关节力矩，joint_names=[\".*\"] 匹配全部关节。不是位置 setpoint。",
+          "note": "本站九个人形项目全部是 O1（关节位置目标 + 底层 PD）；这里是 O2（直接力矩）。差别不只是接口——O1 的 PD 每个物理步都在纠偏，O2 是开环施力，策略要自己承担全部稳定工作。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/ant/ant_env_cfg.py",
+            "symbol": "ActionsCfg.joint_effort"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "a.scale",
+          "lane": "action",
+          "kind": "act",
+          "label": "力矩缩放",
+          "sub": "scale=7.5",
+          "desc": "全身一个常数 7.5，网络输出乘上它就是送进执行器的力矩。没有 offset，没有逐关节区分。",
+          "note": "同任务的 direct 版把同一个数拆成 action_scale 0.5 × joint_gears 15 = 7.5，力矩尺度完全一致。再对照 BeyondMimic 的 scale = 0.25 × effort_limit / stiffness——那是按每个关节的执行器能力算出来的一串数；这里是一个手调的标量。示例环境不追求「动作幅度与硬件能力绑定」。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/ant/ant_env_cfg.py",
+            "symbol": "JointEffortActionCfg.scale"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "a.actuator",
+          "lane": "action",
+          "kind": "act",
+          "label": "隐式执行器",
+          "sub": "ImplicitActuatorCfg · stiffness=0 · damping=0",
+          "desc": "刚度与阻尼都是 0，所以执行器不做任何 PD 计算，力矩原样落到关节上。",
+          "note": "「PD 增益为零」在这里不是配漏了，而是这条链路的定义：动作已经是力矩，再叠一层 PD 就重复了。真机路线那几张图里这一格是整条链最要紧的一环（armature、逐型号增益、力矩限幅），这里是空的。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_assets/.../robots/ant.py",
+            "symbol": "ANT_CFG.actuators"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "e.sim",
+          "lane": "plant",
+          "kind": "plant",
+          "label": "Isaac Lab 并行环境",
+          "sub": "4096 envs · plane 地形",
+          "freqHz": 120,
+          "desc": "物理步长 1/120 s，decimation=2 → 策略 60 Hz，episode 16 s（960 步）。bounce_threshold_velocity=0.2，地面静/动摩擦 1.0、restitution 0。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/ant/ant_env_cfg.py",
+            "symbol": "AntEnvCfg.__post_init__"
+          },
+          "confidence": "verified",
+          "note": "两处与 direct 版不同的小数：episode 16 s vs 15 s（多 60 步），env_spacing 5.0 vs 4.0。都不影响任务定义，但两边的回合回报不能直接比。"
+        },
+        {
+          "id": "l.reward",
+          "lane": "learn",
+          "kind": "signal",
+          "label": "总奖励",
+          "sub": "RewardManager · 7 项",
+          "availability": "train-only",
+          "desc": "3 项正向（progress 1.0、alive 0.5、move_to_target 0.5、upright 0.1 —— 共 4 项正向合计 2.1）与 3 项负向正则（action_l2 −0.005、energy −0.05、joint_pos_limits −0.1）。RewardManager 逐项乘权重再乘 step_dt 求和。",
+          "note": "七项里没有一项跟「步态」有关——没有相位时钟、没有抬脚高度、没有足端滑移。四条腿要怎么迈完全由 progress 与 energy 两项拉扯出来。与 direct 版还有一处结构性差别：那边在求和的最后用 torch.where 把「已终止」环境的总奖励整个替换成 −2.0，这边摔倒只是拿不到 0.5 的存活奖励、其余各项照算。同一台蚂蚁、同一个 0.31 m 阈值，摔一次的即时代价差了 2.5。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/ant/ant_env_cfg.py",
+            "symbol": "RewardsCfg"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "l.term",
+          "lane": "learn",
+          "kind": "signal",
+          "label": "终止条件",
+          "sub": "2 项",
+          "availability": "train-only",
+          "desc": "time_out（16 s，标了 time_out=True，价值函数要 bootstrap）与 torso_height（root_pos_w 的 z < 0.31 m，真终止，不 bootstrap）。",
+          "note": "两项的区别决定了 alive 奖励怎么给：is_alive 看的是 termination_manager.terminated，超时不算「死」，所以跑满 16 s 的 episode 每一步都拿得到那 0.5。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/ant/ant_env_cfg.py",
+            "symbol": "TerminationsCfg"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "l.ppo",
+          "lane": "learn",
+          "kind": "signal",
+          "label": "PPO 更新",
+          "sub": "rsl_rl · 1000 迭代",
+          "availability": "train-only",
+          "desc": "num_steps_per_env=32，5 个学习轮次 × 4 个 minibatch，lr 5e-4 自适应（desired_kl=0.01），clip 0.2，entropy 0（关着），γ=0.99，λ=0.95，max_grad_norm=1.0。",
+          "note": "与 direct 版的 AntPPORunnerCfg 逐字段相同（连 entropy_coef=0 都一样），只有 experiment_name 不同。所以两张图之间的每一处差别都来自环境定义，不来自算法。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/ant/agents/rsl_rl_ppo_cfg.py",
+            "symbol": "AntPPORunnerCfg"
+          },
+          "confidence": "verified"
+        }
+      ],
+      "edges": [
+        {
+          "from": "s.scene",
+          "to": "e.sim",
+          "kind": "flow"
+        },
+        {
+          "from": "s.reset",
+          "to": "e.sim",
+          "kind": "init",
+          "style": "dashed",
+          "label": "reset 起点"
+        },
+        {
+          "from": "t.target",
+          "to": "o.angle_to_target",
+          "kind": "ref"
+        },
+        {
+          "from": "t.target",
+          "to": "o.heading_proj",
+          "kind": "ref"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.angle_to_target",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.heading_proj",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.base_height",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.base_lin_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.base_ang_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.yaw_roll",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.up_proj",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.joint_pos",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.joint_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.feet_wrench",
+          "kind": "obs"
+        },
+        {
+          "from": "a.raw",
+          "to": "o.last_action",
+          "kind": "obs",
+          "style": "dashed",
+          "label": "回放"
+        },
+        {
+          "from": "o.base_height",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.base_lin_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.base_ang_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.yaw_roll",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.angle_to_target",
+          "to": "n.concat",
+          "kind": "ref"
+        },
+        {
+          "from": "o.up_proj",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.heading_proj",
+          "to": "n.concat",
+          "kind": "ref"
+        },
+        {
+          "from": "o.joint_pos",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.joint_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.feet_wrench",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.last_action",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "n.concat",
+          "to": "n.actor",
+          "kind": "obs",
+          "label": "60"
+        },
+        {
+          "from": "n.concat",
+          "to": "n.critic",
+          "kind": "obs",
+          "style": "dashed",
+          "label": "60（同一份）"
+        },
+        {
+          "from": "n.actor",
+          "to": "a.raw",
+          "kind": "action",
+          "label": "8"
+        },
+        {
+          "from": "a.raw",
+          "to": "a.scale",
+          "kind": "action"
+        },
+        {
+          "from": "a.scale",
+          "to": "a.actuator",
+          "kind": "action"
+        },
+        {
+          "from": "a.actuator",
+          "to": "e.sim",
+          "kind": "action"
+        },
+        {
+          "from": "e.sim",
+          "to": "l.reward",
+          "kind": "reward"
+        },
+        {
+          "from": "e.sim",
+          "to": "l.term",
+          "kind": "reward"
+        },
+        {
+          "from": "a.raw",
+          "to": "l.reward",
+          "kind": "reward",
+          "style": "dashed",
+          "label": "action_l2 / energy"
+        },
+        {
+          "from": "l.term",
+          "to": "l.reward",
+          "kind": "flow",
+          "style": "dashed",
+          "label": "alive 看 terminated"
+        },
+        {
+          "from": "l.reward",
+          "to": "l.ppo",
+          "kind": "reward"
+        },
+        {
+          "from": "l.term",
+          "to": "l.ppo",
+          "kind": "reward"
+        },
+        {
+          "from": "n.critic",
+          "to": "l.ppo",
+          "kind": "grad",
+          "style": "dashed"
+        },
+        {
+          "from": "l.ppo",
+          "to": "n.actor",
+          "kind": "grad",
+          "style": "dashed",
+          "label": "策略更新"
+        },
+        {
+          "from": "l.term",
+          "to": "s.reset",
+          "kind": "feedback",
+          "style": "dashed",
+          "label": "触发复位"
+        }
+      ],
+      "rewards": [
+        {
+          "id": "progress",
+          "canonical": "progress",
+          "group": "A",
+          "label": "朝目标推进",
+          "weight": 1.0,
+          "form": "\\frac{\\lVert p_{\\text{tgt}}-p_{t-1}\\rVert_{xy}-\\lVert p_{\\text{tgt}}-p_{t}\\rVert_{xy}}{\\Delta t}",
+          "params": {
+            "target_pos": "(1000, 0, 0)",
+            "Δt": "1/60 s"
+          },
+          "target": "躯干（世界系水平面）",
+          "direction": "positive",
+          "desc": "这一拍缩短了多少与目标的水平距离，再除以步长——量纲上就是「朝目标的前进速度」，单位 m/s。整份配置里唯一的任务奖励。",
+          "note": "实现上用一对势能缓存（potentials / prev_potentials）做差分，而不是直接读速度。两处细节：一是 __call__ 里把 to_target 的 z 分量清零了、reset() 里没清，所以每个 episode 的第一步基准里混进了 0.5 m 的高度差——1000 m 的目标距离下影响可以忽略；二是分母用的是 env.step_dt = 1/60 s（策略步长），而 direct 版除的是 cfg.sim.dt = 1/120 s（物理步长）。同样的位移，那一版算出来是这一版的两倍——两边其余六项系数都一样，唯独这个任务项的量级差 2 倍。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/humanoid/mdp/rewards.py",
+            "symbol": "progress_reward"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "alive",
+          "canonical": "alive",
+          "group": "A",
+          "label": "存活",
+          "weight": 0.5,
+          "form": "1-\\mathbb{1}\\!\\left[\\text{terminated}\\right]",
+          "target": "整个 episode",
+          "direction": "positive",
+          "desc": "没被真终止就每步 +0.5。给策略一个「先别摔」的底线，压住早期为了冲 progress 而扑倒的行为。",
+          "note": "看的是 termination_manager.terminated，不含 time_out——跑满 16 s 不算死。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab/.../envs/mdp/rewards.py",
+            "symbol": "is_alive"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "upright",
+          "canonical": "upright",
+          "group": "B",
+          "label": "直立姿态",
+          "weight": 0.1,
+          "form": "\\mathbb{1}\\!\\left[\\hat{u}_z>0.93\\right]",
+          "params": {
+            "threshold": 0.93
+          },
+          "target": "躯干姿态",
+          "direction": "positive",
+          "desc": "机体上轴与世界上轴的点积超过 0.93（约 21.5°）就 +0.1，否则 0。是个硬阈值的开关量，不是连续核。",
+          "note": "阈值型奖励在阈值两侧梯度为零，靠的是「一大片状态给分、一大片不给分」的分界线本身推动策略，而不是靠梯度方向——这和真机路线普遍用的 exp 核是两种设计。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/humanoid/mdp/rewards.py",
+            "symbol": "upright_posture_bonus"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "move_to_target",
+          "canonical": "heading",
+          "group": "A",
+          "label": "朝向目标",
+          "weight": 0.5,
+          "form": "\\min\\!\\left(h_{\\text{proj}}/0.8,\\ 1\\right)",
+          "params": {
+            "threshold": 0.8
+          },
+          "target": "躯干航向",
+          "direction": "positive",
+          "desc": "航向投影除以 0.8 后截到 1：对准目标（夹角小于约 37°）就拿满分，偏了按比例扣，背对目标时这一项是负的。",
+          "note": "和 progress 分工明确：progress 只看「有没有靠近」，这一项看「身体有没有朝着走」。少了它，蚂蚁横着挪也能拿满 progress。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/humanoid/mdp/rewards.py",
+            "symbol": "move_to_target_bonus"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "action_l2",
+          "canonical": "action_l2",
+          "group": "D",
+          "label": "动作幅度惩罚",
+          "weight": -0.005,
+          "form": "\\sum_{i=1}^{8} a_i^{2}",
+          "target": "8 维原始动作",
+          "direction": "negative",
+          "desc": "对网络原始输出（缩放前）的平方和惩罚，压住把力矩打满的倾向。",
+          "note": "惩罚的是动作的**大小**，不是动作的**变化率**。本站真机路线的项目普遍用 action_rate_l2（相邻两拍之差），因为它们要的是硬件上的平滑；这里没有任何一项管相邻两拍的差。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab/.../envs/mdp/rewards.py",
+            "symbol": "action_l2"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "energy",
+          "canonical": "energy",
+          "group": "D",
+          "label": "功率消耗",
+          "weight": -0.05,
+          "form": "\\sum_{i=1}^{8}\\left\\lvert a_i\\,\\dot q_i\\,\\tilde g_i\\right\\rvert",
+          "params": {
+            "gear_ratio": "全部关节 15.0"
+          },
+          "target": "8 个关节",
+          "direction": "negative",
+          "desc": "力矩乘关节速度，取绝对值求和，就是瞬时功率。权重是 action_l2 的十倍，是这张图上最主要的正则项。",
+          "note": "gear_ratio 写成 {\".*\": 15.0}，但实现里用的是 gear_ratio / max(gear_ratio) 归一化后的比例——八个关节全填 15.0，归一化后全是 1.0，所以这个参数在这份配置里完全不起作用。direct 版的同名项还多乘了一个 dof_vel_scale = 0.2（那个本来是观测缩放的常量被复用进了奖励），所以同样的 −0.05 权重，那一版实际罚的力度只有这一版的 1/5。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/humanoid/mdp/rewards.py",
+            "symbol": "power_consumption"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "joint_pos_limits",
+          "canonical": "joint_limit",
+          "group": "E",
+          "label": "关节限位惩罚",
+          "weight": -0.1,
+          "form": "\\sum_{i=1}^{8}\\mathbb{1}\\!\\left[\\lvert\\tilde q_i\\rvert>0.99\\right]\\cdot\\frac{\\lvert\\tilde q_i\\rvert-0.99}{1-0.99}\\cdot\\tilde g_i",
+          "params": {
+            "threshold": 0.99,
+            "gear_ratio": "全部关节 15.0"
+          },
+          "target": "8 个关节",
+          "direction": "negative",
+          "desc": "关节角按 soft 限位归一化到 [−1, 1] 后，只惩罚越过 0.99 的那部分，并把超出量放大 100 倍（除以 1 − 0.99）。",
+          "note": "1/(1−threshold) 这个放大系数是这一项的关键：0.99 的阈值意味着几乎贴到限位才开始罚，但一旦越线，惩罚增长得非常陡。与 direct 版差两处：那边是 −1.0 乘一个「超限关节计数」的整数（顶到限位的单个关节代价高十倍以上），而且判据写的是 dof_pos_scaled > 0.98、没有取绝对值，只罚上限一侧；这边用 |q̃| > 0.99，两侧对称。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../classic/humanoid/mdp/rewards.py",
+            "symbol": "joint_pos_limits_penalty_ratio"
+          },
+          "confidence": "verified"
+        }
+      ],
+      "callouts": [
+        {
+          "title": "同一只蚂蚁，两份官方实现：60 = 36 + 24",
+          "body": "这个环境和它的 direct 双胞胎（Isaac-Ant-Direct-v0）用同一份 ANT_CFG、同一个 [400, 200, 100] 网络、同一套 PPO 超参，连 entropy_coef=0 都一样。观测的前 28 维也逐位对齐。差的是这里多出来的 24 维足端六维力旋量——它占了 60 维的四成，真机上要靠四套六维力/力矩传感器换来。同一个「让蚂蚁往前走」的任务，两份官方实现对「策略需不需要知道脚上受了多大力」给出了相反的答案。"
+        },
+        {
+          "title": "网络与 PPO 一字不差，环境差了九处",
+          "body": "除观测 60 vs 36 外还有八处：episode 16 s vs 15 s、env_spacing 5.0 vs 4.0、复位随机关节 ±0.2 rad vs 完全不随机、目标点为世界系常量 vs 逐环境加原点偏移、progress 除以策略步长 vs 物理步长（数值差 2 倍）、电耗不带 0.2 因子 vs 带（力度差 5 倍）、限位惩罚 −0.1 连续量且两侧对称 vs −1.0 计数且只罚单侧、摔倒仅失去 0.5 存活分 vs 整份覆盖为 −2.0。把两边的训练曲线并排比「哪种工作流更快」，比的其实是这九处。"
+        },
+        {
+          "title": "manager-based 的代价与好处，都在「拼接顺序」这一格上",
+          "body": "整份 ant_env_cfg.py 没有一行 forward 逻辑：观测是 11 个 ObsTerm、奖励是 7 个 RewTerm、终止是 2 个 DoneTerm、复位是 2 个 EventTerm，运行时由四个 Manager 各自扫一遍配置类的字段。好处是加一项观测只写一行；代价是 60 维里每一段落在哪儿，取决于你在 PolicyCfg 里把那行字段写在第几位——挪一行不会报错，但导出的策略就对不上了。direct 那边把这件事换成一句显式的 torch.cat，顺序看得见，但加一项就得改方法体、还要同步改 observation_space。"
+        },
+        {
+          "title": "示例环境缺的那几格，正是 sim-to-real 要补的",
+          "body": "没有观测噪声、没有域随机化、没有推力扰动、没有非对称 critic、没有动作变化率惩罚、执行器 PD 增益是 0。这六格在本站真机路线的两个项目里格格都填得很满。把这张图和 BeyondMimic 并排看，「一个能跑的 RL 环境」与「一个能上真机的 RL 环境」之间差的是什么，是数得出来的。"
+        }
+      ]
+    },
+    "test": {
+      "label": "推理态",
+      "summary": "export_policy_as_onnx 导出的那段计算：60 维观测拼接 → Actor MLP → 8 维力矩。Critic、7 项奖励、2 项终止与复位随机化都不在导出的图里。",
+      "facts": [
+        {
+          "label": "工作流",
+          "value": "manager-based（配置声明式）"
+        },
+        {
+          "label": "角色",
+          "value": "MuJoCo Ant · 8 DoF（4 髋 + 4 踝）"
+        },
+        {
+          "label": "策略观测",
+          "value": "60 维（与训练态完全相同）"
+        },
+        {
+          "label": "观测分量顺序",
+          "value": "高度 1 · 线速度 3 · 角速度 3 · yaw+roll 2 · 方位角 1 · 直立投影 1 · 航向投影 1 · 关节位置 8 · 关节速度 8 · 足端力 24 · 上一动作 8"
+        },
+        {
+          "label": "相比训练态去掉",
+          "value": "Critic MLP · 7 项奖励 · 2 项终止 · 复位随机化"
+        },
+        {
+          "label": "相比训练态保留",
+          "value": "全部 11 项观测——没有任何一项因为「真机拿不到」而被摘掉"
+        },
+        {
+          "label": "依赖状态估计",
+          "value": "依赖（躯干线速度、世界系 yaw、足端六维力都不是免费的量）"
+        },
+        {
+          "label": "上游接口",
+          "value": "无（目标点写死，换方向要改配置重新导出）"
+        },
+        {
+          "label": "网络",
+          "value": "MLP [400, 200, 100] · ELU"
+        },
+        {
+          "label": "运行时",
+          "value": "rsl_rl 导出的 TorchScript / ONNX"
+        },
+        {
+          "label": "控制频率",
+          "value": "60 Hz（物理 120 Hz）"
+        },
+        {
+          "label": "动作输出",
+          "value": "8 维关节力矩（O2）"
+        }
+      ],
+      "lanes": [
+        "task",
+        "proprio",
+        "policy",
+        "action",
+        "plant"
+      ],
+      "nodes": [
+        {
+          "id": "t.target",
+          "lane": "task",
+          "kind": "proc",
+          "label": "目标点",
+          "sub": "target_pos = (1000, 0, 0)",
+          "desc": "推理时目标点仍是那个写死的常量。要换方向，得连着改四处 params 再重新导出。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.angle_to_target",
+          "lane": "task",
+          "kind": "obs",
+          "class": "B",
+          "label": "到目标的方位角",
+          "sub": "base_angle_to_target",
+          "dim": 1,
+          "dimLayout": "标量：atan2(y_tgt − y_root, x_tgt − x_root) − 根 yaw，归一化到 [−π, π]",
+          "unit": "rad",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "要算它必须先知道自己在世界系里的绝对位置与 yaw——搬出仿真器就得配一套全局定位。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.heading_proj",
+          "lane": "task",
+          "kind": "obs",
+          "class": "B",
+          "label": "航向投影",
+          "sub": "base_heading_proj",
+          "dim": 1,
+          "dimLayout": "标量：机体前向轴与「指向目标点的水平单位向量」的点积，取值 [−1, 1]",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "同上，依赖世界系位姿。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.base_height",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干高度",
+          "sub": "base_pos_z",
+          "dim": 1,
+          "dimLayout": "标量：root_pos_w 的 z 分量，世界系绝对高度",
+          "unit": "m",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "世界系绝对高度，仿真直读。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.base_lin_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干线速度",
+          "sub": "base_lin_vel",
+          "dim": 3,
+          "dimLayout": "(v_x, v_y, v_z)，机体系（root_lin_vel_b）",
+          "unit": "m/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "推理时依然要喂进去。这一项在真机路线的项目里是被专门摘掉的那个，在这里没有对应的变体配置。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.base_ang_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干角速度",
+          "sub": "base_ang_vel",
+          "dim": 3,
+          "dimLayout": "(ω_x, ω_y, ω_z)，机体系（root_ang_vel_b）",
+          "unit": "rad/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "这一项是整张图上最接近「真机免费拿得到」的一个——IMU 陀螺仪直读。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.yaw_roll",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干 yaw 与 roll",
+          "sub": "base_yaw_roll",
+          "dim": 2,
+          "dimLayout": "(yaw, roll)——yaw 在前、roll 在后，都是世界系欧拉角；中间的 pitch 被丢掉",
+          "unit": "rad",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "yaw 是绝对量，需要外部航向基准；roll 可由 IMU 得到。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.up_proj",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "直立投影",
+          "sub": "base_up_proj",
+          "dim": 1,
+          "dimLayout": "标量：−projected_gravity_b 的 z 分量，取值 [−1, 1]",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "重力投影的 z 分量取反，IMU 可得。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.joint_pos",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "关节位置（限位归一化）",
+          "sub": "joint_pos_limit_normalized",
+          "dim": 8,
+          "dimLayout": "8 个关节按 Isaac Lab 广度优先序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "归一化用的是 soft_joint_pos_limits，换一份资产就换了一套限位——导出的策略必须连限位一起搬。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.joint_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "关节速度",
+          "sub": "joint_vel_rel · scale=0.2",
+          "dim": 8,
+          "dimLayout": "与关节位置同序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "unit": "rad/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "0.2 的缩放写在 ObsTerm 上，不在网络里——推理侧要自己乘一遍。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.feet_wrench",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "足端受力",
+          "sub": "body_incoming_wrench · scale=0.1",
+          "dim": 24,
+          "dimExpr": "4 足端 × 6",
+          "dimLayout": "4 个足端连杆 × (f_x, f_y, f_z, τ_x, τ_y, τ_z)，连杆顺序按 body 索引升序（preserve_order 默认为 False）",
+          "unit": "N, N·m",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "推理侧最贵的一块：24 维要靠四个足端各一套六维力/力矩传感器，而且顺序必须和训练时一致。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.last_action",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "上一动作",
+          "sub": "last_action",
+          "dim": 8,
+          "dimLayout": "与动作同序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "acquisition": "derived",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "自己上一帧的原始输出（缩放前），推理侧自己缓存一份即可，零传感器成本。",
+          "confidence": "verified"
+        },
+        {
+          "id": "n.concat",
+          "lane": "policy",
+          "kind": "net",
+          "label": "观测拼接",
+          "sub": "60 维 · 顺序固定",
+          "dim": 60,
+          "dimExpr": "1 + 3 + 3 + 2 + 1 + 1 + 1 + 8 + 8 + 24 + 8",
+          "dimLayout": "拼接顺序 = PolicyCfg 里 ObsTerm 的书写顺序：base_height 1 · base_lin_vel 3 · base_ang_vel 3 · base_yaw_roll 2 · base_angle_to_target 1 · base_up_proj 1 · base_heading_proj 1 · joint_pos_norm 8 · joint_vel_rel 8 · feet_body_forces 24 · actions 8",
+          "checkSum": true,
+          "desc": "导出的策略只认这一个 60 维向量。它的分段顺序在导出文件里没有任何记录——是配置类字段顺序的产物，只能回去读 ant_env_cfg.py。同任务 direct 版导出的是 36 维，宽度不同至少还会当场报错。",
+          "confidence": "derived"
+        },
+        {
+          "id": "n.actor",
+          "lane": "policy",
+          "kind": "net",
+          "label": "Actor MLP",
+          "sub": "[400, 200, 100] · ELU",
+          "desc": "与训练时同一套权重。推理时只取分布均值，不再采样。",
+          "confidence": "verified"
+        },
+        {
+          "id": "a.raw",
+          "lane": "action",
+          "kind": "act",
+          "class": "O2",
+          "label": "关节力矩动作",
+          "dim": 8,
+          "dimLayout": "8 个关节按 Isaac Lab 广度优先序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "desc": "网络原始输出，缩放前。",
+          "confidence": "verified"
+        },
+        {
+          "id": "a.scale",
+          "lane": "action",
+          "kind": "act",
+          "label": "力矩缩放",
+          "sub": "scale=7.5",
+          "desc": "这一步在导出的网络之外——ActionManager 做的事，搬到别处必须自己补上，漏了就是力矩差 7.5 倍。",
+          "confidence": "verified"
+        },
+        {
+          "id": "a.actuator",
+          "lane": "action",
+          "kind": "act",
+          "label": "隐式执行器",
+          "sub": "stiffness=0 · damping=0",
+          "desc": "不做 PD，力矩原样落到关节。",
+          "confidence": "verified"
+        },
+        {
+          "id": "e.sim",
+          "lane": "plant",
+          "kind": "plant",
+          "label": "Isaac Lab 环境（play.py）",
+          "sub": "少量并行环境 · 开渲染",
+          "freqHz": 120,
+          "desc": "推理时环境本身没变，物理步长与 decimation 都与训练一致。",
+          "note": "play.py 跑的仍是同一个 ManagerBasedRLEnv：奖励与终止照常算，只是没人用。这张图画的是 export_policy_as_onnx 真正导出的那段计算——也就是把这条策略搬到别处时必须复现的东西。",
+          "confidence": "verified"
+        }
+      ],
+      "edges": [
+        {
+          "from": "t.target",
+          "to": "o.angle_to_target",
+          "kind": "ref"
+        },
+        {
+          "from": "t.target",
+          "to": "o.heading_proj",
+          "kind": "ref"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.angle_to_target",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.heading_proj",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.base_height",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.base_lin_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.base_ang_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.yaw_roll",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.up_proj",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.joint_pos",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.joint_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.feet_wrench",
+          "kind": "obs"
+        },
+        {
+          "from": "a.raw",
+          "to": "o.last_action",
+          "kind": "obs",
+          "style": "dashed",
+          "label": "回放"
+        },
+        {
+          "from": "o.base_height",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.base_lin_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.base_ang_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.yaw_roll",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.angle_to_target",
+          "to": "n.concat",
+          "kind": "ref"
+        },
+        {
+          "from": "o.up_proj",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.heading_proj",
+          "to": "n.concat",
+          "kind": "ref"
+        },
+        {
+          "from": "o.joint_pos",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.joint_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.feet_wrench",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.last_action",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "n.concat",
+          "to": "n.actor",
+          "kind": "obs",
+          "label": "60"
+        },
+        {
+          "from": "n.actor",
+          "to": "a.raw",
+          "kind": "action",
+          "label": "8"
+        },
+        {
+          "from": "a.raw",
+          "to": "a.scale",
+          "kind": "action"
+        },
+        {
+          "from": "a.scale",
+          "to": "a.actuator",
+          "kind": "action"
+        },
+        {
+          "from": "a.actuator",
+          "to": "e.sim",
+          "kind": "action"
+        }
+      ],
+      "callouts": [
+        {
+          "title": "这张图里没有一项观测「消失」",
+          "body": "本站真机路线的项目切到第二个模式，图上都会少掉几格：特权 critic 观测、判别器、依赖状态估计的那几项。这里一格都没少——因为这个环境从头到尾没打算离开仿真器，所有观测都标「仅仿真存在」而不是「仅训练可见」。真正被摘掉的是学习侧：Critic、7 项奖励、2 项终止、复位随机化。"
+        },
+        {
+          "title": "两个 ONNX，同一只蚂蚁，输入宽度不同",
+          "body": "这一版导出的输入是 [N, 60]，direct 版是 [N, 36]。宽度不同至少还会当场报错——真正难查的是同为 4 维的那对 Cartpole：宽度一样、顺序相反、一声不吭。同一个仓库、同一批示例，两种失败模式都齐了。"
+        }
+      ]
+    }
+  }
+}

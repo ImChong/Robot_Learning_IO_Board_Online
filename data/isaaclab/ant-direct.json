@@ -1,0 +1,1435 @@
+{
+  "id": "isaaclab-ant-direct",
+  "name": "Ant · direct",
+  "subtitle": "同一只蚂蚁：一句 torch.cat 拼出 36 维",
+  "tagline": "同一台 8 自由度蚂蚁，观测少了四个足端的 24 维力，奖励多了一条「摔了就只剩 −2」。",
+  "robot": {
+    "name": "MuJoCo Ant（Isaac Sim 资产）",
+    "dof": 8
+  },
+  "rates": {
+    "policyHz": 60,
+    "physicsHz": 120,
+    "note": "decimation=2，sim_dt=1/120 s，episode 15 s（900 步）"
+  },
+  "verifiedAt": "2026-08-28",
+  "verifiedRef": "isaac-sim/IsaacLab@main · Isaac-Ant-Direct-v0（direct/ant + direct/locomotion）",
+  "links": {
+    "环境实现 ant_env.py": "https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab_tasks/isaaclab_tasks/direct/ant/ant_env.py",
+    "共用基类 locomotion_env.py": "https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab_tasks/isaaclab_tasks/direct/locomotion/locomotion_env.py",
+    "同任务的 manager-based 版": "https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab_tasks/isaaclab_tasks/manager_based/classic/ant/ant_env_cfg.py",
+    "代码 IsaacLab": "https://github.com/isaac-sim/IsaacLab"
+  },
+  "modes": {
+    "train": {
+      "label": "训练态",
+      "summary": "Isaac Lab 4096 并行环境，36 维策略观测（一句 torch.cat）、8 维关节力矩动作、7 项奖励、2 项终止。观测比 manager-based 版少的正好是那 24 维足端力；复位完全不随机；摔倒时整份奖励被 −2 覆盖。",
+      "facts": [
+        {
+          "label": "工作流",
+          "value": "direct（Python 方法式，继承共用的 LocomotionEnv）"
+        },
+        {
+          "label": "角色",
+          "value": "MuJoCo Ant · 8 DoF（4 髋 + 4 踝）"
+        },
+        {
+          "label": "策略观测",
+          "value": "36 维"
+        },
+        {
+          "label": "观测分量顺序",
+          "value": "高度 1 · 线速度 3 · 角速度 3 · yaw 1 · roll 1 · 方位角 1 · 直立投影 1 · 航向投影 1 · 关节位置 8 · 关节速度 8 · 上一动作 8"
+        },
+        {
+          "label": "观测口径",
+          "value": "绝对关节读数按限位归一化；速度在机体系"
+        },
+        {
+          "label": "上游接口",
+          "value": "无（目标点 (1000, 0, 0) + 各环境原点）"
+        },
+        {
+          "label": "观测怎么声明",
+          "value": "一个 _get_observations 方法，torch.cat 手写顺序"
+        },
+        {
+          "label": "本体历史深度",
+          "value": "1 帧"
+        },
+        {
+          "label": "观测噪声",
+          "value": "无（direct 工作流没有 corruption 机制）"
+        },
+        {
+          "label": "观测归一化",
+          "value": "无（actor_obs_normalization=False）"
+        },
+        {
+          "label": "特权 critic 观测",
+          "value": "无（state_space=0，critic 与 actor 同吃 36 维）"
+        },
+        {
+          "label": "Actor 网络",
+          "value": "MLP [400, 200, 100] · ELU"
+        },
+        {
+          "label": "动作输出",
+          "value": "8 维关节力矩（O2）· action_scale 0.5 × joint_gears 15 = 7.5"
+        },
+        {
+          "label": "奖励项",
+          "value": "7 项 · 4 正 3 负（外加一条覆盖式死亡代价）"
+        },
+        {
+          "label": "奖励来源",
+          "value": "手写（一个 torch.jit 函数里加完）"
+        },
+        {
+          "label": "终止条件",
+          "value": "2 项 · time_out(15 s) + 躯干高度 < 0.31 m"
+        },
+        {
+          "label": "初始状态",
+          "value": "完全不随机——关节、根位姿、根速度一律取默认"
+        },
+        {
+          "label": "质量随机化",
+          "value": "无"
+        },
+        {
+          "label": "推力扰动",
+          "value": "无"
+        },
+        {
+          "label": "地形",
+          "value": "plane · 静/动摩擦 1.0 · restitution 0"
+        },
+        {
+          "label": "并行环境",
+          "value": "4096 · env_spacing 4.0"
+        },
+        {
+          "label": "控制频率",
+          "value": "60 Hz（物理 120 Hz）"
+        },
+        {
+          "label": "Actor 学习率",
+          "value": "5e-4 自适应（desired_kl=0.01）"
+        },
+        {
+          "label": "训练规模",
+          "value": "1000 轮 × 32 步/环境"
+        }
+      ],
+      "lanes": [
+        "source",
+        "task",
+        "proprio",
+        "policy",
+        "action",
+        "plant",
+        "learn"
+      ],
+      "nodes": [
+        {
+          "id": "s.scene",
+          "lane": "source",
+          "kind": "proc",
+          "label": "场景搭建",
+          "sub": "LocomotionEnv._setup_scene() · 4096 envs",
+          "desc": "手写方法：实例化 Articulation(ANT_CFG)、按 TerrainImporterCfg 铺 plane 地形（静/动摩擦 1.0、restitution 0）、clone_environments、按需过滤碰撞、挂一盏 intensity=2000 的 DomeLight。env_spacing 4.0。",
+          "note": "地形配置本身仍是一个 configclass，但它是被这段代码手动实例化的（self.cfg.terrain.class_type(...)），还要先把 num_envs 与 env_spacing 从 scene 抄过去。manager-based 版把地形写成 MySceneCfg 的一个字段，这三行都不用写。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "LocomotionEnv._setup_scene"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "s.reset",
+          "lane": "source",
+          "kind": "proc",
+          "label": "复位",
+          "sub": "_reset_idx() · 无随机化",
+          "availability": "train-only",
+          "desc": "关节位置与速度取 default_joint_pos / default_joint_vel，根位姿与根速度取 default_root_state（加上各环境原点），一个随机量都没有。顺带把势能基准 potentials 重置为 −‖到目标的水平距离‖ / dt。",
+          "note": "这是与 manager-based 版差得最明显的一格：那边 reset_robot_joints 在默认关节角上叠加 U(−0.2, 0.2) rad、速度叠加 U(−0.1, 0.1) rad/s，这边一个量都不动。4096 个环境每次复位的初始状态完全相同，全靠策略自己的动作噪声（init_noise_std=1.0）铺开状态分布。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "LocomotionEnv._reset_idx"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "t.target",
+          "lane": "task",
+          "kind": "proc",
+          "label": "目标点",
+          "sub": "targets = (1000, 0, 0) + env_origins",
+          "desc": "「往 +x 方向走」写成一个 1 km 外的目标点，而且逐环境加上了自己的原点偏移——每个环境的目标都精确落在它自己的正前方 1000 m。",
+          "note": "manager-based 版这一处不一样：那边把 (1000, 0, 0) 当作世界系常量，减的是含环境原点的 root_pos_w。4096 个环境铺成约 64×64 的网格、间距 5 m，边角上的环境到目标的方向会偏出接近 9°。同一个「往 +x 走」，一边是每个环境各自的 +x，一边是所有环境共享一个远点——这处差异不写在任何配置项里，得把两边的坐标计算读一遍才看得出来。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "LocomotionEnv.__init__ · self.targets += self.scene.env_origins"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.angle_to_target",
+          "lane": "task",
+          "kind": "obs",
+          "class": "B",
+          "label": "到目标的方位角",
+          "sub": "normalize_angle(angle_to_target)",
+          "dim": 1,
+          "dimLayout": "标量：由 compute_rot 算出的机体前向与「指向目标点」的夹角，再用 atan2(sin, cos) 归一化到 [−π, π]",
+          "unit": "rad",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "带符号的方位角，告诉策略该往左转还是往右转。拼接时排在 roll 之后、up_proj 之前。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "compute_intermediate_values · compute_rot"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.heading_proj",
+          "lane": "task",
+          "kind": "obs",
+          "class": "B",
+          "label": "航向投影",
+          "sub": "heading_proj",
+          "dim": 1,
+          "dimLayout": "标量：机体前向轴与「指向目标点的水平单位向量」的点积，取值 [−1, 1]",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "方位角的余弦。拼接时排在最后一个标量位（第 8 位），紧接着就是 8 维关节位置。",
+          "note": "由 compute_heading_and_up 与 up_proj 一起算出来，两个数共用一次四元数运算。manager-based 版把它们拆成两个独立的 ObsTerm，各自再解一遍四元数——配置化的代价之一是重复计算，但在这个规模上无关紧要。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "compute_heading_and_up"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.base_height",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干高度",
+          "sub": "torso_position[:, 2]",
+          "dim": 1,
+          "dimLayout": "标量：root_pos_w 的 z 分量，世界系绝对高度",
+          "unit": "m",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "躯干世界系高度，排在 36 维的第一位。终止条件（< 0.31 m）看的是同一个量。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "LocomotionEnv._get_observations"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.base_lin_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干线速度",
+          "sub": "vel_loc",
+          "dim": 3,
+          "dimLayout": "(v_x, v_y, v_z)，机体系",
+          "unit": "m/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "世界系线速度经 compute_rot 转到机体系。",
+          "note": "算法上绕了一圈：先取 root_lin_vel_w，再用 compute_heading_and_up 给出的 torso_quat 做逆旋转。因为 start_rotation 是单位四元数 (1, 0, 0, 0)，inv_start_rot 也是单位四元数，torso_quat 就等于 root_quat_w——所以结果与 manager-based 版直接读 root_lin_vel_b 完全一致。两条不同的代码路径，同一个数。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "compute_rot"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.base_ang_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干角速度",
+          "sub": "angvel_loc × angular_velocity_scale=1.0",
+          "dim": 3,
+          "dimLayout": "(ω_x, ω_y, ω_z)，机体系",
+          "unit": "rad/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "机体系角速度，乘上配置里的 angular_velocity_scale。",
+          "note": "这个缩放系数是 1.0，所以在蚂蚁上不起作用——它是留给共用同一个 LocomotionEnv 的 Humanoid 的接口（那边填的是 0.25）。一份基类两个角色，差别就落在这类系数上。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/ant/ant_env.py",
+            "symbol": "AntEnvCfg.angular_velocity_scale"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.yaw",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干 yaw",
+          "sub": "normalize_angle(yaw)",
+          "dim": 1,
+          "dimLayout": "标量：世界系欧拉角 yaw，atan2(sin, cos) 归一化到 [−π, π]",
+          "unit": "rad",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "绝对航向角，单独占一位。",
+          "note": "manager-based 版把 yaw 与 roll 打包成一个 2 维的 base_yaw_roll 项；这边是两个独立的标量，但拼出来的相对位置一样（yaw 在前、roll 在后）。同一件事，一个是「一个 2 维 ObsTerm」，一个是「torch.cat 里挨着的两行」。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "LocomotionEnv._get_observations"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.roll",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干 roll",
+          "sub": "normalize_angle(roll)",
+          "dim": 1,
+          "dimLayout": "标量：世界系欧拉角 roll，atan2(sin, cos) 归一化到 [−π, π]",
+          "unit": "rad",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "横滚角，紧跟在 yaw 后面。pitch 算出来了但没有送进观测。",
+          "note": "compute_rot 同时返回 roll、pitch、yaw 三个角，代码只取了其中两个——与 manager-based 版的 base_yaw_roll 一样丢掉 pitch。直立信息由后面的 up_proj 承担。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "LocomotionEnv._get_observations"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.up_proj",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "直立投影",
+          "sub": "up_proj",
+          "dim": 1,
+          "dimLayout": "标量：机体 up 轴与世界 up 轴的点积，取值 [−1, 1]",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "完全直立是 1，底朝天是 −1。up_reward 用的也是这一项（阈值 0.93）。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "compute_heading_and_up"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.joint_pos",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "关节位置（限位归一化）",
+          "sub": "dof_pos_scaled",
+          "dim": 8,
+          "dimLayout": "8 个关节按 Isaac Lab 的广度优先关节序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）。同一层里的左右先后由 ant_instanceable.usd 的 prim 顺序决定，该 USD 走 Nucleus 资产服务器、不随仓库分发，本站只写到这个粒度",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "8 个关节角按 soft 限位线性映射到 [−1, 1]（torch_utils.maths.unscale），与 manager-based 版的 joint_pos_limit_normalized 是同一个变换。",
+          "note": "一处细节：这边取的是 soft_joint_pos_limits[0, :, :]，也就是拿 0 号环境的限位广播给全部 4096 个环境；manager-based 版按每个环境各自的限位算。所有环境共用同一份资产时两者等价，但资产一旦逐环境随机化就不等价了。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "compute_intermediate_values · unscale"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.joint_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "关节速度",
+          "sub": "dof_vel × dof_vel_scale=0.2",
+          "dim": 8,
+          "dimLayout": "与关节位置同序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "unit": "rad/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "关节速度整体乘 0.2。与 manager-based 版挂在 ObsTerm 上的 scale=0.2 数值相同。",
+          "note": "同一个 dof_vel_scale=0.2 还被 electricity_cost 复用了一次（见奖励面板）——观测缩放和奖励系数共用一个常量，这是 direct 版特有的耦合：manager-based 那边观测的 scale 与奖励的 gear_ratio 是两个互不相干的配置项。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/ant/ant_env.py",
+            "symbol": "AntEnvCfg.dof_vel_scale"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.last_action",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "上一动作",
+          "sub": "self.actions",
+          "dim": 8,
+          "dimLayout": "与动作同序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "acquisition": "derived",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "上一步策略输出的原始动作（缩放前），排在 36 维的最后 8 位。",
+          "note": "manager-based 版的 36 维之后还接着 24 维足端力再接 8 维上一动作，所以两边的「上一动作」都在末尾，只是一边从第 29 位起、一边从第 53 位起。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "LocomotionEnv._pre_physics_step"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "n.concat",
+          "lane": "policy",
+          "kind": "net",
+          "label": "观测拼接",
+          "sub": "_get_observations() · torch.cat",
+          "dim": 36,
+          "dimExpr": "1 + 3 + 3 + 1 + 1 + 1 + 1 + 1 + 8 + 8 + 8",
+          "dimLayout": "拼接顺序写死在 torch.cat 里：高度 1 · 线速度 3 · 角速度 3 · yaw 1 · roll 1 · 方位角 1 · 直立投影 1 · 航向投影 1 · 关节位置 8 · 关节速度 8 · 上一动作 8",
+          "checkSum": true,
+          "desc": "11 个量按 torch.cat 里写死的顺序拼成 36 维，包成 {\"policy\": obs} 返回。observation_space=36 在配置里显式声明，对不上会在 DirectRLEnv 初始化时报错。",
+          "note": "与 manager-based 版的 60 维是「前缀相同」的关系：前 28 维（高度到关节速度）两边逐位对齐，之后 manager-based 插进 24 维足端力，再接 8 维上一动作。60 = 36 + 24，这个等式不是巧合，是两边前 10 项的顺序恰好一致。差的那 24 维是四个足端的六维力旋量——direct 这边根本没读接触力。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "LocomotionEnv._get_observations"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "n.actor",
+          "lane": "policy",
+          "kind": "net",
+          "label": "Actor MLP",
+          "sub": "[400, 200, 100] · ELU",
+          "desc": "三层 MLP，输出 8 维动作分布的均值，init_noise_std=1.0。",
+          "note": "与 manager-based 版的 AntPPORunnerCfg 一字不差（连 entropy_coef=0 都一样），只有 experiment_name 从 \"ant\" 换成 \"ant_direct\"。两张图之间的每一处差别都来自环境定义，不来自算法。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/ant/agents/rsl_rl_ppo_cfg.py",
+            "symbol": "AntPPORunnerCfg.policy"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "n.critic",
+          "lane": "policy",
+          "kind": "net",
+          "label": "Critic MLP",
+          "sub": "[400, 200, 100] · ELU",
+          "availability": "train-only",
+          "desc": "价值网络，与 Actor 同结构、同输入。state_space=0，所以没有额外的 critic 状态。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/ant/ant_env.py",
+            "symbol": "AntEnvCfg.state_space"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "a.raw",
+          "lane": "action",
+          "kind": "act",
+          "class": "O2",
+          "label": "关节力矩动作",
+          "sub": "action_space = 8",
+          "dim": 8,
+          "dimLayout": "8 个关节按 Isaac Lab 广度优先序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "desc": "策略直接输出 8 维关节力矩，_joint_dof_idx 由 find_joints(\".*\") 取到全部关节。不是位置 setpoint。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/ant/ant_env.py",
+            "symbol": "AntEnvCfg.action_space"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "a.scale",
+          "lane": "action",
+          "kind": "act",
+          "label": "力矩缩放",
+          "sub": "action_scale 0.5 × joint_gears 15 = 7.5",
+          "desc": "_apply_action 里的 forces = 0.5 × joint_gears × actions，joint_gears 是长 8 的全 15 列表，所以逐关节的等效缩放都是 7.5。",
+          "note": "manager-based 版把同一个数直接写成 JointEffortActionCfg(scale=7.5)。两边的力矩尺度完全一致，只是这边拆成了「动作缩放 × 减速比」两个可分别调的量——joint_gears 是逐关节的向量，给不同关节配不同减速比时才用得上，蚂蚁八个关节全填 15。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "LocomotionEnv._apply_action"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "a.actuator",
+          "lane": "action",
+          "kind": "act",
+          "label": "隐式执行器",
+          "sub": "ImplicitActuatorCfg · stiffness=0 · damping=0",
+          "freqHz": 120,
+          "desc": "两个版本共用同一份 ANT_CFG：刚度与阻尼都是 0，执行器不做 PD，力矩原样落到关节上。set_joint_effort_target 在 _apply_action 里调用，每个物理步一次。",
+          "note": "decimation=2，所以同一份力矩在一个策略步里被施加两次。这件事在所有 Isaac Lab 环境里都成立，但只有 direct 工作流把它写在了明面上。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_assets/.../robots/ant.py",
+            "symbol": "ANT_CFG.actuators"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "e.sim",
+          "lane": "plant",
+          "kind": "plant",
+          "label": "Isaac Lab 并行环境",
+          "sub": "4096 envs · plane 地形",
+          "freqHz": 120,
+          "desc": "物理步长 1/120 s，decimation=2 → 策略 60 Hz，episode 15 s（900 步）。env_spacing 4.0。",
+          "note": "两处与 manager-based 版不同的小数：episode 15 s vs 16 s（少 60 步），env_spacing 4.0 vs 5.0。都不影响任务定义，但会让两边的回合回报与曲线不能直接比。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/ant/ant_env.py",
+            "symbol": "AntEnvCfg"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "l.term",
+          "lane": "learn",
+          "kind": "signal",
+          "label": "终止条件",
+          "sub": "_get_dones() · 2 项",
+          "availability": "train-only",
+          "desc": "died（躯干高度 < 0.31 m，真终止）与 time_out（episode_length_buf ≥ 899）。方法返回的就是这两个布尔张量。",
+          "note": "阈值 0.31 与 manager-based 版完全相同。_get_dones 每一拍最先跑，并顺手调用 _compute_intermediate_values() 把姿态、速度、势能全刷一遍——所以同一拍里奖励和观测用的是同一份刚更新的中间量。这份「中间量缓存」在 manager-based 那边不存在，每个 ObsTerm 与 RewTerm 各自重新计算。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "LocomotionEnv._get_dones"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "l.reward",
+          "lane": "learn",
+          "kind": "signal",
+          "label": "总奖励",
+          "sub": "compute_rewards() · @torch.jit.script",
+          "availability": "train-only",
+          "desc": "7 项在一个 JIT 编译的自由函数里算完再相加：progress、alive 0.5、up 0.1、heading 0.5、动作平方 −0.005、电耗 −0.05、限位计数 −1.0。最后一步用 torch.where 把「已终止」的那些环境的总奖励整个替换成 death_cost = −2.0。",
+          "note": "「整个替换」是这一格与 manager-based 版最实质的差别：那边摔倒只是拿不到 0.5 的存活奖励，其余各项照算；这边摔倒那一拍不管别的项算出什么，总奖励一律是 −2.0。同一台蚂蚁、同一个终止阈值，摔一次的代价差了 2.5。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "compute_rewards"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "l.ppo",
+          "lane": "learn",
+          "kind": "signal",
+          "label": "PPO 更新",
+          "sub": "rsl_rl · 1000 迭代",
+          "availability": "train-only",
+          "desc": "num_steps_per_env=32，5 个学习轮次 × 4 个 minibatch，lr 5e-4 自适应（desired_kl=0.01），clip 0.2，entropy 0（关着），γ=0.99，λ=0.95，max_grad_norm=1.0。",
+          "note": "与 manager-based 版逐字段相同。entropy_coef=0 意味着探索完全靠可学习的 init_noise_std——在复位一个随机量都没有的这一版里，这条尤其吃重。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/ant/agents/rsl_rl_ppo_cfg.py",
+            "symbol": "AntPPORunnerCfg"
+          },
+          "confidence": "verified"
+        }
+      ],
+      "edges": [
+        {
+          "from": "s.scene",
+          "to": "e.sim",
+          "kind": "flow"
+        },
+        {
+          "from": "s.reset",
+          "to": "e.sim",
+          "kind": "init",
+          "style": "dashed",
+          "label": "reset 起点（无随机）"
+        },
+        {
+          "from": "t.target",
+          "to": "o.angle_to_target",
+          "kind": "ref"
+        },
+        {
+          "from": "t.target",
+          "to": "o.heading_proj",
+          "kind": "ref"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.angle_to_target",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.heading_proj",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.base_height",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.base_lin_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.base_ang_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.yaw",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.roll",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.up_proj",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.joint_pos",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.joint_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "a.raw",
+          "to": "o.last_action",
+          "kind": "obs",
+          "style": "dashed",
+          "label": "回放"
+        },
+        {
+          "from": "o.base_height",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.base_lin_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.base_ang_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.yaw",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.roll",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.angle_to_target",
+          "to": "n.concat",
+          "kind": "ref"
+        },
+        {
+          "from": "o.up_proj",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.heading_proj",
+          "to": "n.concat",
+          "kind": "ref"
+        },
+        {
+          "from": "o.joint_pos",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.joint_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.last_action",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "n.concat",
+          "to": "n.actor",
+          "kind": "obs",
+          "label": "36"
+        },
+        {
+          "from": "n.concat",
+          "to": "n.critic",
+          "kind": "obs",
+          "style": "dashed",
+          "label": "36（同一份）"
+        },
+        {
+          "from": "n.actor",
+          "to": "a.raw",
+          "kind": "action",
+          "label": "8"
+        },
+        {
+          "from": "a.raw",
+          "to": "a.scale",
+          "kind": "action"
+        },
+        {
+          "from": "a.scale",
+          "to": "a.actuator",
+          "kind": "action"
+        },
+        {
+          "from": "a.actuator",
+          "to": "e.sim",
+          "kind": "action"
+        },
+        {
+          "from": "e.sim",
+          "to": "l.term",
+          "kind": "reward"
+        },
+        {
+          "from": "e.sim",
+          "to": "l.reward",
+          "kind": "reward"
+        },
+        {
+          "from": "a.raw",
+          "to": "l.reward",
+          "kind": "reward",
+          "style": "dashed",
+          "label": "动作平方 / 电耗"
+        },
+        {
+          "from": "l.term",
+          "to": "l.reward",
+          "kind": "flow",
+          "label": "摔倒则整份覆盖为 −2"
+        },
+        {
+          "from": "l.reward",
+          "to": "l.ppo",
+          "kind": "reward"
+        },
+        {
+          "from": "l.term",
+          "to": "l.ppo",
+          "kind": "reward"
+        },
+        {
+          "from": "n.critic",
+          "to": "l.ppo",
+          "kind": "grad",
+          "style": "dashed"
+        },
+        {
+          "from": "l.ppo",
+          "to": "n.actor",
+          "kind": "grad",
+          "style": "dashed",
+          "label": "策略更新"
+        },
+        {
+          "from": "l.term",
+          "to": "s.reset",
+          "kind": "feedback",
+          "style": "dashed",
+          "label": "触发复位"
+        }
+      ],
+      "rewards": [
+        {
+          "id": "progress_reward",
+          "canonical": "progress",
+          "group": "A",
+          "label": "朝目标推进",
+          "weight": 1.0,
+          "form": "\\frac{\\lVert p_{\\text{tgt}}-p_{t-1}\\rVert_{xy}-\\lVert p_{\\text{tgt}}-p_{t}\\rVert_{xy}}{\\Delta t_{\\text{sim}}}",
+          "params": {
+            "target_pos": "(1000, 0, 0) + 环境原点",
+            "Δt_sim": "1/120 s"
+          },
+          "target": "躯干（水平面）",
+          "direction": "positive",
+          "desc": "势能差分：这一拍缩短了多少与目标的水平距离，再除以步长。唯一的任务奖励，权重隐含为 1.0（在求和式里没有系数）。",
+          "note": "分母用的是 cfg.sim.dt = 1/120 s（物理步长），不是策略步长 1/60 s——manager-based 版的 progress_reward 除的是 env.step_dt = 1/60 s。同样的位移，这一版算出来的数值是那一版的两倍。两边其余六项的系数都一样，唯独这个任务项的量级差 2 倍，等于隐含地把「往前走」相对于全部正则项加重了一倍。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "compute_intermediate_values · potentials"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "alive_reward",
+          "canonical": "alive",
+          "group": "A",
+          "label": "存活",
+          "weight": 0.5,
+          "form": "1",
+          "params": {
+            "alive_reward_scale": 0.5
+          },
+          "target": "整个 episode",
+          "direction": "positive",
+          "desc": "每步恒定 +0.5，不看是否终止——摔倒那一拍的处理交给最后那句整份覆盖。",
+          "note": "写法与 manager-based 版不同：那边是 0.5 × (1 − terminated)，摔倒时这一项归零而其余项照算；这边这一项永远是 0.5，摔倒时整个总奖励被 −2.0 顶掉。结果上，这一版摔一次的即时代价是 −2.0，那一版是「少拿 0.5」。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/ant/ant_env.py",
+            "symbol": "AntEnvCfg.alive_reward_scale"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "up_reward",
+          "canonical": "upright",
+          "group": "B",
+          "label": "直立姿态",
+          "weight": 0.1,
+          "form": "\\mathbb{1}\\!\\left[\\hat{u}_z>0.93\\right]",
+          "params": {
+            "up_weight": 0.1,
+            "threshold": 0.93
+          },
+          "target": "躯干姿态",
+          "direction": "positive",
+          "desc": "直立投影超过 0.93（约 21.5°）就 +0.1，否则 0。硬阈值开关量。",
+          "note": "与 manager-based 版的 upright_posture_bonus 数值与阈值完全一致——七项奖励里少数几处两边真正等价的。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "compute_rewards · up_reward"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "heading_reward",
+          "canonical": "heading",
+          "group": "A",
+          "label": "朝向目标",
+          "weight": 0.5,
+          "form": "0.5\\cdot\\min\\!\\left(h_{\\text{proj}}/0.8,\\ 1\\right)",
+          "params": {
+            "heading_weight": 0.5,
+            "threshold": 0.8
+          },
+          "target": "躯干航向",
+          "direction": "positive",
+          "desc": "航向投影超过 0.8 就给满 0.5，否则按 0.5 × h/0.8 线性给分；背对目标时为负。",
+          "note": "与 manager-based 版的 move_to_target_bonus 完全等价——那边把 0.5 放在 RewTerm 的 weight 上、把 min(h/0.8, 1) 放在函数里，这边两者写在同一个表达式里。同一个数，两种拆法。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "compute_rewards · heading_reward"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "actions_cost",
+          "canonical": "action_l2",
+          "group": "D",
+          "label": "动作幅度惩罚",
+          "weight": -0.005,
+          "form": "\\sum_{i=1}^{8} a_i^{2}",
+          "params": {
+            "actions_cost_scale": 0.005
+          },
+          "target": "8 维原始动作",
+          "direction": "negative",
+          "desc": "网络原始输出（缩放前）的平方和。与 manager-based 版的 action_l2 完全等价。",
+          "note": "罚的是动作的大小，不是变化率。两个版本都没有任何一项管相邻两拍之差——真机路线的项目普遍用的 action_rate_l2，在这四张示例图上一次都没出现。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/ant/ant_env.py",
+            "symbol": "AntEnvCfg.actions_cost_scale"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "electricity_cost",
+          "canonical": "energy",
+          "group": "D",
+          "label": "电耗惩罚",
+          "weight": -0.05,
+          "form": "\\sum_{i=1}^{8}\\left\\lvert a_i\\,\\dot q_i\\cdot 0.2\\right\\rvert\\cdot r_i",
+          "params": {
+            "energy_cost_scale": 0.05,
+            "dof_vel_scale": 0.2,
+            "motor_effort_ratio": "全 1"
+          },
+          "target": "8 个关节",
+          "direction": "negative",
+          "desc": "力矩乘关节速度取绝对值求和，但中间还乘了一个 dof_vel_scale = 0.2。",
+          "note": "这是与 manager-based 版量级不同的一项：那边的 power_consumption 是 Σ|a·q̇·g̃|，g̃ 归一化后全是 1，没有 0.2 这个因子。同样的 −0.05 权重，这一版实际罚的力度只有那一版的 1/5。0.2 本来是给观测用的缩放，在这里被复用进了奖励。motor_effort_ratio 在 LocomotionEnv 里被硬编码成 ones_like(joint_gears)，恒为 1。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "compute_rewards · electricity_cost"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "dof_at_limit_cost",
+          "canonical": "joint_limit",
+          "group": "E",
+          "label": "关节限位惩罚",
+          "weight": -1.0,
+          "form": "\\sum_{i=1}^{8}\\mathbb{1}\\!\\left[\\tilde q_i>0.98\\right]",
+          "params": {
+            "threshold": 0.98
+          },
+          "target": "8 个关节",
+          "direction": "negative",
+          "desc": "数一数有几个关节的归一化位置超过 0.98，每个扣 1.0。没有额外的缩放系数——这是七项里唯一权重为整数 1 的项。",
+          "note": "与 manager-based 版差两处，而且都不小。一是量级：那边是 −0.1 乘上一个「超出多少」的连续量，这边是 −1.0 乘一个整数计数，顶到限位的单个关节在这一版要付十倍以上的代价。二是符号：判据写的是 dof_pos_scaled > 0.98，没有取绝对值，所以只罚上限一侧，关节压到 −1.0（下限）一侧一分不扣；manager-based 版用的是 |q̃| > 0.99，两侧对称。这条不对称在源码里是看得见的，本站按实现记，不替它补 abs。",
+          "source": {
+            "repo": "IsaacLab",
+            "path": "source/isaaclab_tasks/.../direct/locomotion/locomotion_env.py",
+            "symbol": "compute_rewards · dof_at_limit_cost"
+          },
+          "confidence": "verified"
+        }
+      ],
+      "callouts": [
+        {
+          "title": "60 = 36 + 24：差的正好是四个足端的力",
+          "body": "两个版本的观测前 28 维逐位对齐（高度 1、线速度 3、角速度 3、yaw 1、roll 1、方位角 1、直立投影 1、航向投影 1、关节位置 8、关节速度 8），之后 manager-based 插进 24 维足端六维力旋量再接 8 维上一动作，direct 直接接上一动作。所以 36 与 60 之间不是「两套观测」，是同一套观测加不加那 24 维接触力的区别——而这 24 维在 manager-based 那边占了四成篇幅，真机上还得靠四套六维力传感器换来。同一个任务的两份官方实现，对「策略需不需要知道脚上受了多大力」给出了相反的答案。"
+        },
+        {
+          "title": "网络与 PPO 一字不差，环境差了七处",
+          "body": "Actor/Critic [400, 200, 100]、lr 5e-4、entropy 0、1000 轮 × 32 步——两边逐字段相同。差别全在环境定义：观测 36 vs 60（差那 24 维足端力）、episode 15 s vs 16 s、env_spacing 4.0 vs 5.0、复位不随机 vs 关节 ±0.2 rad、目标点逐环境偏移 vs 全局常量、progress 除以物理步长 vs 策略步长（数值差 2 倍）、电耗多乘一个 0.2（力度差 5 倍）、限位惩罚 −1.0 计数且只罚单侧 vs −0.1 连续量且两侧对称、摔倒整份覆盖 −2.0 vs 仅失去 0.5 存活分。把两边的训练曲线并排比「哪种工作流更快」，比的其实是这九处。"
+        },
+        {
+          "title": "direct 的一处结构性优势：中间量只算一次",
+          "body": "_compute_intermediate_values() 一次算出姿态、局部速度、欧拉角、方位角、归一化关节位置与势能，观测、奖励、终止三处共用同一份缓存。manager-based 那边每个 ObsTerm 与 RewTerm 都是独立函数，upright_posture_bonus 会再解一遍四元数、move_to_target_bonus 会再算一遍指向目标的向量。在 8 自由度的蚂蚁上这点重复无关紧要，但它解释了为什么复杂环境里 direct 仍然有人选——工作流的取舍不只是「写起来顺不顺手」。"
+        }
+      ]
+    },
+    "test": {
+      "label": "推理态",
+      "summary": "导出后真正要复现的那段计算：36 维观测 → [400, 200, 100] MLP → 8 维动作 → ×7.5。Critic、7 项奖励、2 项终止都不在里面。",
+      "facts": [
+        {
+          "label": "工作流",
+          "value": "direct（Python 方法式）"
+        },
+        {
+          "label": "角色",
+          "value": "MuJoCo Ant · 8 DoF（4 髋 + 4 踝）"
+        },
+        {
+          "label": "策略观测",
+          "value": "36 维（与训练态完全相同）"
+        },
+        {
+          "label": "观测分量顺序",
+          "value": "高度 1 · 线速度 3 · 角速度 3 · yaw 1 · roll 1 · 方位角 1 · 直立投影 1 · 航向投影 1 · 关节位置 8 · 关节速度 8 · 上一动作 8"
+        },
+        {
+          "label": "相比训练态去掉",
+          "value": "Critic MLP · 7 项奖励 · 2 项终止"
+        },
+        {
+          "label": "相比训练态保留",
+          "value": "全部 11 项观测——没有任何一项因为「真机拿不到」被摘掉"
+        },
+        {
+          "label": "上游接口",
+          "value": "无（目标点写死，换方向要改代码重新导出）"
+        },
+        {
+          "label": "依赖状态估计",
+          "value": "依赖（躯干高度、线速度、世界系 yaw 都不是免费的量）"
+        },
+        {
+          "label": "网络",
+          "value": "MLP [400, 200, 100] · ELU"
+        },
+        {
+          "label": "运行时",
+          "value": "rsl_rl 导出的 TorchScript / ONNX"
+        },
+        {
+          "label": "控制频率",
+          "value": "60 Hz（物理 120 Hz）"
+        },
+        {
+          "label": "动作输出",
+          "value": "8 维关节力矩（O2）"
+        }
+      ],
+      "lanes": [
+        "task",
+        "proprio",
+        "policy",
+        "action",
+        "plant"
+      ],
+      "nodes": [
+        {
+          "id": "t.target",
+          "lane": "task",
+          "kind": "proc",
+          "label": "目标点",
+          "sub": "targets = (1000, 0, 0) + env_origins",
+          "desc": "推理时目标点仍是构造函数里写死的常量加环境原点。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.angle_to_target",
+          "lane": "task",
+          "kind": "obs",
+          "class": "B",
+          "label": "到目标的方位角",
+          "sub": "normalize_angle(angle_to_target)",
+          "dim": 1,
+          "dimLayout": "标量：机体前向与「指向目标点」的夹角，归一化到 [−π, π]",
+          "unit": "rad",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "要算它必须知道自己在世界系里的绝对位置与朝向。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.heading_proj",
+          "lane": "task",
+          "kind": "obs",
+          "class": "B",
+          "label": "航向投影",
+          "sub": "heading_proj",
+          "dim": 1,
+          "dimLayout": "标量：机体前向轴与「指向目标点的水平单位向量」的点积，取值 [−1, 1]",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "同上，依赖世界系位姿。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.base_height",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干高度",
+          "sub": "torso_position[:, 2]",
+          "dim": 1,
+          "dimLayout": "标量：root_pos_w 的 z 分量，世界系绝对高度",
+          "unit": "m",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "排在 36 维的第一位。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.base_lin_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干线速度",
+          "sub": "vel_loc",
+          "dim": 3,
+          "dimLayout": "(v_x, v_y, v_z)，机体系",
+          "unit": "m/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "推理时依然要喂进去，真机上不可直接测量。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.base_ang_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干角速度",
+          "sub": "angvel_loc × 1.0",
+          "dim": 3,
+          "dimLayout": "(ω_x, ω_y, ω_z)，机体系",
+          "unit": "rad/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "最接近「真机免费拿得到」的一项——IMU 陀螺仪直读。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.yaw",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干 yaw",
+          "sub": "normalize_angle(yaw)",
+          "dim": 1,
+          "dimLayout": "标量：世界系欧拉角 yaw，归一化到 [−π, π]",
+          "unit": "rad",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "绝对航向，需要外部航向基准。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.roll",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "躯干 roll",
+          "sub": "normalize_angle(roll)",
+          "dim": 1,
+          "dimLayout": "标量：世界系欧拉角 roll，归一化到 [−π, π]",
+          "unit": "rad",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "横滚角，可由 IMU 得到。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.up_proj",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "直立投影",
+          "sub": "up_proj",
+          "dim": 1,
+          "dimLayout": "标量：机体 up 轴与世界 up 轴的点积，取值 [−1, 1]",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "IMU 可得。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.joint_pos",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "关节位置（限位归一化）",
+          "sub": "dof_pos_scaled",
+          "dim": 8,
+          "dimLayout": "8 个关节按 Isaac Lab 广度优先序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "归一化用的是 soft 限位，导出的策略必须连限位一起搬。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.joint_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "关节速度",
+          "sub": "dof_vel × 0.2",
+          "dim": 8,
+          "dimLayout": "与关节位置同序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "unit": "rad/s",
+          "acquisition": "sim-only",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "0.2 的缩放在方法体里，不在网络里——推理侧要自己乘一遍。",
+          "confidence": "verified"
+        },
+        {
+          "id": "o.last_action",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "上一动作",
+          "sub": "self.actions",
+          "dim": 8,
+          "dimLayout": "与动作同序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "acquisition": "derived",
+          "availability": "sim-only",
+          "freqHz": 60,
+          "desc": "自己上一帧的原始输出（缩放前），推理侧自己缓存一份即可。",
+          "confidence": "verified"
+        },
+        {
+          "id": "n.concat",
+          "lane": "policy",
+          "kind": "net",
+          "label": "观测拼接",
+          "sub": "36 维 · 顺序固定",
+          "dim": 36,
+          "dimExpr": "1 + 3 + 3 + 1 + 1 + 1 + 1 + 1 + 8 + 8 + 8",
+          "dimLayout": "拼接顺序写死在 torch.cat 里：高度 1 · 线速度 3 · 角速度 3 · yaw 1 · roll 1 · 方位角 1 · 直立投影 1 · 航向投影 1 · 关节位置 8 · 关节速度 8 · 上一动作 8",
+          "checkSum": true,
+          "desc": "导出的策略只认这一个 36 维向量。与同任务 manager-based 版导出的 60 维不能互换，前 28 维虽然逐位对齐，但从第 29 位起一边是足端力、一边是上一动作。",
+          "confidence": "verified"
+        },
+        {
+          "id": "n.actor",
+          "lane": "policy",
+          "kind": "net",
+          "label": "Actor MLP",
+          "sub": "[400, 200, 100] · ELU",
+          "desc": "与训练时同一套权重。推理时只取分布均值，不再采样。",
+          "confidence": "verified"
+        },
+        {
+          "id": "a.raw",
+          "lane": "action",
+          "kind": "act",
+          "class": "O2",
+          "label": "关节力矩动作",
+          "dim": 8,
+          "dimLayout": "8 个关节按 Isaac Lab 广度优先序：先 4 个髋关节（*_leg），再 4 个踝关节（*_foot）",
+          "desc": "网络原始输出，缩放前。",
+          "confidence": "verified"
+        },
+        {
+          "id": "a.scale",
+          "lane": "action",
+          "kind": "act",
+          "label": "力矩缩放",
+          "sub": "0.5 × 15 = 7.5",
+          "desc": "这一步在导出的网络之外——_apply_action 做的事，搬到别处必须自己补上，漏了就是力矩差 7.5 倍。",
+          "confidence": "verified"
+        },
+        {
+          "id": "a.actuator",
+          "lane": "action",
+          "kind": "act",
+          "label": "隐式执行器",
+          "sub": "stiffness=0 · damping=0",
+          "freqHz": 120,
+          "desc": "不做 PD，力矩原样落到关节；一个策略步里施加两次。",
+          "confidence": "verified"
+        },
+        {
+          "id": "e.sim",
+          "lane": "plant",
+          "kind": "plant",
+          "label": "Isaac Lab 环境（play.py）",
+          "sub": "少量并行环境 · 开渲染",
+          "freqHz": 120,
+          "desc": "环境本身没变，物理步长与 decimation 都与训练一致。",
+          "note": "play.py 跑的还是同一个 DirectRLEnv：_get_rewards 与 _get_dones 每拍照跑，只是没人用返回值。这张图画的是导出的策略真正要复现的那段计算。",
+          "confidence": "verified"
+        }
+      ],
+      "edges": [
+        {
+          "from": "t.target",
+          "to": "o.angle_to_target",
+          "kind": "ref"
+        },
+        {
+          "from": "t.target",
+          "to": "o.heading_proj",
+          "kind": "ref"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.angle_to_target",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.heading_proj",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.base_height",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.base_lin_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.base_ang_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.yaw",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.roll",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.up_proj",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.joint_pos",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.joint_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "a.raw",
+          "to": "o.last_action",
+          "kind": "obs",
+          "style": "dashed",
+          "label": "回放"
+        },
+        {
+          "from": "o.base_height",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.base_lin_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.base_ang_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.yaw",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.roll",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.angle_to_target",
+          "to": "n.concat",
+          "kind": "ref"
+        },
+        {
+          "from": "o.up_proj",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.heading_proj",
+          "to": "n.concat",
+          "kind": "ref"
+        },
+        {
+          "from": "o.joint_pos",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.joint_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.last_action",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "n.concat",
+          "to": "n.actor",
+          "kind": "obs",
+          "label": "36"
+        },
+        {
+          "from": "n.actor",
+          "to": "a.raw",
+          "kind": "action",
+          "label": "8"
+        },
+        {
+          "from": "a.raw",
+          "to": "a.scale",
+          "kind": "action"
+        },
+        {
+          "from": "a.scale",
+          "to": "a.actuator",
+          "kind": "action"
+        },
+        {
+          "from": "a.actuator",
+          "to": "e.sim",
+          "kind": "action"
+        }
+      ],
+      "callouts": [
+        {
+          "title": "两个 ONNX，同一只蚂蚁，输入宽度不同",
+          "body": "这一版导出的输入是 [N, 36]，manager-based 版是 [N, 60]。宽度不同至少还会当场报错——真正难查的是同为 4 维的那对 Cartpole：宽度一样、顺序相反、一声不吭。同一个仓库、同一批示例，两种失败模式都齐了。"
+        }
+      ]
+    }
+  }
+}
