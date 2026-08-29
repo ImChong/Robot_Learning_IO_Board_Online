@@ -16,6 +16,14 @@ const COMPACT_H = 420;
 const MIN_READABLE_SCALE = 0.52;
 // 手指按下到判定为拖动之间的容差：太小则点按会被当成拖动，太大则拖动起步发滞。
 const DRAG_SLOP = 6;
+// 连线上的数据流动：光点是虚线里的一段短划，动画只推 stroke-dashoffset，一个动画
+// 周期正好推进一个虚线周期，所以边多长都能无缝循环、看到的速度也一致。动画本身写在
+// CSS 里，这里只管给每条边一个相位——所以这个周期要和 .edge-flow 的 --flow-period
+// 对齐，改一处就得改另一处（错开也只是让错相位不如设想的整齐，不会画坏）。
+const FLOW_PERIOD = 1.5;
+// 每往右一列，光点晚出发这么多秒。同一列的边同相、越靠下游越滞后，整张图于是像
+// 一波数据从输入侧推到输出侧，而不是所有边一起闪。
+const FLOW_LANE_LAG = 0.12;
 
 export function createGraphView({
   canvas,
@@ -412,18 +420,24 @@ export function createGraphView({
       .sort((p, q) => q.a.x - q.b.x - (p.a.x - p.b.x));
 
     const group = svgEl("g");
+    // 流动光点单独一层，压在连线之上、标签之下：既盖不住边标签，也不必碰基础线
+    // 自己的虚实与箭头。
+    const flow = svgEl("g");
     const labels = svgEl("g");
+    const laneIndex = new Map(graph.lanes.map((id, i) => [id, i]));
+    const nodeLane = new Map(graph.nodes.map((node) => [node.id, laneIndex.get(node.lane) ?? 0]));
+    const layers = { group, flow, labels, nodeLane };
 
     for (const { edge, a, b } of forward) {
       const y1 = a.y + a.h / 2;
       const y2 = b.y + b.h / 2;
-      addEdge(group, labels, edge, forwardPath(a.x + a.w, y1, b.x, y2), (a.x + a.w + b.x) / 2, (y1 + y2) / 2);
+      addEdge(layers, edge, forwardPath(a.x + a.w, y1, b.x, y2), (a.x + a.w + b.x) / 2, (y1 + y2) / 2);
     }
 
     for (const { edge, a, b } of sibling) {
       const y1 = a.y + a.h / 2;
       const y2 = b.y + b.h / 2;
-      addEdge(group, labels, edge, siblingPath(a.x, y1, y2), a.x - 30, (y1 + y2) / 2);
+      addEdge(layers, edge, siblingPath(a.x, y1, y2), a.x - 30, (y1 + y2) / 2);
     }
 
     top.forEach((item, i) => {
@@ -431,7 +445,7 @@ export function createGraphView({
       const y = -26 - i * 13;
       const y1 = a.y + a.h / 2;
       const y2 = b.y + b.h / 2;
-      addEdge(group, labels, edge, channelPath(a.x + a.w, y1, b.x, y2, y), (a.x + a.w + b.x) / 2, y - 5);
+      addEdge(layers, edge, channelPath(a.x + a.w, y1, b.x, y2, y), (a.x + a.w + b.x) / 2, y - 5);
     });
 
     bottom.forEach((item, i) => {
@@ -439,10 +453,10 @@ export function createGraphView({
       const y = layout.height + 26 + i * 13;
       const y1 = a.y + a.h / 2;
       const y2 = b.y + b.h / 2;
-      addEdge(group, labels, edge, channelPath(a.x + a.w, y1, b.x, y2, y), (a.x + a.w + b.x) / 2, y - 5);
+      addEdge(layers, edge, channelPath(a.x + a.w, y1, b.x, y2, y), (a.x + a.w + b.x) / 2, y - 5);
     });
 
-    svg.append(group, labels);
+    svg.append(group, flow, labels);
 
     if (top.length) {
       labels.append(
@@ -474,10 +488,10 @@ export function createGraphView({
     svg.setAttribute("viewBox", `${boxLeft} ${-pad} ${boxW} ${layout.height + pad * 2}`);
   }
 
-  function addEdge(group, labels, edge, d, labelX, labelY) {
+  function addEdge(layers, edge, d, labelX, labelY) {
     const kind = taxonomy.edgeKindById.get(edge.kind);
     const color = kind?.color ?? "#7d8794";
-    group.append(
+    layers.group.append(
       svgEl("path", {
         class: `edge${edge.style === "dashed" ? " dashed" : ""}`,
         d,
@@ -487,8 +501,20 @@ export function createGraphView({
         "data-to": edge.to,
       })
     );
+    // 光点走的是同一条 d，所以拐弯、绕通道都跟着走；带上同一套 data-from / data-to，
+    // 压暗、筛选、讲解的明暗就都不必为它单写一份。
+    layers.flow.append(
+      svgEl("path", {
+        class: "edge-flow",
+        d,
+        stroke: color,
+        style: `--flow-delay:${flowDelay(layers.nodeLane.get(edge.from) ?? 0)}s`,
+        "data-from": edge.from,
+        "data-to": edge.to,
+      })
+    );
     if (edge.label) {
-      labels.append(
+      layers.labels.append(
         svgEl("text", {
           class: "edge-label",
           x: labelX,
@@ -675,6 +701,10 @@ export function createGraphView({
       filters = next;
       paintFilters();
     },
+    /** 连线上的数据流动开关。开关只挂一个类，动与不动全在 CSS 里。 */
+    setFlow(on) {
+      canvas.classList.toggle("flowing", on);
+    },
     select(id) {
       selectedId = id;
       paintHighlight();
@@ -698,6 +728,15 @@ export function createGraphView({
       return selectedId;
     },
   };
+}
+
+/**
+ * 把「滞后」写成负的 animation-delay：负延迟等于动画开播时已经跑过一段，跑过
+ * 「整周期减去滞后」，看起来就正好落后那么多。用正延迟做不到——那是开播前干等，
+ * 首个周期会空出来。
+ */
+function flowDelay(laneIndex) {
+  return (((laneIndex * FLOW_LANE_LAG) % FLOW_PERIOD) - FLOW_PERIOD).toFixed(2);
 }
 
 function ensureMarkers(svg, taxonomy) {

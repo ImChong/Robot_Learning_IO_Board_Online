@@ -1060,6 +1060,40 @@ kbd {
 .edge.active {
   stroke-width: 2.4;
 }
+
+/* 连线上的数据流动：光点是虚线里的一段短划，动画只推 stroke-dashoffset，一个动画
+   周期正好推进一个虚线周期（60 用户单位），于是边多长都无缝循环，也不必按长度分别
+   算时长——所有边共用这一条 keyframes，看到的速度天然一致。相位（--flow-delay）
+   由 render-graph.js 按起点所在的列给，越靠下游越滞后。 */
+.edge-flow {
+  --flow-period: 1.5s;
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  /* 大点在前、小点在后：不光看得出这条线在动，还看得出往哪个方向动。 */
+  stroke-dasharray: 2 5 9 44;
+  opacity: 0.8;
+  animation: edge-flow var(--flow-period) linear var(--flow-delay, 0s) infinite;
+}
+@keyframes edge-flow {
+  to {
+    stroke-dashoffset: -60;
+  }
+}
+/* 当前链路上的流动加亮加快，跟 .edge.active 的加粗是同一件事的两种说法。 */
+.edge-flow.active {
+  --flow-period: 0.95s;
+  stroke-width: 3.8;
+  opacity: 1;
+}
+/* 关掉、压暗、被筛掉时直接不画：省下的不只是那几个像素，还有这几十条路径每帧
+   的重绘——压暗的边本来也不该有东西在上面爬。 */
+.canvas:not(.flowing) .edge-flow,
+.edge-flow.dimmed,
+.edge-flow.filtered-out {
+  display: none;
+}
+
 .edge-label {
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -2387,5 +2421,11 @@ table.tv caption {
   .node.tour-current::before,
   .tour-dwell {
     display: none;
+  }
+  /* 流动光点的全部内容就是「在动」，被上面那条全局提速改成 0.01ms 只会变成一片
+     乱闪。它默认跟随系统偏好关着（见 main.js 的 initialFlow），读者若明确开了它，
+     就该按原速播而不是抽搐。 */
+  .canvas.flowing .edge-flow {
+    animation-duration: var(--flow-period) !important;
   }
 }

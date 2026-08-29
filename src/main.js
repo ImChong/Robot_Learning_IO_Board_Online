@@ -34,6 +34,7 @@ const dom = {
   legend: document.getElementById("legend"),
   legendBtn: document.getElementById("legend-btn"),
   fitBtn: document.getElementById("fit-btn"),
+  flowBtn: document.getElementById("flow-btn"),
   tourBtn: document.getElementById("tour-btn"),
   tour: document.getElementById("tour"),
   themeBtn: document.getElementById("theme-toggle"),
@@ -66,6 +67,7 @@ const state = {
   compareId: null,
   filters: { classes: new Set(), availability: new Set(), confidence: new Set() },
   tour: false,
+  flow: true,
 };
 
 let core = null;
@@ -291,6 +293,38 @@ function applyFilters() {
   graphView.setFilters(any ? state.filters : null);
 }
 
+/* ---------- 连线流动 ---------- */
+
+const FLOW_KEY = "riob-flow";
+
+/**
+ * 默认跟随系统的「减少动态」偏好：读者在系统里说过少动，第一眼就该是一张静止的图。
+ * 但那只是默认值——按钮点过之后以读者自己的选择为准，和主题一样记在 localStorage。
+ */
+function initialFlow() {
+  try {
+    const stored = localStorage.getItem(FLOW_KEY);
+    if (stored === "on") return true;
+    if (stored === "off") return false;
+  } catch {
+    /* 隐私模式下读不到就按系统偏好来 */
+  }
+  return !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
+
+function setFlow(on, { persist = true } = {}) {
+  state.flow = on;
+  graphView.setFlow(on);
+  dom.flowBtn.setAttribute("aria-pressed", String(on));
+  dom.flowBtn.title = `${on ? "关闭" : "打开"}连线上的数据流动动画（快捷键 L）`;
+  if (!persist) return;
+  try {
+    localStorage.setItem(FLOW_KEY, on ? "on" : "off");
+  } catch {
+    /* 同主题：写不进去也无所谓 */
+  }
+}
+
 /* ---------- 图例 ---------- */
 
 function renderLegend() {
@@ -335,7 +369,7 @@ function renderLegend() {
         ]),
       ]
     ),
-    block("连线类型", t.edgeKinds, (item) => [
+    block("连线类型（线上的光点朝数据流向走）", t.edgeKinds, (item) => [
       el("span", { class: "line-sample", style: { color: item.color } }),
       el("span", { class: "lg-name", text: item.name }),
     ]),
@@ -799,6 +833,8 @@ async function boot() {
     },
   });
 
+  setFlow(initialFlow(), { persist: false });
+
   renderLegend();
   const wantTour = state.tour;
   state.tour = false; // 先按常规渲染一遍，把步骤表建出来再进讲解
@@ -816,6 +852,7 @@ async function boot() {
     state.tour ? stopTour({ focusButton: true }) : startTour()
   );
   dom.fitBtn.addEventListener("click", () => graphView.fit());
+  dom.flowBtn.addEventListener("click", () => setFlow(!state.flow));
   dom.zoomIn.addEventListener("click", () => graphView.zoomBy(1.25));
   dom.zoomOut.addEventListener("click", () => graphView.zoomBy(1 / 1.25));
   dom.zoomFit.addEventListener("click", () => graphView.fit());
@@ -896,6 +933,7 @@ async function boot() {
     else if (key === "t") setMode(modeIdAt(0));
     else if (key === "d") setMode(modeIdAt(1));
     else if (key === "f") graphView.fit();
+    else if (key === "l") setFlow(!state.flow);
     else if (event.key === "Escape" && state.nodeId) {
       state.nodeId = null;
       graphView.select(null);
