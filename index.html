@@ -129,6 +129,15 @@
           ▶ 讲解
         </button>
         <button class="icon-btn" id="fit-btn" type="button" title="缩放到合适大小">适应窗口</button>
+        <button
+          class="icon-btn"
+          id="flow-btn"
+          type="button"
+          aria-pressed="true"
+          title="连线上的数据流动动画（快捷键 L）"
+        >
+          流动
+        </button>
         <button class="icon-btn" id="legend-btn" type="button" aria-expanded="false">图例</button>
       </div>
     </div>
@@ -143,7 +152,7 @@
           <svg class="edges" id="edges" aria-hidden="true"></svg>
           <div class="nodes" id="nodes"></div>
         </div>
-        <div class="canvas-hint" id="canvas-hint">滚轮缩放 · 拖拽平移 · 点击模块看详情</div>
+        <div class="canvas-hint" id="canvas-hint">滚轮缩放 · 拖拽平移 · 点击模块或连线看详情</div>
 
         <div class="canvas-zoom" role="group" aria-label="画布缩放">
           <button class="cz-btn" id="zoom-in" type="button" title="放大" aria-label="放大">＋</button>
@@ -162,9 +171,11 @@
         <div class="drawer-empty" id="drawer-empty">
           <h2>模块详情</h2>
           <p>点击左侧任意模块，这里会显示它的维度构成、真机如何获得、以及出处链接。</p>
+          <p>点连线（或线上的标注）看的是那条线本身：它属于哪一类流、搬的是哪个向量、部署时还在不在。</p>
           <p class="hint">
             键盘：<kbd>P</kbd> 打开项目列表，<kbd>[</kbd>/<kbd>]</kbd> 上下一个项目，<kbd>T</kbd>/<kbd>D</kbd>
-            切训练与部署，<kbd>G</kbd> 按运行顺序讲解，<kbd>F</kbd> 适应窗口，<kbd>Esc</kbd> 关闭详情。
+            切训练与部署，<kbd>G</kbd> 按运行顺序讲解，<kbd>L</kbd> 连线流动，<kbd>F</kbd> 适应窗口，<kbd>Esc</kbd>
+            关闭详情。
           </p>
         </div>
         <div class="drawer-body" id="drawer-body" hidden></div>

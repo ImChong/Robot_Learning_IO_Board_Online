@@ -5,7 +5,7 @@ import { loadCore } from "./data.js";
 import { touchedIds } from "./inherit.js";
 import { createProjectPicker } from "./project-picker.js";
 import { createGraphView } from "./render-graph.js";
-import { renderDetail } from "./render-detail.js";
+import { renderDetail, renderEdgeDetail } from "./render-detail.js";
 import { renderRewards } from "./render-rewards.js";
 import { renderCompare } from "./render-compare.js";
 import { renderTable } from "./render-table.js";
@@ -34,6 +34,7 @@ const dom = {
   legend: document.getElementById("legend"),
   legendBtn: document.getElementById("legend-btn"),
   fitBtn: document.getElementById("fit-btn"),
+  flowBtn: document.getElementById("flow-btn"),
   tourBtn: document.getElementById("tour-btn"),
   tour: document.getElementById("tour"),
   themeBtn: document.getElementById("theme-toggle"),
@@ -63,9 +64,12 @@ const state = {
   modeId: "train",
   view: "graph",
   nodeId: null,
+  // 选中的连线，键是 `from>to`。和 nodeId 互斥：抽屉一次只讲一件事。
+  edgeKey: null,
   compareId: null,
   filters: { classes: new Set(), availability: new Set(), confidence: new Set() },
   tour: false,
+  flow: true,
 };
 
 let core = null;
@@ -102,6 +106,7 @@ function readUrl() {
     modeId: params.get("mode"),
     view: params.get("view"),
     nodeId: params.get("n"),
+    edgeKey: params.get("e"),
     compareId: params.get("vs"),
     tour: params.get("tour") === "1",
   };
@@ -114,6 +119,7 @@ function writeUrl({ replace = false } = {}) {
   if (state.view !== "graph") params.set("view", state.view);
   if (state.view === "compare" && state.compareId) params.set("vs", state.compareId);
   if (state.view === "graph" && state.nodeId) params.set("n", state.nodeId);
+  if (state.view === "graph" && state.edgeKey) params.set("e", state.edgeKey);
   // 只记「在讲解」，不记讲到第几步：每步都写一次历史，后退键就没法用了。
   if (state.view === "graph" && state.tour) params.set("tour", "1");
   const url = `${location.pathname}?${params}`;
@@ -291,6 +297,38 @@ function applyFilters() {
   graphView.setFilters(any ? state.filters : null);
 }
 
+/* ---------- 连线流动 ---------- */
+
+const FLOW_KEY = "riob-flow";
+
+/**
+ * 默认跟随系统的「减少动态」偏好：读者在系统里说过少动，第一眼就该是一张静止的图。
+ * 但那只是默认值——按钮点过之后以读者自己的选择为准，和主题一样记在 localStorage。
+ */
+function initialFlow() {
+  try {
+    const stored = localStorage.getItem(FLOW_KEY);
+    if (stored === "on") return true;
+    if (stored === "off") return false;
+  } catch {
+    /* 隐私模式下读不到就按系统偏好来 */
+  }
+  return !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
+
+function setFlow(on, { persist = true } = {}) {
+  state.flow = on;
+  graphView.setFlow(on);
+  dom.flowBtn.setAttribute("aria-pressed", String(on));
+  dom.flowBtn.title = `${on ? "关闭" : "打开"}连线上的数据流动动画（快捷键 L）`;
+  if (!persist) return;
+  try {
+    localStorage.setItem(FLOW_KEY, on ? "on" : "off");
+  } catch {
+    /* 同主题：写不进去也无所谓 */
+  }
+}
+
 /* ---------- 图例 ---------- */
 
 function renderLegend() {
@@ -335,7 +373,7 @@ function renderLegend() {
         ]),
       ]
     ),
-    block("连线类型", t.edgeKinds, (item) => [
+    block("连线类型（光点朝数据流向走 · 点任意一条线看它搬的是什么）", t.edgeKinds, (item) => [
       el("span", { class: "line-sample", style: { color: item.color } }),
       el("span", { class: "lg-name", text: item.name }),
     ]),
@@ -465,9 +503,8 @@ async function render({ animate = false } = {}) {
       paintTour();
     } else {
       graphView.setTour(null);
-      graphView.select(state.nodeId);
       syncTourPanels();
-      showDetail(state.nodeId ? g.nodes.find((n) => n.id === state.nodeId) : null);
+      syncSelection(g);
     }
   } else if (state.view === "compare") {
     await renderCompareView(token);
@@ -517,6 +554,51 @@ async function renderCompareView(token) {
   renderCompare({ ...common, other: await core.loadProject(state.compareId) });
 }
 
+/**
+ * 把 URL / 状态里的「选中了什么」落到图与抽屉上。模块与连线互斥：换模式后另一个
+ * 模式里没有这个 id 或这条边，就当没选——不能让 URL 里的旧值把抽屉钉在空内容上。
+ */
+function syncSelection(g) {
+  const node = state.nodeId ? g.nodes.find((n) => n.id === state.nodeId) : null;
+  const edge = state.edgeKey ? g.edges.find((e) => `${e.from}>${e.to}` === state.edgeKey) : null;
+  state.nodeId = node?.id ?? null;
+  state.edgeKey = edge ? state.edgeKey : null;
+  graphView.select(node ? node.id : null);
+  graphView.selectEdge(edge ? state.edgeKey : null);
+  if (edge) showEdgeDetail(edge);
+  else showDetail(node);
+}
+
+function closeDetail() {
+  state.nodeId = null;
+  state.edgeKey = null;
+  graphView.select(null);
+  graphView.selectEdge(null);
+  showDetail(null);
+  writeUrl({ replace: true });
+}
+
+/** 点开一条连线：图上只留它两端，抽屉换成这条线的详情。 */
+function selectEdge(edge) {
+  state.nodeId = null;
+  state.edgeKey = `${edge.from}>${edge.to}`;
+  graphView.selectEdge(state.edgeKey);
+  showEdgeDetail(edge);
+  graphView.revealSelected();
+  writeUrl({ replace: true });
+}
+
+function selectNode(id) {
+  const node = graph().nodes.find((n) => n.id === id);
+  state.edgeKey = null;
+  state.nodeId = node?.id ?? null;
+  graphView.select(state.nodeId);
+  showDetail(node ?? null);
+  // 详情浮层刚盖住画布下半截，被点中的那个框可能正好在下面。
+  graphView.revealSelected();
+  writeUrl({ replace: true });
+}
+
 function showDetail(node) {
   // 窄屏上抽屉是收在屏幕底下的浮层，靠这个类推上来（样式见 style.css 的 720px 段）。
   document.body.classList.toggle("detail-open", Boolean(node));
@@ -526,12 +608,23 @@ function showDetail(node) {
     bodyEl: dom.drawerBody,
     node,
     taxonomy: core.taxonomy,
-    onClose: () => {
-      state.nodeId = null;
-      graphView.select(null);
-      showDetail(null);
-      writeUrl({ replace: true });
-    },
+    graph: graph(),
+    onClose: closeDetail,
+    onSelectEdge: selectEdge,
+  });
+}
+
+function showEdgeDetail(edge) {
+  document.body.classList.toggle("detail-open", true);
+  liftCanvasForSheet();
+  renderEdgeDetail({
+    emptyEl: dom.drawerEmpty,
+    bodyEl: dom.drawerBody,
+    edge,
+    graph: graph(),
+    taxonomy: core.taxonomy,
+    onClose: closeDetail,
+    onSelectNode: selectNode,
   });
 }
 
@@ -665,6 +758,7 @@ function setProject(id) {
   if (id === state.projectId) return;
   state.projectId = id;
   state.nodeId = null;
+  state.edgeKey = null;
   if (state.compareId === id) state.compareId = defaultCompareId(id);
   writeUrl();
   render();
@@ -684,6 +778,10 @@ function setMode(modeId) {
   // 同 id 的模块在两个模式里指同一件事，保留选中项让读者看清它怎么变。
   if (state.nodeId && !current.modes[modeId].nodes.some((n) => n.id === state.nodeId)) {
     state.nodeId = null;
+  }
+  // 连线同理：两个模式里的同一条边说的是同一件事，另一个模式没有它才丢掉。
+  if (state.edgeKey && !current.modes[modeId].edges.some((e) => `${e.from}>${e.to}` === state.edgeKey)) {
+    state.edgeKey = null;
   }
   writeUrl();
   render({ animate: state.view === "graph" });
@@ -728,8 +826,8 @@ function setupCanvasHint() {
   // 认 pointer 而不是 hover：无鼠标的桌面浏览器也会报 hover: none，但它不是手指。
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   dom.canvasHint.textContent = coarse
-    ? "拖动平移 · 双指缩放 · 点按模块看详情"
-    : "滚轮缩放 · 拖拽平移 · 点击模块看详情";
+    ? "拖动平移 · 双指缩放 · 点按模块或连线看详情"
+    : "滚轮缩放 · 拖拽平移 · 点击模块或连线看详情";
 
   const fade = () => dom.canvasHint.classList.add("faded");
   dom.canvas.addEventListener("pointerdown", fade, { once: true });
@@ -762,6 +860,7 @@ async function boot() {
   state.modeId = url.modeId || core.registry.defaultMode || "train";
   state.view = VIEWS.some((v) => v.id === url.view) ? url.view : "graph";
   state.nodeId = url.nodeId;
+  state.edgeKey = url.edgeKey;
   state.tour = Boolean(url.tour) && state.view === "graph";
   state.compareId =
     url.compareId && core.entryById.has(url.compareId) && url.compareId !== state.projectId
@@ -790,14 +889,12 @@ async function boot() {
     // 窄屏上这两块都是贴底浮层，画布要知道自己被挡掉了多少。
     overlays: [dom.drawer, dom.tour],
     onTourJump: jumpTourTo,
-    onSelect: (node) => {
-      state.nodeId = node?.id ?? null;
-      showDetail(node);
-      // 详情浮层刚盖住画布下半截，被点中的那个框可能正好在下面。
-      graphView.revealSelected();
-      writeUrl({ replace: true });
-    },
+    // 图上点中的和抽屉里点中的走同一条路：再点一次是取消选中，那就等于关掉详情。
+    onSelect: (node) => (node ? selectNode(node.id) : closeDetail()),
+    onSelectEdge: (edge) => (edge ? selectEdge(edge) : closeDetail()),
   });
+
+  setFlow(initialFlow(), { persist: false });
 
   renderLegend();
   const wantTour = state.tour;
@@ -816,6 +913,7 @@ async function boot() {
     state.tour ? stopTour({ focusButton: true }) : startTour()
   );
   dom.fitBtn.addEventListener("click", () => graphView.fit());
+  dom.flowBtn.addEventListener("click", () => setFlow(!state.flow));
   dom.zoomIn.addEventListener("click", () => graphView.zoomBy(1.25));
   dom.zoomOut.addEventListener("click", () => graphView.zoomBy(1 / 1.25));
   dom.zoomFit.addEventListener("click", () => graphView.fit());
@@ -842,6 +940,7 @@ async function boot() {
     if (next.modeId) state.modeId = next.modeId;
     state.view = VIEWS.some((v) => v.id === next.view) ? next.view : "graph";
     state.nodeId = next.nodeId;
+    state.edgeKey = next.edgeKey;
     state.tour = Boolean(next.tour) && state.view === "graph";
     state.compareId =
       next.compareId && core.entryById.has(next.compareId) ? next.compareId : state.compareId;
@@ -896,12 +995,8 @@ async function boot() {
     else if (key === "t") setMode(modeIdAt(0));
     else if (key === "d") setMode(modeIdAt(1));
     else if (key === "f") graphView.fit();
-    else if (event.key === "Escape" && state.nodeId) {
-      state.nodeId = null;
-      graphView.select(null);
-      showDetail(null);
-      writeUrl({ replace: true });
-    }
+    else if (key === "l") setFlow(!state.flow);
+    else if (event.key === "Escape" && (state.nodeId || state.edgeKey)) closeDetail();
   });
 }
 
