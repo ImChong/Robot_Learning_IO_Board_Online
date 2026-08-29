@@ -119,11 +119,17 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
 
   const edges = graph.edges ?? [];
   const incoming = new Map();
+  // 边按 `from>to` 寻址：inherit.js 的 edges- 补丁、页面上分享连线的 ?e= 都是这个键。
+  // 重复一对端点，两处就都会指到错的那一条。
+  const edgeKeys = new Set();
   for (const [i, edge] of edges.entries()) {
     const at = `${where}/edge[${i}]`;
     if (!nodes.has(edge.from)) fail(at, `from "${edge.from}" 不存在`);
     if (!nodes.has(edge.to)) fail(at, `to "${edge.to}" 不存在`);
     if (edge.from === edge.to) fail(at, "自环");
+    const key = `${edge.from}>${edge.to}`;
+    if (edgeKeys.has(key)) fail(at, `重复的连线 "${key}"：同一对端点只能连一条`);
+    edgeKeys.add(key);
     if (!edge.kind) fail(at, "缺少 kind");
     else if (!taxo.edgeKindIds.has(edge.kind)) fail(at, `未知连线类型 "${edge.kind}"`);
     if (!incoming.has(edge.to)) incoming.set(edge.to, []);

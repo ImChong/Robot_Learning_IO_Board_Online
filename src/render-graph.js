@@ -33,6 +33,7 @@ export function createGraphView({
   taxonomy,
   overlays = [],
   onSelect,
+  onSelectEdge,
   onTourJump,
 }) {
   const view = { x: 0, y: 0, k: 1 };
@@ -40,6 +41,10 @@ export function createGraphView({
   let layout = null;
   let nodeEls = new Map();
   let selectedId = null;
+  // 选中的连线，键是 `from>to`——和 inherit.js 的 edges- 补丁用的是同一套键。
+  let selectedEdgeKey = null;
+  let edgeByKey = new Map();
+  let edgePaths = new Map();
   let hoveredId = null;
   let filters = null;
   let upstream = new Map();
@@ -208,7 +213,23 @@ export function createGraphView({
    * 的变换容器，让浏览器去滚它会把内容整体推走、和 transform 对不上。
    */
   function reveal(id) {
-    const box = layout?.pos.get(id);
+    revealBox(layout?.pos.get(id));
+  }
+
+  /**
+   * 连线没有自己的盒子，就把路径中点当成一个小方块挪进来。用中点而不是整条路径的
+   * 包围盒：回路边横跨大半张图，它的包围盒比视口还大，按它对齐等于什么都没做。
+   */
+  function revealEdge(key) {
+    const path = edgePaths.get(key);
+    if (!path) return;
+    const length = path.getTotalLength();
+    if (!length) return;
+    const mid = path.getPointAtLength(length / 2);
+    revealBox({ x: mid.x - 24, y: mid.y - 24, w: 48, h: 48 });
+  }
+
+  function revealBox(box) {
     if (!box) return;
     const rect = canvas.getBoundingClientRect();
     if (!rect.width) return;
@@ -232,7 +253,9 @@ export function createGraphView({
   function buildAdjacency() {
     upstream = new Map();
     downstream = new Map();
+    edgeByKey = new Map();
     for (const edge of graph.edges) {
+      edgeByKey.set(edgeKey(edge), edge);
       if (!downstream.has(edge.from)) downstream.set(edge.from, []);
       downstream.get(edge.from).push(edge.to);
       if (!upstream.has(edge.to)) upstream.set(edge.to, []);
@@ -255,10 +278,14 @@ export function createGraphView({
   }
 
   function activeChain() {
-    const focus = hoveredId ?? selectedId;
-    if (!focus) return null;
-    const chain = new Set([focus, ...reachable(focus, upstream), ...reachable(focus, downstream)]);
-    return chain;
+    // hover 是临时的，压过一切；其次才是选中的连线 / 模块。
+    const focus = hoveredId ?? (selectedEdgeKey ? null : selectedId);
+    if (focus) {
+      return new Set([focus, ...reachable(focus, upstream), ...reachable(focus, downstream)]);
+    }
+    // 选中一条连线时只留它两端：读者要看的就是「这条线连的是哪两个框」。
+    const edge = selectedEdgeKey ? edgeByKey.get(selectedEdgeKey) : null;
+    return edge ? new Set([edge.from, edge.to]) : null;
   }
 
   function paintHighlight() {
@@ -275,6 +302,7 @@ export function createGraphView({
       const inChain = chain && chain.has(path.dataset.from) && chain.has(path.dataset.to);
       path.classList.toggle("dimmed", Boolean(chain) && !inChain);
       path.classList.toggle("active", Boolean(inChain));
+      path.classList.toggle("selected", edgeKey(path.dataset) === selectedEdgeKey);
     }
   }
 
@@ -298,6 +326,7 @@ export function createGraphView({
       const walked = visited.has(from) && visited.has(to);
       path.classList.toggle("active", active);
       path.classList.toggle("dimmed", !walked);
+      path.classList.remove("selected");
     }
   }
 
@@ -420,13 +449,11 @@ export function createGraphView({
       .sort((p, q) => q.a.x - q.b.x - (p.a.x - p.b.x));
 
     const group = svgEl("g");
-    // 流动光点单独一层，压在连线之上、标签之下：既盖不住边标签，也不必碰基础线
-    // 自己的虚实与箭头。
-    const flow = svgEl("g");
     const labels = svgEl("g");
     const laneIndex = new Map(graph.lanes.map((id, i) => [id, i]));
     const nodeLane = new Map(graph.nodes.map((node) => [node.id, laneIndex.get(node.lane) ?? 0]));
-    const layers = { group, flow, labels, nodeLane };
+    const layers = { group, labels, nodeLane };
+    edgePaths = new Map();
 
     for (const { edge, a, b } of forward) {
       const y1 = a.y + a.h / 2;
@@ -456,7 +483,7 @@ export function createGraphView({
       addEdge(layers, edge, channelPath(a.x + a.w, y1, b.x, y2, y), (a.x + a.w + b.x) / 2, y - 5);
     });
 
-    svg.append(group, flow, labels);
+    svg.append(group, labels);
 
     if (top.length) {
       labels.append(
@@ -488,31 +515,41 @@ export function createGraphView({
     svg.setAttribute("viewBox", `${boxLeft} ${-pad} ${boxW} ${layout.height + pad * 2}`);
   }
 
+  /**
+   * 一条边画成一个 <g>：线、流动光点、透明的加粗命中区叠在一起。分成三层再按
+   * 层排会让 hover 只能靠 JS 记账；同一个 <g> 里 CSS 的 :hover 直接就够用，
+   * 而线与光点交叠时谁压谁只差一两个像素，不值得为它多写一套状态。
+   */
   function addEdge(layers, edge, d, labelX, labelY) {
     const kind = taxonomy.edgeKindById.get(edge.kind);
     const color = kind?.color ?? "#7d8794";
+    const dataset = { "data-from": edge.from, "data-to": edge.to };
+    const line = svgEl("path", {
+      class: `edge${edge.style === "dashed" ? " dashed" : ""}`,
+      d,
+      stroke: "currentColor",
+      "marker-end": `url(#arrow-${edge.kind})`,
+      ...dataset,
+    });
+    // 类别色挂在 <g> 上而不是逐条写 stroke：光点跟着继承，选中时的光晕也才有
+    // currentColor 可用——不然那圈光晕会是正文色，看着像另一条线。
     layers.group.append(
-      svgEl("path", {
-        class: `edge${edge.style === "dashed" ? " dashed" : ""}`,
-        d,
-        stroke: color,
-        "marker-end": `url(#arrow-${edge.kind})`,
-        "data-from": edge.from,
-        "data-to": edge.to,
-      })
+      svgEl("g", { class: "edge-g", color }, [
+        line,
+        // 光点走的是同一条 d，所以拐弯、绕通道都跟着走；带上同一套 data-from /
+        // data-to，压暗、筛选、讲解的明暗就都不必为它单写一份。
+        svgEl("path", {
+          class: "edge-flow",
+          d,
+          stroke: "currentColor",
+          style: `--flow-delay:${flowDelay(layers.nodeLane.get(edge.from) ?? 0)}s`,
+          ...dataset,
+        }),
+        // 1.4px 的线在触屏上点不中，命中区照着同一条路径加粗到能点，但不画出来。
+        svgEl("path", { class: "edge-hit", d, ...dataset }),
+      ])
     );
-    // 光点走的是同一条 d，所以拐弯、绕通道都跟着走；带上同一套 data-from / data-to，
-    // 压暗、筛选、讲解的明暗就都不必为它单写一份。
-    layers.flow.append(
-      svgEl("path", {
-        class: "edge-flow",
-        d,
-        stroke: color,
-        style: `--flow-delay:${flowDelay(layers.nodeLane.get(edge.from) ?? 0)}s`,
-        "data-from": edge.from,
-        "data-to": edge.to,
-      })
-    );
+    edgePaths.set(edgeKey(edge), line);
     if (edge.label) {
       layers.labels.append(
         svgEl("text", {
@@ -653,8 +690,33 @@ export function createGraphView({
       return;
     }
     selectedId = selectedId === id ? null : id;
+    if (selectedId) selectedEdgeKey = null;
     paintHighlight();
     onSelect?.(selectedId ? graph.nodes.find((n) => n.id === selectedId) : null);
+  });
+
+  /**
+   * 连线也能点。命中的是那条透明的加粗路径（或者边上的文字标签），两者都带
+   * data-from / data-to，所以这里只认这一对属性，不必管点到的是哪一层。
+   */
+  svg.addEventListener("click", (event) => {
+    const wasDrag = dragMoved;
+    dragMoved = false;
+    if (wasDrag && event.detail > 0) return;
+    const target = event.target.closest("[data-from]");
+    if (!target) return;
+    const key = edgeKey(target.dataset);
+    const edge = edgeByKey.get(key);
+    if (!edge) return;
+    if (tour) {
+      // 讲解态里一条边的意义就是「把东西送到下一步」，所以跳到它的终点那一步。
+      onTourJump?.(edge.to);
+      return;
+    }
+    selectedEdgeKey = selectedEdgeKey === key ? null : key;
+    if (selectedEdgeKey) selectedId = null;
+    paintHighlight();
+    onSelectEdge?.(selectedEdgeKey ? edge : null);
   });
 
   // 链路高亮只跟鼠标走：触屏上 pointerover 也会触发，但没有对应的移出事件，
@@ -707,8 +769,15 @@ export function createGraphView({
     },
     select(id) {
       selectedId = id;
+      if (id) selectedEdgeKey = null;
       paintHighlight();
       if (id) reveal(id);
+    },
+    selectEdge(key) {
+      selectedEdgeKey = key && edgeByKey.has(key) ? key : null;
+      if (selectedEdgeKey) selectedId = null;
+      paintHighlight();
+      if (selectedEdgeKey) revealEdge(selectedEdgeKey);
     },
     /** @param {{currentId: string, visited: Set<string>}|null} next */
     setTour(next) {
@@ -716,18 +785,28 @@ export function createGraphView({
       canvas.classList.toggle("touring", Boolean(next));
       if (next) {
         selectedId = null;
+        selectedEdgeKey = null;
         hoveredId = null;
       }
       paintHighlight();
       if (next?.currentId) reveal(next.currentId);
     },
     revealSelected() {
-      if (selectedId) reveal(selectedId);
+      if (selectedEdgeKey) revealEdge(selectedEdgeKey);
+      else if (selectedId) reveal(selectedId);
     },
     get selectedId() {
       return selectedId;
     },
+    get selectedEdgeKey() {
+      return selectedEdgeKey;
+    },
   };
+}
+
+/** 连线的键。和 inherit.js 的 `edges-` 补丁同一套写法，同一份数据只有一种叫法。 */
+function edgeKey({ from, to }) {
+  return `${from}>${to}`;
 }
 
 /**

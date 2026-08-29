@@ -6,7 +6,7 @@ export function el(tag, opts = {}, children = []) {
     if (value == null || value === false) continue;
     if (key === "class") node.className = value;
     else if (key === "text") node.textContent = value;
-    else if (key === "style") Object.assign(node.style, value);
+    else if (key === "style") setStyle(node, value);
     else if (key === "dataset") Object.assign(node.dataset, value);
     else if (key.startsWith("on") && typeof value === "function") {
       node.addEventListener(key.slice(2).toLowerCase(), value);
@@ -17,6 +17,17 @@ export function el(tag, opts = {}, children = []) {
     node.append(typeof child === "string" ? document.createTextNode(child) : child);
   }
   return node;
+}
+
+/**
+ * 自定义属性必须走 setProperty：Object.assign 只是在 style 这个对象上挂了个同名的
+ * JS 属性，CSS 那边一个字也读不到——写了 --x 却没生效，多半就是这个原因。
+ */
+function setStyle(node, styles) {
+  for (const [prop, value] of Object.entries(styles)) {
+    if (prop.startsWith("--")) node.style.setProperty(prop, value);
+    else node.style[prop] = value;
+  }
 }
 
 export function svgEl(tag, opts = {}, children = []) {
