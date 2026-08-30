@@ -330,6 +330,9 @@ kbd {
   overscroll-behavior: contain;
 }
 
+/* 分组标题浮在列表顶上，浮动范围由 .picker-section 界定——粘性元素只能在父块
+   的盒子里浮，所以每组必须自成一层容器，否则几个标题会一起钉在列表顶端叠成
+   一团（见 project-picker.js 的 renderList）。 */
 .picker-group {
   display: flex;
   flex-direction: column;
@@ -340,6 +343,7 @@ kbd {
   color: var(--text-faint);
   position: sticky;
   top: 0;
+  z-index: 1;
   background: var(--bg-raised);
 }
 .picker-group small {

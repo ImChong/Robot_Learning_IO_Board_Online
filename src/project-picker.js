@@ -59,19 +59,25 @@ export function createProjectPicker({ trigger, currentLabel, panel, search, list
     if (activeIndex >= filtered.length) activeIndex = 0;
 
     let lastGroup = Symbol("none");
+    // 每组自成一层容器。分组标题是粘性的，而粘性元素能浮动的范围就是它父块的
+    // 盒子——全部平铺在 list 里时三个标题的父块都是整张列表，于是滚起来它们会
+    // 一起钉死在顶端互相盖住（标题高矮不一，高的那个还会从矮的底下漏出半行
+    // 描述）。包一层之后每个标题只在自己这一组里浮，滚过组尾就被下一组顶走。
+    let bucket = list;
     for (const [index, entry] of filtered.entries()) {
       if (showGroupHeads && entry.group !== lastGroup) {
         lastGroup = entry.group;
         const group = groupById.get(entry.group);
-        list.append(
+        bucket = el("div", { class: "picker-section", role: "presentation" }, [
           el("div", { class: "picker-group", role: "presentation" }, [
             el("span", { text: group?.name ?? "未分组" }),
             group?.desc ? el("small", { text: group.desc }) : null,
-          ])
-        );
+          ]),
+        ]);
+        list.append(bucket);
       }
       const isCurrent = entry.id === currentId;
-      list.append(
+      bucket.append(
         el(
           "div",
           {
@@ -102,13 +108,27 @@ export function createProjectPicker({ trigger, currentLabel, panel, search, list
     syncActive();
   }
 
+  /**
+   * 把高亮项滚进可视区。不能直接交给 scrollIntoView：它按滚动容器的边框算边界，
+   * 而列表顶上还浮着一条分组标题，「刚好贴到顶」的那一项会整条压在标题底下——
+   * 键盘翻到组里第一项时看着就像高亮消失了。上边界因此要让出标题那么高。
+   */
+  function reveal(option) {
+    const head = option.parentElement.querySelector(".picker-group");
+    const box = list.getBoundingClientRect();
+    const rect = option.getBoundingClientRect();
+    const top = box.top + (head ? head.getBoundingClientRect().height : 0);
+    if (rect.top < top) list.scrollTop -= top - rect.top;
+    else if (rect.bottom > box.bottom) list.scrollTop += rect.bottom - box.bottom;
+  }
+
   function syncActive() {
     const options = [...list.querySelectorAll(".picker-option")];
     options.forEach((option, i) => option.classList.toggle("active", i === activeIndex));
     const active = options[activeIndex];
     if (active) {
       search.setAttribute("aria-activedescendant", active.id);
-      active.scrollIntoView({ block: "nearest" });
+      reveal(active);
     }
   }
 
