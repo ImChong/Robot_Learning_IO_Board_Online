@@ -1,0 +1,31 @@
+{
+  "id": "microduck-sitstand-flat",
+  "name": "SitStand · Flat",
+  "subtitle": "指令化坐↔站",
+  "inherits": "microduck-velocity-flat",
+  "diffSummary": "单策略学柔和坐站切换，头姿仍可指令化；奖励换成姿态/高度/速度专用项。",
+  "verifiedAt": "2026-09-01",
+  "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-SitStand-Flat-MicroDuck",
+  "links": {
+    "microduck_rl 代码": "https://github.com/pollen-robotics/microduck_rl",
+    "Microduck 真机运行时": "https://github.com/pollen-robotics/microduck",
+    "mjlab 框架": "https://github.com/mujocolab/mjlab",
+    "BAM 执行器模型": "https://github.com/Rhoban/bam",
+    "任务注册": "https://github.com/pollen-robotics/microduck_rl/blob/main/src/mjlab_microduck/tasks/__init__.py"
+  },
+  "overrides": {
+    "modes.train": {
+      "summary": "单策略学柔和坐站切换，头姿仍可指令化；奖励换成姿态/高度/速度专用项。",
+      "facts": {
+        "任务 ID": "Mjlab-SitStand-Flat-MicroDuck",
+        "任务目标": "坐站切换 + 头姿",
+        "奖励": "posture_pose · rise/descent_speed 等"
+      },
+      "nodes": {
+        "s.scene": {
+          "sub": "robot_allcollisions.xml"
+        }
+      }
+    }
+  }
+}

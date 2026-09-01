@@ -1,0 +1,30 @@
+{
+  "id": "microduck-groundpick-flat",
+  "name": "GroundPick · Flat",
+  "subtitle": "下蹲触地再站起",
+  "inherits": "microduck-velocity-flat",
+  "diffSummary": "下蹲让嘴尖触地后回到站立；复用 ground-pick 指令槽。",
+  "verifiedAt": "2026-09-01",
+  "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-GroundPick-Flat-MicroDuck",
+  "links": {
+    "microduck_rl 代码": "https://github.com/pollen-robotics/microduck_rl",
+    "Microduck 真机运行时": "https://github.com/pollen-robotics/microduck",
+    "mjlab 框架": "https://github.com/mujocolab/mjlab",
+    "BAM 执行器模型": "https://github.com/Rhoban/bam",
+    "任务注册": "https://github.com/pollen-robotics/microduck_rl/blob/main/src/mjlab_microduck/tasks/__init__.py"
+  },
+  "overrides": {
+    "modes.train": {
+      "summary": "下蹲让嘴尖触地后回到站立；复用 ground-pick 指令槽。",
+      "facts": {
+        "任务 ID": "Mjlab-GroundPick-Flat-MicroDuck",
+        "任务目标": "触地拾取姿态"
+      },
+      "nodes": {
+        "s.scene": {
+          "sub": "robot_allcollisions.xml"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "microduck-rollers-flat",
+  "name": "Rollers · Velocity",
+  "subtitle": "轮滑速度跟踪",
+  "inherits": "microduck-velocity-flat",
+  "diffSummary": "脚底被动轮模型；奖励换成滑行/单支撑/对称步态等轮滑专用项。",
+  "verifiedAt": "2026-09-01",
+  "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-Velocity-Flat-MicroDuck-Rollers",
+  "links": {
+    "microduck_rl 代码": "https://github.com/pollen-robotics/microduck_rl",
+    "Microduck 真机运行时": "https://github.com/pollen-robotics/microduck",
+    "mjlab 框架": "https://github.com/mujocolab/mjlab",
+    "BAM 执行器模型": "https://github.com/Rhoban/bam",
+    "任务注册": "https://github.com/pollen-robotics/microduck_rl/blob/main/src/mjlab_microduck/tasks/__init__.py"
+  },
+  "overrides": {
+    "modes.train": {
+      "summary": "脚底被动轮模型；奖励换成滑行/单支撑/对称步态等轮滑专用项。",
+      "facts": {
+        "任务 ID": "Mjlab-Velocity-Flat-MicroDuck-Rollers",
+        "碰撞模型": "robot_allcollisions_rollers.xml",
+        "任务目标": "轮滑速度跟踪"
+      },
+      "nodes": {
+        "s.scene": {
+          "sub": "robot_allcollisions_rollers.xml"
+        }
+      }
+    }
+  }
+}

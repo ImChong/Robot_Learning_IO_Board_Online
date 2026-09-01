@@ -1,0 +1,33 @@
+{
+  "id": "microduck-swizzle-backlash",
+  "name": "Swizzle · Backlash",
+  "subtitle": "Swizzle + 齿隙",
+  "inherits": "microduck-velocity-flat",
+  "diffSummary": "每个伺服关节串联 ±1° 齿隙（共 2°）的被动铰链；编码器与关节观测读穿齿隙（BacklashEncoderBamActuator）。观测/动作维度不变，ONNX 与真机运行时无需改动。",
+  "verifiedAt": "2026-09-01",
+  "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-Velocity-Swizzle-Backlash-MicroDuck",
+  "links": {
+    "microduck_rl 代码": "https://github.com/pollen-robotics/microduck_rl",
+    "Microduck 真机运行时": "https://github.com/pollen-robotics/microduck",
+    "mjlab 框架": "https://github.com/mujocolab/mjlab",
+    "BAM 执行器模型": "https://github.com/Rhoban/bam",
+    "齿隙实现": "https://github.com/pollen-robotics/microduck_rl/blob/main/src/mjlab_microduck/tasks/backlash.py"
+  },
+  "overrides": {
+    "modes.train": {
+      "facts": {
+        "任务 ID": "Mjlab-Velocity-Swizzle-Backlash-MicroDuck",
+        "齿隙": "±1°/关节 · 观测读穿齿隙",
+        "碰撞模型": "robot_allcollisions_rollers_backlash.xml",
+        "任务目标": "Swizzle 滑法"
+      },
+      "nodes": {
+        "a.bam": {
+          "label": "BAM + 齿隙编码器反馈",
+          "sub": "BacklashEncoderBamActuator",
+          "desc": "执行器与 joint_pos/joint_vel 观测均读 qpos[servo]+qpos[backlash]，匹配真机编码器在齿隙输出侧的位置。"
+        }
+      }
+    }
+  }
+}

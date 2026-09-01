@@ -19,6 +19,11 @@
       "id": "mimickit",
       "name": "MimicKit 方法族（动画路线）",
       "desc": "同一套代码里的七个方法，环境与网络全部共用，差别集中在「奖励从哪来」和「策略额外吃什么」"
+    },
+    {
+      "id": "microduck",
+      "name": "Microduck RL（mjlab · 真机路线）",
+      "desc": "Pollen Robotics ~800 g 双足 Microduck 的完整 sim2real 训练环境：BAM 执行器物理、域随机化、齿隙仿真与 61 维共享观测契约，策略导出 ONNX 后在真机热切换。"
     }
   ],
   "projects": [
@@ -371,6 +376,573 @@
         "LaFAN1",
         "SIGGRAPH 2026"
       ]
+    },
+    {
+      "id": "microduck-velocity-flat",
+      "name": "Velocity · Flat",
+      "subtitle": "主任务：速度跟踪 + 头姿指令",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "velocity",
+        "walking",
+        "BAM",
+        "sim2real",
+        "pollen-robotics",
+        "Mjlab-Velocity-Flat-MicroDuck"
+      ],
+      "file": "microduck/velocity-flat.json"
+    },
+    {
+      "id": "microduck-velocity-rough",
+      "name": "Velocity · Rough",
+      "subtitle": "粗糙地形行走",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-Velocity-Rough-MicroDuck",
+        "Velocity · Rough"
+      ],
+      "file": "microduck/velocity-rough.json"
+    },
+    {
+      "id": "microduck-velstand-flat",
+      "name": "VelStand · Flat",
+      "subtitle": "行走 + 跌倒恢复合一",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-VelStand-Flat-MicroDuck",
+        "VelStand · Flat"
+      ],
+      "file": "microduck/velstand-flat.json"
+    },
+    {
+      "id": "microduck-velstand-rough",
+      "name": "VelStand · Rough",
+      "subtitle": "粗糙地形行走 + 恢复",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-VelStand-Rough-MicroDuck",
+        "VelStand · Rough"
+      ],
+      "file": "microduck/velstand-rough.json"
+    },
+    {
+      "id": "microduck-standup-flat",
+      "name": "StandUp · Flat",
+      "subtitle": "仰卧/俯卧/坐姿站起",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-StandUp-Flat-MicroDuck",
+        "StandUp · Flat"
+      ],
+      "file": "microduck/standup-flat.json"
+    },
+    {
+      "id": "microduck-standup-rough",
+      "name": "StandUp · Rough",
+      "subtitle": "粗糙地面站起",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-StandUp-Rough-MicroDuck",
+        "StandUp · Rough"
+      ],
+      "file": "microduck/standup-rough.json"
+    },
+    {
+      "id": "microduck-sitstand-flat",
+      "name": "SitStand · Flat",
+      "subtitle": "指令化坐↔站",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-SitStand-Flat-MicroDuck",
+        "SitStand · Flat"
+      ],
+      "file": "microduck/sitstand-flat.json"
+    },
+    {
+      "id": "microduck-sitstand-rough",
+      "name": "SitStand · Rough",
+      "subtitle": "粗糙地面坐站",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-SitStand-Rough-MicroDuck",
+        "SitStand · Rough"
+      ],
+      "file": "microduck/sitstand-rough.json"
+    },
+    {
+      "id": "microduck-groundpick-flat",
+      "name": "GroundPick · Flat",
+      "subtitle": "下蹲触地再站起",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-GroundPick-Flat-MicroDuck",
+        "GroundPick · Flat"
+      ],
+      "file": "microduck/groundpick-flat.json"
+    },
+    {
+      "id": "microduck-groundpick-rough",
+      "name": "GroundPick · Rough",
+      "subtitle": "粗糙地面触地",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-GroundPick-Rough-MicroDuck",
+        "GroundPick · Rough"
+      ],
+      "file": "microduck/groundpick-rough.json"
+    },
+    {
+      "id": "microduck-ballkick-flat",
+      "name": "BallKick · Flat",
+      "subtitle": "右脚踢球（策略不见球）",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-BallKick-Flat-MicroDuck",
+        "BallKick · Flat"
+      ],
+      "file": "microduck/ballkick-flat.json"
+    },
+    {
+      "id": "microduck-rollers-flat",
+      "name": "Rollers · Velocity",
+      "subtitle": "轮滑速度跟踪",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-Velocity-Flat-MicroDuck-Rollers",
+        "Rollers · Velocity"
+      ],
+      "file": "microduck/rollers-flat.json"
+    },
+    {
+      "id": "microduck-swizzle",
+      "name": "Swizzle",
+      "subtitle": "经典对称 Swizzle 滑法",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-Velocity-Swizzle-MicroDuck",
+        "Swizzle"
+      ],
+      "file": "microduck/swizzle.json"
+    },
+    {
+      "id": "microduck-roller-crouch",
+      "name": "RollerCrouch",
+      "subtitle": "轮滑下蹲滑行",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-RollerCrouch-Flat-MicroDuck",
+        "RollerCrouch"
+      ],
+      "file": "microduck/roller-crouch.json"
+    },
+    {
+      "id": "microduck-roller-slope",
+      "name": "RollerSlope",
+      "subtitle": "斜坡轮滑下滑",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-RollerSlope-Flat-MicroDuck",
+        "RollerSlope"
+      ],
+      "file": "microduck/roller-slope.json"
+    },
+    {
+      "id": "microduck-roller-standup",
+      "name": "RollerStandUp",
+      "subtitle": "地上站起到轮滑姿态",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-RollerStandUp-Flat-MicroDuck",
+        "RollerStandUp"
+      ],
+      "file": "microduck/roller-standup.json"
+    },
+    {
+      "id": "microduck-spin",
+      "name": "Spin",
+      "subtitle": "原地快速旋转",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-Spin-Flat-MicroDuck",
+        "Spin"
+      ],
+      "file": "microduck/spin.json"
+    },
+    {
+      "id": "microduck-roulade",
+      "name": "Roulade",
+      "subtitle": "前滚翻落地",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl",
+      "keywords": [
+        "Microduck",
+        "mjlab",
+        "MuJoCo",
+        "PPO",
+        "BAM",
+        "Mjlab-Roulade-Flat-MicroDuck",
+        "Roulade"
+      ],
+      "file": "microduck/roulade.json"
+    },
+    {
+      "id": "microduck-velocity-flat-backlash",
+      "name": "Velocity · Flat · Backlash",
+      "subtitle": "平地行走 + ±1° 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-Velocity-Flat-Backlash-MicroDuck"
+      ],
+      "file": "microduck/velocity-flat-backlash.json"
+    },
+    {
+      "id": "microduck-velocity-rough-backlash",
+      "name": "Velocity · Rough · Backlash",
+      "subtitle": "粗糙地形 + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-Velocity-Rough-Backlash-MicroDuck"
+      ],
+      "file": "microduck/velocity-rough-backlash.json"
+    },
+    {
+      "id": "microduck-velstand-flat-backlash",
+      "name": "VelStand · Flat · Backlash",
+      "subtitle": "行走恢复 + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-VelStand-Flat-Backlash-MicroDuck"
+      ],
+      "file": "microduck/velstand-flat-backlash.json"
+    },
+    {
+      "id": "microduck-velstand-rough-backlash",
+      "name": "VelStand · Rough · Backlash",
+      "subtitle": "粗糙 + 恢复 + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-VelStand-Rough-Backlash-MicroDuck"
+      ],
+      "file": "microduck/velstand-rough-backlash.json"
+    },
+    {
+      "id": "microduck-standup-flat-backlash",
+      "name": "StandUp · Flat · Backlash",
+      "subtitle": "站起 + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-StandUp-Flat-Backlash-MicroDuck"
+      ],
+      "file": "microduck/standup-flat-backlash.json"
+    },
+    {
+      "id": "microduck-standup-rough-backlash",
+      "name": "StandUp · Rough · Backlash",
+      "subtitle": "粗糙站起 + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-StandUp-Rough-Backlash-MicroDuck"
+      ],
+      "file": "microduck/standup-rough-backlash.json"
+    },
+    {
+      "id": "microduck-sitstand-flat-backlash",
+      "name": "SitStand · Flat · Backlash",
+      "subtitle": "坐站 + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-SitStand-Flat-Backlash-MicroDuck"
+      ],
+      "file": "microduck/sitstand-flat-backlash.json"
+    },
+    {
+      "id": "microduck-sitstand-rough-backlash",
+      "name": "SitStand · Rough · Backlash",
+      "subtitle": "粗糙坐站 + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-SitStand-Rough-Backlash-MicroDuck"
+      ],
+      "file": "microduck/sitstand-rough-backlash.json"
+    },
+    {
+      "id": "microduck-groundpick-flat-backlash",
+      "name": "GroundPick · Flat · Backlash",
+      "subtitle": "触地 + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-GroundPick-Flat-Backlash-MicroDuck"
+      ],
+      "file": "microduck/groundpick-flat-backlash.json"
+    },
+    {
+      "id": "microduck-groundpick-rough-backlash",
+      "name": "GroundPick · Rough · Backlash",
+      "subtitle": "粗糙触地 + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-GroundPick-Rough-Backlash-MicroDuck"
+      ],
+      "file": "microduck/groundpick-rough-backlash.json"
+    },
+    {
+      "id": "microduck-ballkick-flat-backlash",
+      "name": "BallKick · Flat · Backlash",
+      "subtitle": "踢球 + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-BallKick-Flat-Backlash-MicroDuck"
+      ],
+      "file": "microduck/ballkick-flat-backlash.json"
+    },
+    {
+      "id": "microduck-rollers-flat-backlash",
+      "name": "Rollers · Backlash",
+      "subtitle": "轮滑 + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-Velocity-Flat-Backlash-MicroDuck-Rollers"
+      ],
+      "file": "microduck/rollers-flat-backlash.json"
+    },
+    {
+      "id": "microduck-swizzle-backlash",
+      "name": "Swizzle · Backlash",
+      "subtitle": "Swizzle + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-Velocity-Swizzle-Backlash-MicroDuck"
+      ],
+      "file": "microduck/swizzle-backlash.json"
+    },
+    {
+      "id": "microduck-roller-crouch-backlash",
+      "name": "RollerCrouch · Backlash",
+      "subtitle": "轮滑下蹲 + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-RollerCrouch-Flat-Backlash-MicroDuck"
+      ],
+      "file": "microduck/roller-crouch-backlash.json"
+    },
+    {
+      "id": "microduck-roller-slope-backlash",
+      "name": "RollerSlope · Backlash",
+      "subtitle": "坡面滑行 + 齿隙",
+      "group": "microduck",
+      "published": "2026-01-01",
+      "venue": "pollen-robotics/microduck_rl · Backlash",
+      "keywords": [
+        "Microduck",
+        "backlash",
+        "齿隙",
+        "sim2real",
+        "Mjlab-RollerSlope-Flat-Backlash-MicroDuck"
+      ],
+      "file": "microduck/roller-slope-backlash.json"
     }
   ],
   "references": [

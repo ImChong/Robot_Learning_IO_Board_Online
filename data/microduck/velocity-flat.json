@@ -1,0 +1,1085 @@
+{
+  "id": "microduck-velocity-flat",
+  "name": "Velocity · Flat",
+  "subtitle": "主任务：速度跟踪 + 头姿指令",
+  "tagline": "约 800 g 双足的主行走策略：BAM 执行器物理 + 61 维共享观测契约。",
+  "robot": {
+    "name": "Microduck",
+    "dof": 14
+  },
+  "rates": {
+    "policyHz": 50,
+    "physicsHz": 200,
+    "note": "sim_dt=0.005 s，decimation=4"
+  },
+  "verifiedAt": "2026-09-01",
+  "verifiedRef": "pollen-robotics/microduck_rl@main · microduck-velocity-flat",
+  "links": {
+    "microduck_rl 代码": "https://github.com/pollen-robotics/microduck_rl",
+    "Microduck 真机运行时": "https://github.com/pollen-robotics/microduck",
+    "mjlab 框架": "https://github.com/mujocolab/mjlab",
+    "BAM 执行器模型": "https://github.com/Rhoban/bam"
+  },
+  "modes": {
+    "train": {
+      "label": "训练态",
+      "summary": "mjlab 4096 并行环境，61 维策略观测（48 维本体 + 13 维指令），14 维关节目标，14 项手写奖励 + 多项课程学习。",
+      "facts": [
+        {
+          "label": "任务 ID",
+          "value": "Mjlab-Velocity-Flat-MicroDuck"
+        },
+        {
+          "label": "机器人",
+          "value": "Microduck · 14 伺服 · ~800 g"
+        },
+        {
+          "label": "策略观测",
+          "value": "61 维"
+        },
+        {
+          "label": "动作输出",
+          "value": "14 维关节位置目标"
+        },
+        {
+          "label": "Actor 网络",
+          "value": "MLP [512, 256, 128] · ELU"
+        },
+        {
+          "label": "奖励项",
+          "value": "14 项手写奖励"
+        },
+        {
+          "label": "地形",
+          "value": "平面"
+        },
+        {
+          "label": "并行环境",
+          "value": "4096（推荐）"
+        },
+        {
+          "label": "控制频率",
+          "value": "50 Hz（物理 200 Hz）"
+        },
+        {
+          "label": "训练规模",
+          "value": "50k iter × 24 步/环境"
+        }
+      ],
+      "lanes": [
+        "source",
+        "ref",
+        "proprio",
+        "policy",
+        "action",
+        "plant",
+        "learn"
+      ],
+      "nodes": [
+        {
+          "id": "s.scene",
+          "lane": "source",
+          "kind": "proc",
+          "label": "MuJoCo 场景",
+          "sub": "robot_walk.xml · MJWarp GPU",
+          "desc": "Microduck 步行碰撞模型（躯干/头部接触已剥离以降低倒地代价），平面或粗糙地形，4096 并行环境。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/robot/microduck/robot_walk.xml"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "s.dr",
+          "lane": "source",
+          "kind": "proc",
+          "label": "域随机化",
+          "sub": "BAM + 质量/摩擦/IMU/编码器偏置",
+          "availability": "train-only",
+          "desc": "每回合重采样：电池电压与压降、BAM 摩擦预算、躯干/头部 CoM、质量惯量、IMU 安装误差、关节编码器偏置、速度推击等。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "s.cmd",
+          "lane": "source",
+          "kind": "proc",
+          "label": "指令采样器",
+          "sub": "twist · head_pose · body_pose",
+          "desc": "速度指令每步重采样；头姿与躯干位姿按任务配置周期性重采样。未使用的指令槽零填充以保持 61 维观测契约。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/mdp.py"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "o.gravity",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "投影重力",
+          "sub": "projected_gravity",
+          "dim": 3,
+          "dimLayout": "(g_x, g_y, g_z)——机体系，IMU 可观测",
+          "acquisition": "direct",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified",
+          "desc": "机体系重力方向。训练期可加 IMU 安装误差旋转与 ±0.01 噪声，并带 0–1 控制步延迟。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/mdp.py",
+            "symbol": "projected_gravity_imu_misaligned"
+          }
+        },
+        {
+          "id": "o.ang_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "基座角速度",
+          "sub": "base_ang_vel",
+          "dim": 3,
+          "dimLayout": "(ω_x, ω_y, ω_z)——机体系",
+          "acquisition": "direct",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified",
+          "unit": "rad/s",
+          "desc": "IMU 陀螺仪读数，训练期带安装误差与噪声。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "base_ang_vel"
+          }
+        },
+        {
+          "id": "o.joint_pos",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "关节位置",
+          "sub": "joint_pos_rel",
+          "dim": 14,
+          "dimLayout": "14 伺服关节按 MJCF 深度优先：左髋yaw · 左髋roll · 左髋pitch · 左膝 · 左踝 · 颈pitch · 头pitch · 头yaw · 头roll · 右髋yaw · 右髋roll · 右髋pitch · 右膝 · 右踝",
+          "acquisition": "direct",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified",
+          "unit": "rad",
+          "desc": "14 个伺服关节相对 HOME 位姿。Actor 侧可读编码器偏置（biased=True）；排除 passive_* 关节。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "joint_pos"
+          }
+        },
+        {
+          "id": "o.joint_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "关节速度",
+          "sub": "joint_vel_rel",
+          "dim": 14,
+          "dimLayout": "14 伺服关节按 MJCF 深度优先：左髋yaw · 左髋roll · 左髋pitch · 左膝 · 左踝 · 颈pitch · 头pitch · 头yaw · 头roll · 右髋yaw · 右髋roll · 右髋pitch · 右膝 · 右踝",
+          "acquisition": "filter",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified",
+          "unit": "rad/s",
+          "desc": "关节速度，固定延迟 1 控制步以匹配 Dynamixel 固件滑动平均。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "joint_vel"
+          }
+        },
+        {
+          "id": "o.last_action",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "上一动作",
+          "sub": "last_action",
+          "dim": 14,
+          "dimLayout": "与动作同序：14 伺服关节按 MJCF 深度优先：左髋yaw · 左髋roll · 左髋pitch · 左膝 · 左踝 · 颈pitch · 头pitch · 头yaw · 头roll · 右髋yaw · 右髋roll · 右髋pitch · 右膝 · 右踝",
+          "acquisition": "derived",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified",
+          "desc": "上一步策略输出的 14 维关节目标。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "last_action"
+          }
+        },
+        {
+          "id": "o.cmd_twist",
+          "lane": "ref",
+          "kind": "obs",
+          "class": "B",
+          "label": "速度指令",
+          "sub": "twist",
+          "dim": 3,
+          "dimLayout": "(v_x, v_y, ω_z)——机体系",
+          "acquisition": "given",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified",
+          "desc": "期望线速度与偏航角速度。运行时由手柄/上层模块给定。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "commands.twist"
+          }
+        },
+        {
+          "id": "o.cmd_head",
+          "lane": "ref",
+          "kind": "obs",
+          "class": "B",
+          "label": "头姿指令",
+          "sub": "head_pose",
+          "dim": 4,
+          "dimLayout": "(neck_pitch, head_pitch, head_yaw, head_roll)——相对 HOME 增量",
+          "acquisition": "given",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified",
+          "unit": "rad",
+          "desc": "颈部与头部四关节的目标增量。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "commands.head_pose"
+          }
+        },
+        {
+          "id": "o.cmd_body",
+          "lane": "ref",
+          "kind": "obs",
+          "class": "B",
+          "label": "躯干位姿指令",
+          "sub": "body_pose",
+          "dim": 6,
+          "dimLayout": "(x, y, z, roll, pitch, yaw)——相对站立名义位姿",
+          "acquisition": "given",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified",
+          "desc": "躯干 6D 位姿增量槽位；行走任务权重为 0 但观测维保持以便运行时热切换策略。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "commands.body_pose"
+          }
+        },
+        {
+          "id": "p.base_lin_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "E",
+          "label": "基座线速度（特权）",
+          "sub": "base_lin_vel",
+          "dim": 3,
+          "dimLayout": "(v_x, v_y, v_z)——机体系",
+          "acquisition": "sim-only",
+          "availability": "train-only",
+          "freqHz": 50,
+          "desc": "仅 critic 可见的基座线速度真值。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "critic.base_lin_vel"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "n.concat",
+          "lane": "policy",
+          "kind": "net",
+          "label": "Actor 观测拼接",
+          "sub": "61 维 · 经验归一化",
+          "dim": 61,
+          "dimExpr": "3 + 3 + 14 + 14 + 14 + 3 + 4 + 6",
+          "dimLayout": "本体 48 维 + 指令 13 维：投影重力 3 · 角速度 3 · 关节位置 14 · 关节速度 14 · 上一动作 14 · [twist(3) | head_pose(4) | body_pose(6)]——速度指令 · 头姿增量 · 躯干位姿增量",
+          "checkSum": true,
+          "desc": "所有策略共享的 61 维观测契约，使运行时可在 walk/recover/trick 策略间热切换。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "observations.actor"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "n.actor",
+          "lane": "policy",
+          "kind": "net",
+          "label": "Actor MLP",
+          "sub": "[512, 256, 128] · ELU",
+          "desc": "高斯策略，obs_normalization=True，初始 std=1.0。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "MicroduckRlCfg.actor"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "n.critic",
+          "lane": "policy",
+          "kind": "net",
+          "label": "Critic MLP",
+          "sub": "[512, 256, 128] · 特权观测",
+          "availability": "train-only",
+          "desc": "非对称 critic：在 actor 观测基础上附加足端接触/高度等特权项与 base_lin_vel。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "MicroduckRlCfg.critic"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "a.raw",
+          "lane": "action",
+          "kind": "act",
+          "class": "O1",
+          "label": "关节位置目标",
+          "dim": 14,
+          "dimLayout": "14 伺服关节按 MJCF 深度优先：左髋yaw · 左髋roll · 左髋pitch · 左膝 · 左踝 · 颈pitch · 头pitch · 头yaw · 头roll · 右髋yaw · 右髋roll · 右髋pitch · 右膝 · 右踝",
+          "unit": "rad",
+          "desc": "策略输出的 14 维关节位置增量目标（scale=1.0）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "joint_pos action"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "a.bam",
+          "lane": "action",
+          "kind": "act",
+          "label": "BAM M6 执行器",
+          "sub": "XL330 · 电压控制律",
+          "freqHz": 50,
+          "desc": "Rhoban BAM 模型：反电势、库仑/Stribeck/负载摩擦、电池压降与指令延迟。导出 ONNX 时归一化统计烘焙进图。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/actuator/friction_dr_bam.py",
+            "symbol": "FrictionDRBamActuator"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "e.sim",
+          "lane": "plant",
+          "kind": "plant",
+          "label": "mjlab 环境步进",
+          "sub": "ManagerBasedRlEnv · 50 Hz",
+          "freqHz": 200,
+          "desc": "sim_dt=0.005 s，decimation=4，每策略步 24 帧 rollout。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/__init__.py"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "l.reward",
+          "lane": "learn",
+          "kind": "signal",
+          "label": "奖励求和",
+          "sub": "RewardManager",
+          "availability": "train-only",
+          "desc": "手写 RewTerm 加权求和；NaN 奖励在 mdp.py 中被清零以防污染 PPO buffer。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/mdp.py",
+            "symbol": "RewardManager.compute patch"
+          },
+          "confidence": "verified"
+        },
+        {
+          "id": "l.ppo",
+          "lane": "learn",
+          "kind": "signal",
+          "label": "PPO 更新",
+          "sub": "rsl_rl · 50k iter",
+          "availability": "train-only",
+          "desc": "num_steps_per_env=24，5 epoch × 4 minibatch，lr 1e-3 自适应，clip 0.2，entropy 0.01，γ=0.99，λ=0.95。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "MicroduckRlCfg"
+          },
+          "confidence": "verified"
+        }
+      ],
+      "edges": [
+        {
+          "from": "s.scene",
+          "to": "e.sim",
+          "kind": "flow"
+        },
+        {
+          "from": "s.dr",
+          "to": "e.sim",
+          "kind": "init",
+          "style": "dashed"
+        },
+        {
+          "from": "s.cmd",
+          "to": "o.cmd_twist",
+          "kind": "ref"
+        },
+        {
+          "from": "s.cmd",
+          "to": "o.cmd_head",
+          "kind": "ref"
+        },
+        {
+          "from": "s.cmd",
+          "to": "o.cmd_body",
+          "kind": "ref"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.gravity",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.ang_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.joint_pos",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "o.joint_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.sim",
+          "to": "p.base_lin_vel",
+          "kind": "obs",
+          "style": "dashed"
+        },
+        {
+          "from": "a.bam",
+          "to": "o.last_action",
+          "kind": "feedback",
+          "style": "dashed"
+        },
+        {
+          "from": "o.gravity",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.ang_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.joint_pos",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.joint_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.last_action",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.cmd_twist",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.cmd_head",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.cmd_body",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "n.concat",
+          "to": "n.actor",
+          "kind": "obs",
+          "label": "61"
+        },
+        {
+          "from": "n.concat",
+          "to": "n.critic",
+          "kind": "obs",
+          "style": "dashed"
+        },
+        {
+          "from": "p.base_lin_vel",
+          "to": "n.critic",
+          "kind": "obs",
+          "style": "dashed"
+        },
+        {
+          "from": "n.actor",
+          "to": "a.raw",
+          "kind": "action",
+          "label": "14"
+        },
+        {
+          "from": "a.raw",
+          "to": "a.bam",
+          "kind": "action"
+        },
+        {
+          "from": "a.bam",
+          "to": "e.sim",
+          "kind": "action"
+        },
+        {
+          "from": "e.sim",
+          "to": "l.reward",
+          "kind": "reward"
+        },
+        {
+          "from": "l.reward",
+          "to": "l.ppo",
+          "kind": "reward"
+        },
+        {
+          "from": "n.critic",
+          "to": "l.ppo",
+          "kind": "grad",
+          "style": "dashed"
+        },
+        {
+          "from": "l.ppo",
+          "to": "n.actor",
+          "kind": "grad",
+          "style": "dashed",
+          "label": "策略更新"
+        }
+      ],
+      "rewards": [
+        {
+          "id": "track_lin",
+          "canonical": "track_lin_vel",
+          "group": "A",
+          "label": "线速度跟踪",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "track_linear_velocity"
+          }
+        },
+        {
+          "id": "track_ang",
+          "canonical": "track_ang_vel",
+          "group": "A",
+          "label": "角速度跟踪",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "track_angular_velocity"
+          }
+        },
+        {
+          "id": "head_pose",
+          "canonical": "head_pose",
+          "group": "A",
+          "label": "头姿跟踪",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "head_pose_tracking"
+          }
+        },
+        {
+          "id": "air_time",
+          "canonical": "feet_air_time",
+          "group": "C",
+          "label": "腾空时间",
+          "weight": 3,
+          "direction": "positive",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "air_time"
+          }
+        },
+        {
+          "id": "pose",
+          "canonical": "pose",
+          "group": "B",
+          "label": "腿部姿态",
+          "weight": 1,
+          "direction": "positive",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "pose"
+          }
+        },
+        {
+          "id": "upright",
+          "canonical": "upright",
+          "group": "B",
+          "label": "躯干直立",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "upright"
+          }
+        },
+        {
+          "id": "foot_clear",
+          "canonical": "foot_clearance",
+          "group": "C",
+          "label": "摆动足离地",
+          "weight": 1,
+          "direction": "positive",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "foot_clearance"
+          }
+        },
+        {
+          "id": "foot_swing",
+          "canonical": "foot_swing_height",
+          "group": "C",
+          "label": "摆腿高度",
+          "weight": 1,
+          "direction": "positive",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "foot_swing_height"
+          }
+        },
+        {
+          "id": "foot_slip",
+          "canonical": "foot_slip",
+          "group": "C",
+          "label": "足端滑移",
+          "weight": -0.1,
+          "direction": "negative",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "foot_slip"
+          }
+        },
+        {
+          "id": "self_col",
+          "canonical": "self_collision",
+          "group": "E",
+          "label": "自碰撞",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "self_collisions"
+          }
+        },
+        {
+          "id": "body_ang",
+          "canonical": "body_ang_vel",
+          "group": "B",
+          "label": "躯干角速度",
+          "weight": -0.05,
+          "direction": "negative",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "body_ang_vel"
+          }
+        },
+        {
+          "id": "ang_mom",
+          "canonical": "angular_momentum",
+          "group": "D",
+          "label": "角动量",
+          "weight": -0.02,
+          "direction": "negative",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "angular_momentum"
+          }
+        },
+        {
+          "id": "action_rate",
+          "canonical": "action_rate",
+          "group": "D",
+          "label": "动作变化率",
+          "weight": -0.1,
+          "direction": "negative",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "action_rate_l2"
+          }
+        },
+        {
+          "id": "head_bias",
+          "canonical": "head_pose_bias",
+          "group": "B",
+          "label": "头姿直流偏置",
+          "weight": 0,
+          "direction": "negative",
+          "confidence": "verified",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "head_pose_bias"
+          }
+        }
+      ],
+      "callouts": [
+        {
+          "title": "61 维观测契约",
+          "body": "所有策略共享 [twist(3), head_pose(4), body_pose(6)] 指令布局，真机运行时可热切换策略。"
+        },
+        {
+          "title": "BAM 执行器",
+          "body": "在 XL330 尺度上，执行器物理（电压控制、摩擦、压降）是 sim2real 的主要差距来源。"
+        }
+      ]
+    },
+    "deploy": {
+      "label": "部署态",
+      "summary": "ONNX 策略在真机/CPU MuJoCo 上以相同 61 维观测契约运行。归一化统计已烘焙进导出图；奖励、critic 与域随机化均不在部署链路上。",
+      "facts": [
+        {
+          "label": "策略观测",
+          "value": "61 维（与训练 Actor 完全一致）"
+        },
+        {
+          "label": "动作输出",
+          "value": "14 维关节位置目标"
+        },
+        {
+          "label": "控制频率",
+          "value": "50 Hz"
+        },
+        {
+          "label": "相比训练态去掉",
+          "value": "Critic · 奖励 · 域随机化 · 特权观测"
+        },
+        {
+          "label": "运行时",
+          "value": "microduck 仓 ONNX 推理 + 策略热切换"
+        },
+        {
+          "label": "导出",
+          "value": "scripts/export.py（必须带观测归一化）"
+        }
+      ],
+      "lanes": [
+        "ref",
+        "proprio",
+        "policy",
+        "action",
+        "plant"
+      ],
+      "nodes": [
+        {
+          "id": "o.gravity",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "投影重力",
+          "sub": "projected_gravity",
+          "dim": 3,
+          "dimLayout": "(g_x, g_y, g_z)",
+          "acquisition": "direct",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified"
+        },
+        {
+          "id": "o.ang_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "基座角速度",
+          "sub": "base_ang_vel",
+          "dim": 3,
+          "dimLayout": "(ω_x, ω_y, ω_z)",
+          "acquisition": "direct",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified"
+        },
+        {
+          "id": "o.joint_pos",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "关节位置",
+          "sub": "joint_pos_rel",
+          "dim": 14,
+          "dimLayout": "14 伺服关节按 MJCF 深度优先：左髋yaw · 左髋roll · 左髋pitch · 左膝 · 左踝 · 颈pitch · 头pitch · 头yaw · 头roll · 右髋yaw · 右髋roll · 右髋pitch · 右膝 · 右踝",
+          "acquisition": "direct",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified"
+        },
+        {
+          "id": "o.joint_vel",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "关节速度",
+          "sub": "joint_vel_rel",
+          "dim": 14,
+          "dimLayout": "14 伺服关节按 MJCF 深度优先：左髋yaw · 左髋roll · 左髋pitch · 左膝 · 左踝 · 颈pitch · 头pitch · 头yaw · 头roll · 右髋yaw · 右髋roll · 右髋pitch · 右膝 · 右踝",
+          "acquisition": "filter",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified"
+        },
+        {
+          "id": "o.last_action",
+          "lane": "proprio",
+          "kind": "obs",
+          "class": "A",
+          "label": "上一动作",
+          "sub": "last_action",
+          "dim": 14,
+          "dimLayout": "14 伺服关节按 MJCF 深度优先：左髋yaw · 左髋roll · 左髋pitch · 左膝 · 左踝 · 颈pitch · 头pitch · 头yaw · 头roll · 右髋yaw · 右髋roll · 右髋pitch · 右膝 · 右踝",
+          "acquisition": "derived",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified"
+        },
+        {
+          "id": "o.cmd_twist",
+          "lane": "ref",
+          "kind": "obs",
+          "class": "B",
+          "label": "速度指令",
+          "sub": "twist",
+          "dim": 3,
+          "dimLayout": "(v_x, v_y, ω_z)",
+          "acquisition": "given",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified"
+        },
+        {
+          "id": "o.cmd_head",
+          "lane": "ref",
+          "kind": "obs",
+          "class": "B",
+          "label": "头姿指令",
+          "sub": "head_pose",
+          "dim": 4,
+          "dimLayout": "(neck_pitch, head_pitch, head_yaw, head_roll)",
+          "acquisition": "given",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified"
+        },
+        {
+          "id": "o.cmd_body",
+          "lane": "ref",
+          "kind": "obs",
+          "class": "B",
+          "label": "躯干位姿指令",
+          "sub": "body_pose",
+          "dim": 6,
+          "dimLayout": "(x, y, z, roll, pitch, yaw)",
+          "acquisition": "given",
+          "availability": "deploy-ok",
+          "freqHz": 50,
+          "confidence": "verified"
+        },
+        {
+          "id": "n.concat",
+          "lane": "policy",
+          "kind": "net",
+          "label": "观测拼接",
+          "dim": 61,
+          "dimExpr": "48 + 13",
+          "dimLayout": "48 维本体 + 13 维指令：[twist(3) | head_pose(4) | body_pose(6)]——速度指令 · 头姿增量 · 躯干位姿增量",
+          "checkSum": true,
+          "confidence": "verified"
+        },
+        {
+          "id": "n.actor",
+          "lane": "policy",
+          "kind": "net",
+          "label": "ONNX 策略",
+          "sub": "归一化已烘焙",
+          "confidence": "verified"
+        },
+        {
+          "id": "a.raw",
+          "lane": "action",
+          "kind": "act",
+          "class": "O1",
+          "label": "关节位置目标",
+          "dim": 14,
+          "dimLayout": "14 伺服关节按 MJCF 深度优先：左髋yaw · 左髋roll · 左髋pitch · 左膝 · 左踝 · 颈pitch · 头pitch · 头yaw · 头roll · 右髋yaw · 右髋roll · 右髋pitch · 右膝 · 右踝",
+          "confidence": "verified"
+        },
+        {
+          "id": "a.bam",
+          "lane": "action",
+          "kind": "act",
+          "label": "固件 PD + BAM",
+          "confidence": "verified"
+        },
+        {
+          "id": "e.robot",
+          "lane": "plant",
+          "kind": "plant",
+          "label": "Microduck 真机",
+          "sub": "Dynamixel XL330 × 14",
+          "confidence": "verified"
+        }
+      ],
+      "edges": [
+        {
+          "from": "e.robot",
+          "to": "o.gravity",
+          "kind": "obs"
+        },
+        {
+          "from": "e.robot",
+          "to": "o.ang_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "e.robot",
+          "to": "o.joint_pos",
+          "kind": "obs"
+        },
+        {
+          "from": "e.robot",
+          "to": "o.joint_vel",
+          "kind": "obs"
+        },
+        {
+          "from": "o.gravity",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.ang_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.joint_pos",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.joint_vel",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.last_action",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.cmd_twist",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.cmd_head",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "o.cmd_body",
+          "to": "n.concat",
+          "kind": "obs"
+        },
+        {
+          "from": "n.concat",
+          "to": "n.actor",
+          "kind": "obs",
+          "label": "61"
+        },
+        {
+          "from": "n.actor",
+          "to": "a.raw",
+          "kind": "action",
+          "label": "14"
+        },
+        {
+          "from": "a.raw",
+          "to": "a.bam",
+          "kind": "action"
+        },
+        {
+          "from": "a.bam",
+          "to": "e.robot",
+          "kind": "action"
+        },
+        {
+          "from": "a.bam",
+          "to": "o.last_action",
+          "kind": "feedback",
+          "style": "dashed"
+        }
+      ],
+      "callouts": [
+        {
+          "title": "61 维观测契约",
+          "body": "所有 microduck_rl 策略共享同一观测布局，真机运行时可热切换 walk / recover / trick 策略而无需改接口。未使用的指令槽零填充而非删除。"
+        }
+      ]
+    }
+  }
+}
