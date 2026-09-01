@@ -1,0 +1,31 @@
+{
+  "id": "microduck-swizzle",
+  "name": "Swizzle",
+  "subtitle": "经典对称 Swizzle 滑法",
+  "inherits": "microduck-velocity-flat",
+  "diffSummary": "轮滑对称 Swizzle 步态；双脚保持接地。使用 robot_allcollisions_rollers 模型。",
+  "verifiedAt": "2026-09-01",
+  "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-Velocity-Swizzle-MicroDuck",
+  "links": {
+    "microduck_rl 代码": "https://github.com/pollen-robotics/microduck_rl",
+    "Microduck 真机运行时": "https://github.com/pollen-robotics/microduck",
+    "mjlab 框架": "https://github.com/mujocolab/mjlab",
+    "BAM 执行器模型": "https://github.com/Rhoban/bam",
+    "任务注册": "https://github.com/pollen-robotics/microduck_rl/blob/main/src/mjlab_microduck/tasks/__init__.py"
+  },
+  "overrides": {
+    "modes.train": {
+      "summary": "轮滑对称 Swizzle 步态；双脚保持接地。使用 robot_allcollisions_rollers 模型。",
+      "facts": {
+        "任务 ID": "Mjlab-Velocity-Swizzle-MicroDuck",
+        "碰撞模型": "robot_allcollisions_rollers.xml",
+        "任务目标": "Swizzle 滑法"
+      },
+      "nodes": {
+        "s.scene": {
+          "sub": "robot_allcollisions_rollers.xml"
+        }
+      }
+    }
+  }
+}

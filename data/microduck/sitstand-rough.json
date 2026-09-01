@@ -1,0 +1,27 @@
+{
+  "id": "microduck-sitstand-rough",
+  "name": "SitStand · Rough",
+  "subtitle": "粗糙地面坐站",
+  "inherits": "microduck-velocity-flat",
+  "diffSummary": "SitStand 在粗糙地形上的变体：单策略学柔和坐站切换。",
+  "verifiedAt": "2026-09-01",
+  "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-SitStand-Rough-MicroDuck",
+  "links": {
+    "microduck_rl 代码": "https://github.com/pollen-robotics/microduck_rl",
+    "Microduck 真机运行时": "https://github.com/pollen-robotics/microduck",
+    "mjlab 框架": "https://github.com/mujocolab/mjlab",
+    "BAM 执行器模型": "https://github.com/Rhoban/bam",
+    "任务注册": "https://github.com/pollen-robotics/microduck_rl/blob/main/src/mjlab_microduck/tasks/__init__.py"
+  },
+  "overrides": {
+    "modes.train": {
+      "summary": "SitStand 在粗糙地形上的变体：单策略学柔和坐站切换。",
+      "facts": {
+        "任务 ID": "Mjlab-SitStand-Rough-MicroDuck",
+        "地形": "粗糙地形生成器",
+        "任务目标": "坐站切换 + 头姿",
+        "奖励": "posture_pose · rise/descent_speed 等"
+      }
+    }
+  }
+}

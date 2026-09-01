@@ -1,0 +1,31 @@
+{
+  "id": "microduck-spin",
+  "name": "Spin",
+  "subtitle": "原地快速旋转",
+  "inherits": "microduck-velocity-flat",
+  "diffSummary": "轮滑上原地高速旋转；奖励以 spin_rate_track 等为主。",
+  "verifiedAt": "2026-09-01",
+  "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-Spin-Flat-MicroDuck",
+  "links": {
+    "microduck_rl 代码": "https://github.com/pollen-robotics/microduck_rl",
+    "Microduck 真机运行时": "https://github.com/pollen-robotics/microduck",
+    "mjlab 框架": "https://github.com/mujocolab/mjlab",
+    "BAM 执行器模型": "https://github.com/Rhoban/bam",
+    "任务注册": "https://github.com/pollen-robotics/microduck_rl/blob/main/src/mjlab_microduck/tasks/__init__.py"
+  },
+  "overrides": {
+    "modes.train": {
+      "summary": "轮滑上原地高速旋转；奖励以 spin_rate_track 等为主。",
+      "facts": {
+        "任务 ID": "Mjlab-Spin-Flat-MicroDuck",
+        "碰撞模型": "robot_allcollisions_rollers.xml",
+        "任务目标": "原地旋转"
+      },
+      "nodes": {
+        "s.scene": {
+          "sub": "robot_allcollisions_rollers.xml"
+        }
+      }
+    }
+  }
+}

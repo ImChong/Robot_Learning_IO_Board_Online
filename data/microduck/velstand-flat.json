@@ -1,0 +1,32 @@
+{
+  "id": "microduck-velstand-flat",
+  "name": "VelStand · Flat",
+  "subtitle": "行走 + 跌倒恢复合一",
+  "inherits": "microduck-velocity-flat",
+  "diffSummary": "单策略同时学速度跟踪与从倒地恢复；使用 robot_allcollisions 模型允许躯干触地。",
+  "verifiedAt": "2026-09-01",
+  "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-VelStand-Flat-MicroDuck",
+  "links": {
+    "microduck_rl 代码": "https://github.com/pollen-robotics/microduck_rl",
+    "Microduck 真机运行时": "https://github.com/pollen-robotics/microduck",
+    "mjlab 框架": "https://github.com/mujocolab/mjlab",
+    "BAM 执行器模型": "https://github.com/Rhoban/bam",
+    "任务注册": "https://github.com/pollen-robotics/microduck_rl/blob/main/src/mjlab_microduck/tasks/__init__.py"
+  },
+  "overrides": {
+    "modes.train": {
+      "summary": "单策略同时学速度跟踪与从倒地恢复；使用 robot_allcollisions 模型允许躯干触地。",
+      "facts": {
+        "任务 ID": "Mjlab-VelStand-Flat-MicroDuck",
+        "碰撞模型": "robot_allcollisions.xml",
+        "任务目标": "行走 + 跌倒恢复"
+      },
+      "nodes": {
+        "s.scene": {
+          "sub": "robot_allcollisions.xml",
+          "label": "全碰撞模型场景"
+        }
+      }
+    }
+  }
+}

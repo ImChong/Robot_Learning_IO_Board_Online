@@ -1,0 +1,32 @@
+{
+  "id": "microduck-standup-flat",
+  "name": "StandUp · Flat",
+  "subtitle": "仰卧/俯卧/坐姿站起",
+  "inherits": "microduck-velocity-flat",
+  "diffSummary": "从倒置或坐姿站起并维持站立 + 躯干位姿控制；twist 指令范围收窄。",
+  "verifiedAt": "2026-09-01",
+  "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-StandUp-Flat-MicroDuck",
+  "links": {
+    "microduck_rl 代码": "https://github.com/pollen-robotics/microduck_rl",
+    "Microduck 真机运行时": "https://github.com/pollen-robotics/microduck",
+    "mjlab 框架": "https://github.com/mujocolab/mjlab",
+    "BAM 执行器模型": "https://github.com/Rhoban/bam",
+    "任务注册": "https://github.com/pollen-robotics/microduck_rl/blob/main/src/mjlab_microduck/tasks/__init__.py"
+  },
+  "overrides": {
+    "modes.train": {
+      "summary": "从倒置或坐姿站起并维持站立 + 躯干位姿控制；twist 指令范围收窄。",
+      "facts": {
+        "任务 ID": "Mjlab-StandUp-Flat-MicroDuck",
+        "初始姿态": "仰卧/俯卧/坐姿随机",
+        "任务目标": "站起 + 姿态保持"
+      },
+      "nodes": {
+        "s.scene": {
+          "sub": "robot_allcollisions.xml",
+          "label": "站起场景"
+        }
+      }
+    }
+  }
+}

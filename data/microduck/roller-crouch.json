@@ -1,0 +1,31 @@
+{
+  "id": "microduck-roller-crouch",
+  "name": "RollerCrouch",
+  "subtitle": "轮滑下蹲滑行",
+  "inherits": "microduck-velocity-flat",
+  "diffSummary": "在轮滑状态下下蹲滑行。",
+  "verifiedAt": "2026-09-01",
+  "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-RollerCrouch-Flat-MicroDuck",
+  "links": {
+    "microduck_rl 代码": "https://github.com/pollen-robotics/microduck_rl",
+    "Microduck 真机运行时": "https://github.com/pollen-robotics/microduck",
+    "mjlab 框架": "https://github.com/mujocolab/mjlab",
+    "BAM 执行器模型": "https://github.com/Rhoban/bam",
+    "任务注册": "https://github.com/pollen-robotics/microduck_rl/blob/main/src/mjlab_microduck/tasks/__init__.py"
+  },
+  "overrides": {
+    "modes.train": {
+      "summary": "在轮滑状态下下蹲滑行。",
+      "facts": {
+        "任务 ID": "Mjlab-RollerCrouch-Flat-MicroDuck",
+        "碰撞模型": "robot_allcollisions_rollers.xml",
+        "任务目标": "轮滑下蹲"
+      },
+      "nodes": {
+        "s.scene": {
+          "sub": "robot_allcollisions_rollers.xml"
+        }
+      }
+    }
+  }
+}
