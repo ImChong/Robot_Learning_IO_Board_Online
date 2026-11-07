@@ -16,8 +16,8 @@ import { groupsOf, hasInner, locate } from "./index-map.js";
 const GRID_LIMIT = 1024;
 /** 条形图一层最多并排多少段，再多每段就窄到点不中了，交给方格。 */
 const BAR_LIMIT = 64;
-/** 估算段宽用的条形图宽度（抽屉 340px 减内边距，取偏小值）。 */
-const BAR_WIDTH = 290;
+/** 还没挂进页面、量不到宽度时，估算段宽用的条形图宽度（窄抽屉的偏小值）。 */
+const BAR_WIDTH_FALLBACK = 290;
 /** 方格里「每段另起一行」的段数上限，再多就挤在一起排。 */
 const ROW_BREAK_LIMIT = 16;
 
@@ -52,7 +52,11 @@ export function renderIndexPanel(opts) {
 
   // 顶层条形图在方格上面、下钻出来的几层在方格下面：点了之后长出来的东西都在下方，
   // 方格不会被往下推——否则刚点的那一格会从鼠标底下跑开。
+  // 段宽按条形图的实际宽度估：右栏宽度随窗口变（宽屏 1/3、窄屏整宽），写死一个数
+  // 要么在宽屏上把放得下的名字也藏掉，要么在窄栏里塞进一排残字。
+  let barWidth = BAR_WIDTH_FALLBACK;
   const paint = () => {
+    if (root.isConnected && root.clientWidth) barWidth = root.clientWidth;
     clear(root);
     const [top, ...drill] = bars();
     root.append(header(), top ?? "", map.size > 1 ? grid() : "", ...drill, card());
@@ -156,7 +160,7 @@ export function renderIndexPanel(opts) {
             },
             // 段内只放名字：宽度 ∝ 维数，名字放不下就被裁掉；窄到连一个字都放不下的段干脆
             // 不放，免得一排「左 | 右 | 腰」的残字。悬停与卡片里有全名。
-            (g.size / total) * BAR_WIDTH >= 22
+            (g.size / total) * barWidth >= 22
               ? el("span", { class: "ix-seg-label", text: g.short ?? g.label })
               : null,
           );
@@ -385,6 +389,11 @@ export function renderIndexPanel(opts) {
   }
 
   paint();
+  // 首次绘制时面板还没挂进页面，量不到宽度；挂上之后按实测宽度再画一遍
+  // （同一帧内完成，读者看不到第一遍）。
+  requestAnimationFrame(() => {
+    if (root.isConnected && Math.abs(root.clientWidth - barWidth) > 24) paint();
+  });
   return root;
 }
 

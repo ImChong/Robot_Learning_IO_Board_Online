@@ -742,9 +742,12 @@ kbd {
 
 /* ---------- 画布 ---------- */
 
+/* 宽屏上节点图占 2/3、右栏（详情 / 讲解）占 1/3：右栏要摆得下维度地图的条形图与方格，
+   固定 340px 时几十段的条形图每段只剩几个像素。窄到 1/3 不足 340px 时保底 340px，
+   再窄（≤ 1080px）就改成上下排，见下方媒体查询。 */
 .stage {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 2fr) minmax(340px, 1fr);
   gap: 16px;
   padding: 14px var(--pad-x) 0;
   align-items: start;
