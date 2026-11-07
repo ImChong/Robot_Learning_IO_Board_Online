@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import { isInherited, mergeProject } from "../src/inherit.js";
 import { buildTour } from "../src/tour.js";
 import { buildIndexMap, concatSources, namedCount } from "../src/index-map.js";
-import { curveFor, defaults, sample } from "../src/reward-curve.js";
+import { curveFor, defaults, sample, undefinedInCurve } from "../src/reward-curve.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DATA = join(ROOT, "data");
@@ -259,7 +259,17 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
 function checkRewardCurves(where, graph) {
   for (const reward of graph.rewards ?? []) {
     const at = `${where}/reward[${reward.id}]`;
-    const curve = curveFor(reward);
+    let curve;
+    try {
+      if (reward.curve) {
+        const missing = undefinedInCurve(reward);
+        if (missing.length) fail(at, `curve 算式里的 ${missing.join("、")} 没有定义（只能用 x、参数 id、held id）`);
+      }
+      curve = curveFor(reward);
+    } catch (error) {
+      fail(at, `curve 写错了：${error.message}`);
+      continue;
+    }
     if (!curve) {
       curveStats.formless += 1;
       continue;

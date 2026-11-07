@@ -197,8 +197,9 @@ export function renderCurve({ spec, reward }) {
       value: toSlider(p, p.value),
     });
     const out = el("output", { for: id, class: "rc-val", text: fmt(p.value) });
-    const sym = el("span", { class: "rc-sym" });
-    queueMath(sym, p.tex);
+    // 数据曲线的参数可以不写 TeX 符号，这时只显示 params 里的键名。
+    const sym = p.tex ? el("span", { class: "rc-sym" }) : null;
+    if (sym) queueMath(sym, p.tex);
     input.addEventListener("input", () => {
       values[p.id] = fromSlider(p, Number(input.value));
       out.textContent = fmt(values[p.id]);
@@ -208,7 +209,7 @@ export function renderCurve({ spec, reward }) {
       el("label", { for: id, class: "rc-name" }, [
         sym,
         // 键名就是符号本身（params 里写的是「σ」）时不再重复一遍。
-        p.key && p.key !== p.id
+        p.key && (p.key !== p.id || !p.tex)
           ? el("code", { text: p.key })
           : p.key
             ? null

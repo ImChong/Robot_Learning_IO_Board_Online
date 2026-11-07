@@ -553,29 +553,61 @@ function baseProject(id, name, subtitle, tagline, train, extra = {}) {
 }
 
 /**
- * 除 Velocity（平地 / 粗糙及其齿隙版）外，各任务的环境配置都在 Velocity 的基础上增删改了
- * 奖励项，而这里的变体项目继承的是 Velocity 那一组。逐任务的奖励组合还没核对，
- * 先在页面顶部的差异说明里写明，不让读者把 Velocity 的奖励当成这个任务的。
+ * 除 Velocity（平地 / 粗糙及其齿隙版）外，各任务的环境配置都在 mjlab 基础配置或
+ * Velocity / Rollers 配置之上增删改了奖励。逐任务的奖励组合对照上游源码核对后放在
+ * scripts/microduck-rewards.json，这里按任务 ID 找到对应的一组，替换掉变体从 Velocity
+ * 继承来的那 15 项。齿隙版用同一组：backlash.py 只把 dof_pos_limits 与 pose 的关节
+ * 范围收窄到伺服关节，公式不变。
  */
-const REWARD_CFG = [
-  ["VelStand", "microduck_velstand_env_cfg.py"],
-  ["StandUp", "microduck_standup_env_cfg.py"],
-  ["SitStand", "microduck_sitstand_env_cfg.py"],
-  ["GroundPick", "microduck_ground_pick_env_cfg.py"],
-  ["BallKick", "microduck_ball_kick_env_cfg.py"],
-  ["Swizzle", "microduck_velocity_swizzle_env_cfg.py"],
-  ["RollerCrouch", "microduck_roller_crouch_env_cfg.py"],
-  ["RollerSlope", "microduck_roller_slope_env_cfg.py"],
-  ["RollerStandUp", "microduck_roller_standup_env_cfg.py"],
-  ["Rollers", "microduck_velocity_rollers_env_cfg.py"],
-  ["Spin", "microduck_spin_env_cfg.py"],
-  ["Roulade", "microduck_roulade_env_cfg.py"],
+const MICRODUCK_REWARDS = JSON.parse(await readFile(join(ROOT, "scripts", "microduck-rewards.json"), "utf8"));
+
+const REWARD_FAMILY = [
+  ["VelStand", "VelStand"],
+  ["StandUp", "StandUp"],
+  ["SitStand", "SitStand"],
+  ["GroundPick", "GroundPick"],
+  ["BallKick", "BallKick"],
+  ["Swizzle", "Swizzle"],
+  ["RollerCrouch", "RollerCrouch"],
+  ["RollerSlope", "RollerSlope"],
+  ["RollerStandUp", "RollerStandUp"],
+  ["Rollers", "Rollers"],
+  ["Spin", "Spin"],
+  ["Roulade", "Roulade"],
 ];
 
-function rewardCaveat(taskId) {
-  const hit = REWARD_CFG.find(([key]) => taskId.includes(`-${key}-`) || taskId.endsWith(`-${key}`));
-  if (!hit) return "";
-  return `奖励注意：上游 ${hit[1]} 在 Velocity 的基础上增删改了多项奖励，下方奖励面板暂沿用 Velocity 的 15 项，尚未按这个任务逐项核对。`;
+function familyOf(taskId) {
+  return REWARD_FAMILY.find(([key]) => taskId.includes(`-${key}-`) || taskId.endsWith(`-${key}`))?.[1] ?? null;
+}
+
+/** 这个任务核对过的奖励组合；还没核对的任务返回 null，页面沿用 Velocity 的并在顶部说明。 */
+function familyRewards(taskId) {
+  const name = familyOf(taskId);
+  return name ? (MICRODUCK_REWARDS.families[name] ?? null) : null;
+}
+
+/** 变体的奖励覆盖：删掉继承来的 Velocity 奖励，换成这个任务自己的一组。 */
+function rewardOverride(taskId) {
+  const family = familyRewards(taskId);
+  if (!family) return {};
+  return {
+    "rewards-": VELOCITY_REWARDS.map((r) => r.id),
+    "rewards+": family.rewards,
+  };
+}
+
+function rewardFacts(taskId) {
+  const family = familyRewards(taskId);
+  return family ? { "奖励项": `${family.rewards.length} 项手写奖励（${family.cfg.split("/").pop()}）` } : {};
+}
+
+function rewardSummary(taskId) {
+  const family = familyRewards(taskId);
+  if (family) return `奖励按上游 ${family.cfg.split("/").pop()} 逐项核对，共 ${family.rewards.length} 项。`;
+  if (familyOf(taskId)) {
+    return "奖励注意：上游这个任务在 Velocity 的基础上增删改了多项奖励，下方奖励面板暂沿用 Velocity 的 15 项，尚未按这个任务逐项核对。";
+  }
+  return "";
 }
 
 /** @type {Array<{registry: object, file: string, project: object}>} */
@@ -815,15 +847,16 @@ for (const fam of FAMILIES) {
       name: fam.name,
       subtitle: fam.subtitle,
       inherits: fam.parent,
-      diffSummary: [fam.diff, rewardCaveat(fam.taskId)].filter(Boolean).join(""),
+      diffSummary: [fam.diff, rewardSummary(fam.taskId)].filter(Boolean).join(""),
       verifiedAt: "2026-09-01",
       verifiedRef: `${REPO}@main · ${fam.taskId}`,
       links: { ...COMMON_LINKS, "任务注册": `${REPO_URL}/blob/main/src/mjlab_microduck/tasks/__init__.py` },
       overrides: {
         "modes.train": {
           summary: fam.diff,
-          facts: { "任务 ID": fam.taskId, ...(fam.facts ?? {}) },
+          facts: { "任务 ID": fam.taskId, ...(fam.facts ?? {}), ...rewardFacts(fam.taskId) },
           ...(fam.nodes ? { nodes: fam.nodes } : {}),
+          ...rewardOverride(fam.taskId),
         },
       },
     },
@@ -866,7 +899,7 @@ for (const bl of BACKLASH) {
       name: bl.name,
       subtitle: bl.subtitle,
       inherits: bl.parent,
-      diffSummary: `每个伺服关节串联 ±1° 齿隙（共 2°）的被动铰链；编码器与关节观测读穿齿隙（BacklashEncoderBamActuator）。观测/动作维度不变，ONNX 与真机运行时无需改动。${rewardCaveat(bl.taskId)}`,
+      diffSummary: `每个伺服关节串联 ±1° 齿隙（共 2°）的被动铰链；编码器与关节观测读穿齿隙（BacklashEncoderBamActuator）。观测/动作维度不变，ONNX 与真机运行时无需改动。${rewardSummary(bl.taskId)}`,
       verifiedAt: "2026-09-01",
       verifiedRef: `${REPO}@main · ${bl.taskId}`,
       links: {
@@ -875,7 +908,12 @@ for (const bl of BACKLASH) {
       },
       overrides: {
         "modes.train": {
-          facts: { "任务 ID": bl.taskId, "齿隙": "±1°/关节 · 观测读穿齿隙", ...(bl.extraFacts ?? {}) },
+          facts: {
+            "任务 ID": bl.taskId,
+            "齿隙": "±1°/关节 · 观测读穿齿隙",
+            ...(bl.extraFacts ?? {}),
+            ...rewardFacts(bl.taskId),
+          },
           nodes: {
             "a.bam": {
               label: "BAM + 齿隙编码器反馈",
@@ -883,6 +921,7 @@ for (const bl of BACKLASH) {
               desc: "执行器与 joint_pos/joint_vel 观测均读 qpos[servo]+qpos[backlash]，匹配真机编码器在齿隙输出侧的位置。",
             },
           },
+          ...rewardOverride(bl.taskId),
         },
       },
     },

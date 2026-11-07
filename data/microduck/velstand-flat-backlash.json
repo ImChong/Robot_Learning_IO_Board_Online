@@ -3,7 +3,7 @@
   "name": "VelStand · Flat · Backlash",
   "subtitle": "行走恢复 + 齿隙",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "每个伺服关节串联 ±1° 齿隙（共 2°）的被动铰链；编码器与关节观测读穿齿隙（BacklashEncoderBamActuator）。观测/动作维度不变，ONNX 与真机运行时无需改动。奖励注意：上游 microduck_velstand_env_cfg.py 在 Velocity 的基础上增删改了多项奖励，下方奖励面板暂沿用 Velocity 的 15 项，尚未按这个任务逐项核对。",
+  "diffSummary": "每个伺服关节串联 ±1° 齿隙（共 2°）的被动铰链；编码器与关节观测读穿齿隙（BacklashEncoderBamActuator）。观测/动作维度不变，ONNX 与真机运行时无需改动。奖励按上游 microduck_velstand_env_cfg.py 逐项核对，共 29 项。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-VelStand-Flat-Backlash-MicroDuck",
   "links": {
@@ -19,7 +19,8 @@
         "任务 ID": "Mjlab-VelStand-Flat-Backlash-MicroDuck",
         "齿隙": "±1°/关节 · 观测读穿齿隙",
         "碰撞模型": "robot_allcollisions_backlash.xml",
-        "任务目标": "行走 + 跌倒恢复"
+        "任务目标": "行走 + 跌倒恢复",
+        "奖励项": "29 项手写奖励（microduck_velstand_env_cfg.py）"
       },
       "nodes": {
         "a.bam": {
@@ -27,7 +28,1017 @@
           "sub": "BacklashEncoderBamActuator",
           "desc": "执行器与 joint_pos/joint_vel 观测均读 qpos[servo]+qpos[backlash]，匹配真机编码器在齿隙输出侧的位置。"
         }
-      }
+      },
+      "rewards-": [
+        "track_lin",
+        "track_ang",
+        "head_pose",
+        "air_time",
+        "pose",
+        "upright",
+        "foot_clear",
+        "foot_swing",
+        "foot_slip",
+        "self_col",
+        "body_ang",
+        "ang_mom",
+        "action_rate",
+        "head_bias",
+        "dof_pos_limits"
+      ],
+      "rewards+": [
+        {
+          "id": "track_linear_velocity",
+          "canonical": "track_lin_vel",
+          "group": "A",
+          "label": "线速度跟踪",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\left(\\lVert v^{\\text{cmd}}_{xy}-v_{xy}\\rVert^{2}+v_z^{2}\\right)/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.3162,
+            "σ²": 0.1,
+            "command_name": "twist"
+          },
+          "desc": "xy 跟速度指令，z 方向要求为 0，两部分误差平方和过一个高斯核。",
+          "note": "与 Velocity 相同（由 make_microduck_velocity_env_cfg 原样带入，velstand 未改）；std = math.sqrt(0.1)。倒地时照常计算。函数：mjlab track_linear_velocity。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "track_linear_velocity"
+          }
+        },
+        {
+          "id": "track_angular_velocity",
+          "canonical": "track_ang_vel",
+          "group": "A",
+          "label": "角速度跟踪",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\left((\\omega^{\\text{cmd}}_z-\\omega_z)^{2}+\\lVert\\omega_{xy}\\rVert^{2}\\right)/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.7071,
+            "σ²": 0.5,
+            "command_name": "twist"
+          },
+          "desc": "yaw 角速度跟指令，roll / pitch 角速度要求为 0。",
+          "note": "与 Velocity 相同；std = math.sqrt(0.5)。VelStand 另外叠加了只看 yaw 的 track_yaw_fine。函数：mjlab track_angular_velocity。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "track_angular_velocity"
+          }
+        },
+        {
+          "id": "track_yaw_fine",
+          "group": "A",
+          "label": "偏航角速度细跟踪",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-(\\omega^{\\text{cmd}}_z-\\omega_z)^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.35,
+            "command_name": "twist"
+          },
+          "desc": "只看 yaw 角速度误差的窄高斯（σ = 0.35），叠加在原角速度跟踪项之外，不替换它。",
+          "note": "由 ENABLE_ANCHOR_YAW_REMAP = True 加入（cfg:381, 622-631；同一开关把原地转向环境比例设为 0.2、最小 |ω_z| 设为上限的 0.2）。上游注释：原项 σ ≈ 0.71 在小误差处太松，还把迈步带来的 roll/pitch 角速度算进误差，原地 0.3 rad/s 时站着不动反而更优；把原项直接换成窄项的实验（sape62zb）转向变差，所以改为叠加。TRACK_YAW_FINE_WEIGHT = 2.0（microduck_velstand_env_cfg.py:363），无课程。函数：mjlab_microduck.tasks.mdp.track_yaw_rate_fine（mdp.py:5455）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "track_yaw_fine"
+          }
+        },
+        {
+          "id": "head_pose_tracking",
+          "canonical": "head_pose",
+          "group": "A",
+          "label": "头姿跟踪",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\frac{1}{4}\\sum_{j=1}^{4}\\exp\\!\\left(-e_j^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.5,
+            "command_name": "head_pose"
+          },
+          "desc": "e_j = 实测关节角相对 HOME 的增量 − 头姿指令（齿隙模型读到输出侧）。四个关节各过一个高斯核再取均值：一个关节没跟上，只少拿四分之一。",
+          "note": "与 Velocity 相同。σ = 0.5 rad 故意放宽，上游试过收紧（fine_std = 0.1）策略直接不走路。热启动下头姿指令范围课程只保留末阶段（neck/head pitch ±1.10、head_yaw ±1.40、head_roll ±0.31 rad；cfg:517-532 + velocity_env_cfg.py:816-829）。函数：mjlab_microduck.tasks.mdp.head_pose_tracking（mdp.py:5513）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "head_pose_tracking"
+          }
+        },
+        {
+          "id": "body_pose_tracking",
+          "group": "A",
+          "label": "躯干姿态跟踪（仅站立）",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\mathbb{1}\\!\\left[\\text{stand}\\right]\\cdot\\frac{1}{3}\\left[e^{-(z-z^{*})^{2}/\\sigma_z^{2}}+e^{-(\\phi-\\phi^{*})^{2}/\\sigma_a^{2}}+e^{-(\\theta-\\theta^{*})^{2}/\\sigma_a^{2}}\\right]",
+          "params": {
+            "σ_angle": 0.0873,
+            "σ_z": 0.01,
+            "nominal_height": 0.116,
+            "axis_weights": "(0, 0, 1, 1, 1, 0)",
+            "command_name": "body_pose",
+            "standing_gate_command_name": "twist"
+          },
+          "desc": "只在站立环境（速度指令为 0）里计分：躯干高度、roll、pitch 各过一个高斯核取均值，跟踪 body_pose 指令（z ∈ [−2.5, +1] cm，roll/pitch ±12°）。",
+          "note": "body_pose 指令换成 StandingGatedPoseCommand（mdp.py:5358）：采样值乘以 twist 的 is_standing_env，行走时恒为 0；30% 重采样为全零（站直），另有 50% 只给倾角、z = 0（cfg:327-328, 551-557）。0.116 m 是全碰撞模型上实测的站立躯干高度（cfg:322）。热启动把站立环境比例课程钉在末阶段 25%。Velocity 里这一项是 body_pose_tracking_6d、权重 0（velocity_env_cfg.py:717-727）；ENABLE_BODY_CONTROL = True 时 _add_body_control 把它替换为本函数、权重 BODY_TRACK_WEIGHT = 2.0（microduck_velstand_env_cfg.py:321, 329, 571-582），权重无课程。指令范围课程 body_pose_range：iter 0 半幅 → iter 300 全幅（cfg:330, 560-570）。函数：mjlab_microduck.tasks.mdp.body_pose_tracking_locomotion（mdp.py:5790）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "body_pose_tracking"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\phi-\\phi^{*}",
+              "range": [
+                -0.3,
+                0.3
+              ],
+              "unit": "rad"
+            },
+            "f": "(exp(-(ez * ez) / (sz * sz)) + exp(-(x * x) / (sa * sa)) + exp(-(ep * ep) / (sa * sa))) / 3",
+            "params": [
+              {
+                "id": "sa",
+                "key": "σ_angle",
+                "range": [
+                  0.02,
+                  0.35
+                ],
+                "log": true
+              },
+              {
+                "id": "sz",
+                "key": "σ_z",
+                "range": [
+                  0.0025,
+                  0.04
+                ],
+                "log": true
+              }
+            ],
+            "held": [
+              {
+                "id": "ez",
+                "tex": "z-z^{*}",
+                "range": [
+                  -0.04,
+                  0.04
+                ],
+                "value": 0
+              },
+              {
+                "id": "ep",
+                "tex": "\\theta-\\theta^{*}",
+                "range": [
+                  -0.3,
+                  0.3
+                ],
+                "value": 0
+              }
+            ],
+            "notes": [
+              "画的是站立环境（门控为 1）里的值：横轴取 roll 误差，高度误差与 pitch 误差用滑块固定（默认 0，两项各拿满 1/3）。行走与原地转向环境整项恒为 0，图里不画。"
+            ]
+          }
+        },
+        {
+          "id": "fallen_tax",
+          "group": "A",
+          "label": "倒地税",
+          "weight": 0,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\mathbb{1}\\!\\left[\\text{armed}_t\\right],\\quad\\text{armed}_t=\\left(\\text{armed}_{t-1}\\vee\\theta_t>40^{\\circ}\\vee z_t<0\\right)\\wedge\\neg\\left(\\theta_t<25^{\\circ}\\wedge z_t>0.09\\right)",
+          "params": {
+            "gate_tilt_above_deg": 40,
+            "release_tilt_below_deg": 25,
+            "release_z_above": 0.09
+          },
+          "desc": "一倒下（倾角 > 40°）就上膛，之后每步罚 1，直到真正站好（倾角 < 25° 且躯干高于 0.09 m）才解除；停在 40° 以内的深蹲也照样收税。",
+          "note": "上游教训：没有它时躺着等 fallen_too_long 回收最划算（起身尝试要付动作/力矩成本）；run-3 从第 0 步开税，策略学成「不惜一切避免倾斜」的蹲姿冻结，所以推迟到 iter 600。解除条件与 recovery_success 共用（RECOVERED_UP_TILT_DEG / RECOVERED_UP_Z，cfg:288-289）。函数：microduck fallen_state_penalty。配置值 0.0（microduck_velstand_env_cfg.py:790）；课程 fallen_tax_weight（cfg:904-913）在 iter 600（RECOVERY_ECON_KICKIN_ITER，cfg:299）后设为 −0.5。iter 指本次运行的迭代数：上游启动命令带 MICRODUCK_WARM_START=1，加载热启动权重后把 common_step_counter 归零（mdp.py:116-146）；reward_weight 课程在 common_step_counter > iter×24 时切换（mdp.py:3584-3602）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "fallen_tax"
+          },
+          "noCurve": "带记忆（滞回）的 0/1 状态：只看「已倒下且尚未站好」与否，没有连续自变量。"
+        },
+        {
+          "id": "recovery_success",
+          "group": "A",
+          "label": "起身成功奖金",
+          "weight": 0,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\mathbb{1}\\!\\left[\\text{armed}_t\\wedge\\theta_t<25^{\\circ}\\wedge z_t>0.09\\right],\\quad\\text{armed}_t\\leftarrow\\text{armed}_{t-1}\\vee\\left(T^{\\text{fall}}_t\\ge0.5\\,\\mathrm{s}\\right)",
+          "params": {
+            "fallen_tilt_deg": 40,
+            "min_fallen_s": 0.5,
+            "up_tilt_deg": 25,
+            "up_z": 0.09
+          },
+          "desc": "连续倒地（倾角 > 40°）满 0.5 s 后上膛；之后第一次达到倾角 < 25° 且躯干高于 0.09 m 的那一步给 1，随即撤膛，要再倒一次才能再领。",
+          "note": "up_z 从 0.105 降到 0.09（cfg:279-289 注释）：实测正常摇晃行走的躯干高度 0.084–0.096 m，0.105 永远够不着，奖金从不触发，起身停在深蹲。函数：microduck recovery_success。配置值 0.0（microduck_velstand_env_cfg.py:810）；课程 recovery_success_weight（cfg:914-923）在 iter 600 后设为 +10。iter 指本次运行的迭代数：上游启动命令带 MICRODUCK_WARM_START=1，加载热启动权重后把 common_step_counter 归零（mdp.py:116-146）；reward_weight 课程在 common_step_counter > iter×24 时切换（mdp.py:3584-3602）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "recovery_success"
+          },
+          "noCurve": "一次性事件奖励：触发那一步为 1，依赖倒地计时与上膛状态，没有连续自变量。"
+        },
+        {
+          "id": "pose",
+          "group": "B",
+          "label": "腿部姿态",
+          "weight": 1,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\frac{1}{N}\\sum_{j}e_j^{2}/\\sigma_j^{2}\\right)",
+          "params": {
+            "σ_hip_yaw": 0.3,
+            "σ_hip_roll": 0.05,
+            "σ_hip_pitch": 0.4,
+            "σ_knee": 0.4,
+            "σ_ankle": 0.25,
+            "std_standing": "hip_yaw 0.1 · hip_roll 0.05 · hip_pitch 0.15 · knee 0.15 · ankle 0.1",
+            "std_body": "hip_yaw 0.1 · hip_roll 0.25 · hip_pitch 0.4 · knee 0.4 · ankle 0.3",
+            "walking_threshold": 0.01,
+            "running_threshold": 1.5
+          },
+          "desc": "e_j 是腿关节相对默认站姿的偏差，按各关节 σ_j 归一化后取均值再过 exp。上面 σ_* 是行走值；指令总量 < 0.01 时换成 std_standing，若同时有 body_pose 指令（z/roll/pitch 非零）则换成 std_body。",
+          "note": "相对 Velocity 只多了第 4 档 std_body（BODY_POSE_STD，cfg:333-339）：上游实测站立档的 std（hip_roll 0.05、knee/hip_pitch 0.15、ankle 0.1）会让指令要求的 10° 侧倾每步被扣约 0.85。行走与零指令站立时与 Velocity 完全相同。函数：microduck variable_posture_body_relaxed（mjlab variable_posture 子类）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "pose"
+          }
+        },
+        {
+          "id": "upright",
+          "group": "B",
+          "label": "躯干直立（相对指令）",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\lVert g_{xy}-g^{*}_{xy}\\rVert^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.2236,
+            "σ²": 0.05,
+            "command_name": "body_pose"
+          },
+          "desc": "g 是躯干系下的投影重力（‖g_xy‖ = sin 倾角）；目标 g* 由 body_pose 指令的 roll/pitch 算出，指令为 0 时就是「躯干水平」。",
+          "note": "权重 2.0 / σ² = 0.05 沿用 Velocity；ENABLE_BODY_CONTROL 把函数换成 upright_body_cmd_relative（cfg:589-594），指令要求的倾角不再被这项最强的姿态项惩罚。只有站立环境有 body_pose 指令，行走时与 Velocity 完全相同。不看地形法向，粗糙地形上也按世界竖直算。函数：mjlab_microduck.tasks.mdp.upright_body_cmd_relative（mdp.py:5477）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "upright"
+          }
+        },
+        {
+          "id": "upright_progress",
+          "group": "B",
+          "label": "直立进度（势能差）",
+          "weight": 5,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\cos\\theta_t-\\cos\\theta_{t-1}",
+          "desc": "势能型塑形：每步奖励 cos(倾角) 的增量。往直立方向转得分、往倒下方向转扣分，保持任何姿态都是 0，没法靠某个姿态刷分。",
+          "note": "上游教训（runs 1/2/4）：任何「处于倒地态就给正奖励」的项都会被某个舒服的姿态刷（坐着、平躺、头撑地三角架），所以改为势能差且不门控；行走中稳住一个踉跄也能拿到。从趴着到站直累计约 +1（× 权重 5）。固定 5.0（microduck_velstand_env_cfg.py:691），无课程。函数：mjlab_microduck.tasks.mdp.upright_progress（mdp.py:591）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "upright_progress"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\theta_t",
+              "range": [
+                0,
+                3.1416
+              ],
+              "unit": "rad"
+            },
+            "f": "cos(x) - cos(tp)",
+            "held": [
+              {
+                "id": "tp",
+                "tex": "\\theta_{t-1}",
+                "range": [
+                  0,
+                  3.1416
+                ],
+                "value": 1.5708
+              }
+            ],
+            "notes": [
+              "势能差没有固定的一维形状：横轴取这一步的倾角 θ_t，上一步倾角 θ_{t−1} 用滑块固定（默认 π/2 = 侧躺/趴着）。实际每步 θ 只变一点点，曲线展示的是「从 θ_{t−1} 转到 θ_t 能拿多少」；一个回合累加起来正好是 cos θ_末 − cos θ_初。"
+            ]
+          }
+        },
+        {
+          "id": "height_progress",
+          "group": "B",
+          "label": "高度进度（势能差）",
+          "weight": 30,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\min\\!\\left(z_t,\\,z_{\\text{ceil}}\\right)-\\min\\!\\left(z_{t-1},\\,z_{\\text{ceil}}\\right)",
+          "params": {
+            "ceiling": 0.115
+          },
+          "desc": "势能型塑形：每步奖励躯干高度（封顶 0.115 m）的增量。站起来得分、跌下去扣分，高度不变为 0。",
+          "note": "upright_progress 的 z 轴搭档（run-5 蹲姿终点教训）：从深蹲到站直主要是高度变化、倾角几乎不变，其他项在这里没有梯度。趴→站（0.05 → 0.115 m）累计约 +0.065 × 30 ≈ +2。封顶 0.115 略低于站姿 0.117，跳高不额外得分。固定 30.0（microduck_velstand_env_cfg.py:704），无课程。函数：mjlab_microduck.tasks.mdp.height_progress（mdp.py:620）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "height_progress"
+          },
+          "curve": {
+            "x": {
+              "tex": "z_t",
+              "range": [
+                0,
+                0.15
+              ],
+              "unit": "m"
+            },
+            "f": "min(x, c) - min(zp, c)",
+            "params": [
+              {
+                "id": "c",
+                "key": "ceiling",
+                "range": [
+                  0.08,
+                  0.15
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "zp",
+                "tex": "z_{t-1}",
+                "range": [
+                  0,
+                  0.15
+                ],
+                "value": 0.05
+              }
+            ],
+            "notes": [
+              "横轴取这一步的躯干高度 z_t，上一步高度 z_{t−1} 用滑块固定（默认 0.05 m ≈ 趴着）。超过封顶高度后再高也不加分；一个回合累加起来等于末、初两个封顶高度之差。"
+            ]
+          }
+        },
+        {
+          "id": "com_upward_velocity",
+          "group": "B",
+          "label": "倒地时向上速度",
+          "weight": 0,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\max\\!\\left(v_z,0\\right)\\cdot\\mathbb{1}\\!\\left[z<0.125\\right]\\cdot\\mathbb{1}\\!\\left[\\theta>40^{\\circ}\\vee z<0\\right]",
+          "params": {
+            "max_height": 0.125,
+            "gate_z_below": 0,
+            "gate_tilt_above_deg": 40
+          },
+          "desc": "倒地（倾角 > 40°）且躯干低于 0.125 m 时，奖励躯干向上的速度（只取正值）。",
+          "note": "只按倾角门控（gate_z_below = 0.0 只在 z < 0 时成立）：上游第一次重建训练也按「高度低」开门，结果坐着（z ≈ 0.07、躯干直立）就开门，靠上下颠刷分。max_vz 未设，起得越快奖励越多。配置值 0.0（microduck_velstand_env_cfg.py:712）；课程 com_upward_weight（cfg:947-956）在 iter 600 后设为 +2.0。iter 指本次运行的迭代数：上游启动命令带 MICRODUCK_WARM_START=1，加载热启动权重后把 common_step_counter 归零（mdp.py:116-146）；reward_weight 课程在 common_step_counter > iter×24 时切换（mdp.py:3584-3602）。函数：mjlab_microduck.tasks.mdp.com_upward_velocity（mdp.py:1042）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "com_upward_velocity"
+          },
+          "curve": {
+            "x": {
+              "tex": "v_z",
+              "range": [
+                -0.5,
+                1
+              ],
+              "unit": "m/s"
+            },
+            "f": "max(x, 0) * (z < h ? 1 : 0) * ((th > g || z < 0) ? 1 : 0)",
+            "params": [
+              {
+                "id": "h",
+                "key": "max_height",
+                "range": [
+                  0.05,
+                  0.2
+                ]
+              },
+              {
+                "id": "g",
+                "key": "gate_tilt_above_deg",
+                "range": [
+                  10,
+                  90
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "z",
+                "tex": "z",
+                "range": [
+                  -0.05,
+                  0.2
+                ],
+                "value": 0.06
+              },
+              {
+                "id": "th",
+                "tex": "\\theta\\,(^{\\circ})",
+                "range": [
+                  0,
+                  180
+                ],
+                "value": 90
+              }
+            ],
+            "notes": [
+              "横轴是躯干竖直速度；高度 z 与倾角 θ 用滑块固定（默认 z = 0.06 m、θ = 90°，即躺着时）。θ 拖到 40° 以内（且 z ≥ 0）或 z 拖到 0.125 m 以上，整条曲线归零。"
+            ]
+          }
+        },
+        {
+          "id": "body_ang_vel",
+          "group": "B",
+          "label": "躯干角速度",
+          "weight": -0.05,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\omega^{\\text{trunk}}_{xy}\\rVert^{2}",
+          "desc": "躯干角速度的 x、y 分量平方和，不罚 yaw。",
+          "note": "与 Velocity 相同，倒地翻滚时也照常计算。函数：mjlab body_angular_velocity_penalty。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "body_ang_vel"
+          }
+        },
+        {
+          "id": "head_pose_bias",
+          "group": "B",
+          "label": "头姿直流偏置（直立门控）",
+          "weight": 3,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "-\\frac{1}{4}\\sum_{j=1}^{4}\\left\\lvert g\\cdot\\operatorname{EMA}_{\\tau}(g\\cdot e_j)\\right\\rvert",
+          "params": {
+            "tau_s": 1,
+            "gate_height_low": 0.09,
+            "gate_height_high": 0.11,
+            "gate_tilt_full_deg": 20,
+            "gate_tilt_zero_deg": 40
+          },
+          "desc": "头姿误差先乘直立门控 g 再做 τ = 1 s 的滑动平均，只罚剩下的直流偏置（L1）；躯干低于 9 cm 或倾角超过 40° 时 g = 0，倒地期间既不计也不积累。",
+          "note": "曲线画的是 g = 1（站稳行走）时的值（g ≥ 0，所以 g·|EMA| = |g·EMA|）。VelStand 加门控的原因（cfg:666-679）：Velocity 一倒就终止，而 VelStand 倒地后回合继续，不加门控会把整个倒地阶段的头部下垂都记成税。z 在 0.09→0.11 m、θ 在 20°→40° 之间平滑过渡。热启动（WARM_START = True，microduck_velstand_env_cfg.py:254）下 _collapse_curricula_to_final（cfg:517-532，于 cfg:608-609 调用）把 Velocity 的 head_pose_bias_weight 课程（0 → 1 → 2 → 3，velocity_env_cfg.py:896-907）只留末阶段并把 3.0 直接写进奖励配置：训练第 0 步起即为 3.0。函数：mjlab_microduck.tasks.mdp.head_pose_bias_penalty（mdp.py:5614）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "head_pose_bias"
+          }
+        },
+        {
+          "id": "air_time",
+          "canonical": "feet_air_time",
+          "group": "C",
+          "label": "腾空时间（直立门控）",
+          "weight": 3,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\sum_{f}\\mathbb{1}\\!\\left[t_{\\min}<t^{\\text{air}}_{f}<t_{\\max}\\right]\\cdot\\mathbb{1}\\!\\left[\\lVert c\\rVert>0.01\\wedge\\theta\\le 40^{\\circ}\\wedge z\\ge 0\\right]",
+          "params": {
+            "threshold_min": 0.125,
+            "threshold_max": 0.3,
+            "command_threshold": 0.01,
+            "gate_tilt_above_deg": 40
+          },
+          "desc": "每只脚当前这次腾空的时长落在 (0.125, 0.3) s 内记 1；倒地（倾角 > 40°）时整项为 0。",
+          "note": "‖c‖ = ‖v_xy^cmd‖ + |ω_z^cmd|：速度指令总量不超过 command_threshold = 0.01 时整项为 0（站立环境恒为 0）。倒地门控是 VelStand 加的（cfg:776-784）：躺着的机器人能有节奏地踢脚刷腾空窗口（「躺着抖腿」）。z < 0 分支平地上不会触发。函数：microduck feet_air_time_upright → mjlab feet_air_time。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "air_time"
+          }
+        },
+        {
+          "id": "foot_clearance",
+          "group": "C",
+          "label": "摆动足离地",
+          "weight": -2,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{f}\\left\\lvert h_f-h^{*}\\right\\rvert\\cdot\\lVert v_{f,xy}\\rVert\\cdot\\mathbb{1}\\!\\left[\\lVert c\\rVert>0.01\\right]",
+          "params": {
+            "target_height": 0.02,
+            "command_threshold": 0.01
+          },
+          "desc": "足端离地高度（地形射线测得）偏离 2 cm 的绝对值，乘以足端水平速度：脚在挪动时才要求它离地合适。",
+          "note": "‖c‖ = ‖v_xy^cmd‖ + |ω_z^cmd|：速度指令总量不超过 command_threshold = 0.01 时整项为 0（站立环境恒为 0）。与 Velocity 相同（velocity_env_cfg.py:351-352 只改 target_height 与 command_threshold，权重沿用 mjlab 基础配置 −2.0）。函数：mjlab feet_clearance。",
+          "source": {
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
+            "symbol": "foot_clearance"
+          }
+        },
+        {
+          "id": "foot_swing_height",
+          "group": "C",
+          "label": "摆腿高度",
+          "weight": -0.25,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{f}\\left(h^{\\text{peak}}_{f}/h^{*}-1\\right)^{2}\\cdot\\mathbb{1}\\!\\left[\\text{first contact}_f\\right]\\cdot\\mathbb{1}\\!\\left[\\lVert c\\rVert>0.01\\right]",
+          "params": {
+            "target_height": 0.02,
+            "command_threshold": 0.01
+          },
+          "desc": "记下每次腾空的最高点，落地那一步按它相对 2 cm 的偏差平方罚一次。",
+          "note": "‖c‖ = ‖v_xy^cmd‖ + |ω_z^cmd|：速度指令总量不超过 command_threshold = 0.01 时整项为 0（站立环境恒为 0）。与 Velocity 相同，权重沿用 mjlab 基础配置 −0.25。函数：mjlab feet_swing_height。",
+          "source": {
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
+            "symbol": "foot_swing_height"
+          }
+        },
+        {
+          "id": "foot_slip",
+          "group": "C",
+          "label": "足端滑移",
+          "weight": -0.1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{f}\\lVert v_{f,xy}\\rVert^{2}\\cdot\\mathbb{1}\\!\\left[\\text{contact}_f\\right]\\cdot\\mathbb{1}\\!\\left[\\lVert c\\rVert>0.01\\right]",
+          "params": {
+            "command_threshold": 0.01
+          },
+          "desc": "着地的脚还在水平滑动，按滑动速度平方罚。",
+          "note": "‖c‖ = ‖v_xy^cmd‖ + |ω_z^cmd|：速度指令总量不超过 command_threshold = 0.01 时整项为 0（站立环境恒为 0）。与 Velocity 相同，权重故意只给 −0.1（−1.0 对靠原地拧脚转身的机器人太严）。函数：mjlab feet_slip。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "foot_slip"
+          }
+        },
+        {
+          "id": "angular_momentum",
+          "group": "D",
+          "label": "角动量",
+          "weight": -0.02,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert L\\rVert^{2}",
+          "desc": "全身角动量的模的平方。",
+          "note": "与 Velocity 相同。函数：mjlab angular_momentum_penalty。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "angular_momentum"
+          }
+        },
+        {
+          "id": "action_rate_l2",
+          "canonical": "action_rate",
+          "group": "D",
+          "label": "动作变化率（倒地减免）",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a_t-a_{t-1}\\rVert^{2}\\cdot\\left(1-0.9\\cdot\\mathbb{1}\\!\\left[\\theta>40^{\\circ}\\vee z<0\\right]\\right)",
+          "params": {
+            "fallen_scale": 0.1,
+            "gate_tilt_above_deg": 40
+          },
+          "desc": "相邻两步动作之差的平方和；倒地（倾角 > 40°）时只按 0.1 倍计，让起身尝试不被平滑税压死。",
+          "note": "上游 run-1 教训：热启动让 action_rate 从第 0 步就是 −1.0（全栈最大的成本，每步约 −1.5～−2），起身尝试比躺着更贵，策略学会躺平；于是倒地时 ×FALLEN_SMOOTHNESS_SCALE = 0.1（cfg:454-456），直立行走的平滑税不变。函数：microduck action_rate_l2_fallen_scaled。热启动（WARM_START = True，microduck_velstand_env_cfg.py:254）下 _collapse_curricula_to_final（cfg:517-532，于 cfg:608-609 调用）把 Velocity 的 action_rate_weight 课程（−0.1 → −1.0，velocity_env_cfg.py:778-791）只留末阶段并把 −1.0 写进奖励配置，cfg:732-737 换函数时沿用 ar.weight：训练全程 −1.0。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "action_rate_l2"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\lVert a_t-a_{t-1}\\rVert",
+              "range": [
+                0,
+                1
+              ]
+            },
+            "f": "x * x * (th > g ? s : 1)",
+            "params": [
+              {
+                "id": "s",
+                "key": "fallen_scale",
+                "range": [
+                  0,
+                  1
+                ]
+              },
+              {
+                "id": "g",
+                "key": "gate_tilt_above_deg",
+                "range": [
+                  10,
+                  90
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "th",
+                "tex": "\\theta\\,(^{\\circ})",
+                "range": [
+                  0,
+                  180
+                ],
+                "value": 0
+              }
+            ],
+            "notes": [
+              "横轴是差值向量的范数；躯干倾角 θ 用滑块固定（默认 0 = 直立，满额计）。θ 拖过 40° 后整条曲线缩成 0.1 倍。z < 0 也算倒地，只可能在粗糙地形上出现，图里没画。横轴范围只是示意。"
+            ]
+          }
+        },
+        {
+          "id": "joint_torque_rate_l2",
+          "group": "D",
+          "label": "力矩变化率（倒地减免）",
+          "weight": -0.002,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\tau_t-\\tau_{t-1}\\rVert^{2}\\cdot\\left(1-0.9\\cdot\\mathbb{1}\\!\\left[\\theta>40^{\\circ}\\vee z<0\\right]\\right)",
+          "params": {
+            "fallen_scale": 0.1,
+            "gate_tilt_above_deg": 40
+          },
+          "desc": "相邻两步执行器力矩之差的平方和，倒地时同样 ×0.1。罚的是力矩的变化而不是大小，不妨碍起身翻转。",
+          "note": "从 StandUp 任务搬来的防抖项（cfg:724-731）。实现细节：力矩缓存跨回合保留，新回合第一步会把重置前后的力矩差算进去。函数：microduck joint_torque_rate_l2_fallen_scaled。固定 −2e-3（microduck_velstand_env_cfg.py:729），无课程。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "joint_torque_rate_l2"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\lVert\\tau_t-\\tau_{t-1}\\rVert",
+              "range": [
+                0,
+                1
+              ]
+            },
+            "f": "x * x * (th > g ? s : 1)",
+            "params": [
+              {
+                "id": "s",
+                "key": "fallen_scale",
+                "range": [
+                  0,
+                  1
+                ]
+              },
+              {
+                "id": "g",
+                "key": "gate_tilt_above_deg",
+                "range": [
+                  10,
+                  90
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "th",
+                "tex": "\\theta\\,(^{\\circ})",
+                "range": [
+                  0,
+                  180
+                ],
+                "value": 0
+              }
+            ],
+            "notes": [
+              "横轴是差值向量的范数；躯干倾角 θ 用滑块固定（默认 0 = 直立，满额计）。θ 拖过 40° 后整条曲线缩成 0.1 倍。z < 0 也算倒地，只可能在粗糙地形上出现，图里没画。横轴单位 N·m，范围只是示意。"
+            ]
+          }
+        },
+        {
+          "id": "self_collisions",
+          "canonical": "self_collision",
+          "group": "E",
+          "label": "自碰撞",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "N_{\\text{self-contact}}",
+          "params": {
+            "sensor_name": "self_collision"
+          },
+          "desc": "自碰撞传感器（trunk_base 子树内部接触）这一步检测到的接触计数。",
+          "note": "权重与 Velocity 相同，但 VelStand 把机器人换成全碰撞模型 robot_allcollisions.xml（cfg:637；docstring 称 70 个碰撞几何），计数口径不变；neck_pitch 与 jaw_soft 之间的常驻穿插已用 <exclude> 排除（robot_allcollisions.xml:91）。函数：mjlab self_collision_cost。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "symbol": "self_collisions"
+          }
+        },
+        {
+          "id": "dof_pos_limits",
+          "canonical": "joint_limit",
+          "group": "E",
+          "label": "关节软限位",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{j}\\left[(q^{\\text{lo}}_{j}-q_j)_{+}+(q_j-q^{\\text{hi}}_{j})_{+}\\right]",
+          "desc": "越过软限位的部分按绝对值（L1，不是平方）求和，两侧都罚。",
+          "note": "与 Velocity 相同，沿用 mjlab 基础配置的 −1.0。函数：mjlab joint_pos_limits。",
+          "source": {
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
+            "symbol": "dof_pos_limits"
+          }
+        },
+        {
+          "id": "servo_impact",
+          "group": "E",
+          "label": "舵机外壳撞地",
+          "weight": -0.005,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\left(\\left\\lVert\\sum_{i}F_i\\right\\rVert-F_{\\text{th}}\\right)_{+}",
+          "params": {
+            "threshold": 2,
+            "sensor_name": "servo_ground_contact"
+          },
+          "desc": "15 个 XL330 舵机外壳与地面的合力超过 2 N 的部分按牛顿线性罚：舵机外壳着地是打坏齿轮的事件。",
+          "note": "trunk_base 与头部本体上的舵机外壳几何同时也计入 trunk_impact / head_impact。函数：microduck body_impact_cost。起点 = -0.02 × PROTECT_STAGE0_FRAC 0.25（microduck_velstand_env_cfg.py:462, 461）；课程 <名>_weight（microduck_velstand_env_cfg.py:929-946）在 iter 1000（PROTECT_FULL_ITER = RECOVERY_ECON_KICKIN_ITER 600 + 400，:460）后升到满额 -0.02。iter 指本次运行的迭代数：上游启动命令带 MICRODUCK_WARM_START=1，加载热启动权重后把 common_step_counter 归零（mdp.py:116-146）；reward_weight 课程在 common_step_counter > iter×24 时切换（mdp.py:3584-3602）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "servo_impact"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\left\\lVert\\sum_i F_i\\right\\rVert",
+              "range": [
+                0,
+                10
+              ],
+              "unit": "N"
+            },
+            "f": "max(x - th, 0)",
+            "params": [
+              {
+                "id": "th",
+                "key": "threshold",
+                "range": [
+                  0,
+                  9
+                ]
+              }
+            ],
+            "notes": [
+              "横轴是外壳与地面的合力，阈值以内不罚，超出部分按牛顿线性罚。"
+            ]
+          }
+        },
+        {
+          "id": "head_impact",
+          "group": "E",
+          "label": "头部撞地",
+          "weight": -0.0025,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\left(\\left\\lVert\\sum_{b}F_b\\right\\rVert-F_{\\text{th}}\\right)_{+}",
+          "params": {
+            "threshold": 15,
+            "sensor_name": "head_ground_contact"
+          },
+          "desc": "头部链上几个本体与地面的合力超过 15 N 的部分线性罚：用头撑地起身不罚，脸着地（约 60 N 尖峰）才罚。",
+          "note": "本体列表取自 HEAD_BODY_NAMES（velocity_env_cfg.py:66-72）；上游注释承认 bearing_roll 其实是右髋 yaw 连杆而非头部，因此这一项也计入该连杆的触地力。起点 = -0.01 × PROTECT_STAGE0_FRAC 0.25（microduck_velstand_env_cfg.py:463, 461）；课程 <名>_weight（microduck_velstand_env_cfg.py:929-946）在 iter 1000（PROTECT_FULL_ITER = RECOVERY_ECON_KICKIN_ITER 600 + 400，:460）后升到满额 -0.01。iter 指本次运行的迭代数：上游启动命令带 MICRODUCK_WARM_START=1，加载热启动权重后把 common_step_counter 归零（mdp.py:116-146）；reward_weight 课程在 common_step_counter > iter×24 时切换（mdp.py:3584-3602）。函数：mjlab_microduck.tasks.mdp.body_impact_cost（mdp.py:1786）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "head_impact"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\left\\lVert\\sum_b F_b\\right\\rVert",
+              "range": [
+                0,
+                60
+              ],
+              "unit": "N"
+            },
+            "f": "max(x - th, 0)",
+            "params": [
+              {
+                "id": "th",
+                "key": "threshold",
+                "range": [
+                  0,
+                  54
+                ]
+              }
+            ],
+            "notes": [
+              "横轴是头部链与地面的合力；15 N 约 2 倍体重，用头撑地起身（准静态约 7 N）落在阈值内不罚。"
+            ]
+          }
+        },
+        {
+          "id": "trunk_impact",
+          "group": "E",
+          "label": "躯干撞地",
+          "weight": -0.0025,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\left(\\left\\lVert F_{\\text{trunk}}\\right\\rVert-F_{\\text{th}}\\right)_{+}",
+          "params": {
+            "threshold": 20,
+            "sensor_name": "trunk_ground_contact"
+          },
+          "desc": "躯干 trunk_base 本体与地面的合力超过 20 N 的部分线性罚。",
+          "note": "阈值高于准静态撑地载荷，只罚冲击尖峰。上游 run-3 记录：冲击类成本当时每次摔倒合计只有约 −0.3，而行走每步约 +7，所以打算等起身学会后再加大（docstring:114-116）。起点 = -0.01 × PROTECT_STAGE0_FRAC 0.25（microduck_velstand_env_cfg.py:464, 461）；课程 <名>_weight（microduck_velstand_env_cfg.py:929-946）在 iter 1000（PROTECT_FULL_ITER = RECOVERY_ECON_KICKIN_ITER 600 + 400，:460）后升到满额 -0.01。iter 指本次运行的迭代数：上游启动命令带 MICRODUCK_WARM_START=1，加载热启动权重后把 common_step_counter 归零（mdp.py:116-146）；reward_weight 课程在 common_step_counter > iter×24 时切换（mdp.py:3584-3602）。函数：mjlab_microduck.tasks.mdp.body_impact_cost（mdp.py:1786）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "trunk_impact"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\left\\lVert F_{\\text{trunk}}\\right\\rVert",
+              "range": [
+                0,
+                80
+              ],
+              "unit": "N"
+            },
+            "f": "max(x - th, 0)",
+            "params": [
+              {
+                "id": "th",
+                "key": "threshold",
+                "range": [
+                  0,
+                  72
+                ]
+              }
+            ],
+            "notes": [
+              "横轴是躯干壳与地面的合力，阈值以内不罚，超出部分按牛顿线性罚。"
+            ]
+          }
+        },
+        {
+          "id": "servo_acc_spike",
+          "group": "E",
+          "label": "舵机加速度尖峰",
+          "weight": -0.00025,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{j}\\left(\\lvert\\ddot q_j\\rvert-\\ddot q_{\\text{th}}\\right)_{+}",
+          "params": {
+            "acc_thresh": 300
+          },
+          "desc": "14 个舵机关节角加速度（关节速度差分）超过 300 rad/s² 的部分求和：冲击反向驱动齿轮时的载荷代理。",
+          "note": "上游注释：CPU 基线里推倒摔落时舵机关节峰值 450–550 rad/s²，与摔法无关，策略能改的是怎么落地、落在哪。函数：microduck servo_acc_spike_penalty。起点 = -0.001 × PROTECT_STAGE0_FRAC 0.25（microduck_velstand_env_cfg.py:465, 461）；课程 <名>_weight（microduck_velstand_env_cfg.py:929-946）在 iter 1000（PROTECT_FULL_ITER = RECOVERY_ECON_KICKIN_ITER 600 + 400，:460）后升到满额 -0.001。iter 指本次运行的迭代数：上游启动命令带 MICRODUCK_WARM_START=1，加载热启动权重后把 common_step_counter 归零（mdp.py:116-146）；reward_weight 课程在 common_step_counter > iter×24 时切换（mdp.py:3584-3602）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "servo_acc_spike"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\lvert\\ddot q_j\\rvert",
+              "range": [
+                0,
+                900
+              ],
+              "unit": "rad/s²"
+            },
+            "f": "max(x - th, 0)",
+            "params": [
+              {
+                "id": "th",
+                "key": "acc_thresh",
+                "range": [
+                  0,
+                  810
+                ]
+              }
+            ],
+            "notes": [
+              "画的是单个关节的贡献（总值按关节累加）：角加速度阈值以内不罚，超出部分线性罚。"
+            ]
+          }
+        },
+        {
+          "id": "servo_stall",
+          "group": "E",
+          "label": "舵机堵转",
+          "weight": -0.0125,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{j}\\mathbb{1}\\!\\left[\\lvert\\tau_j\\rvert>\\tau_{\\text{th}}\\wedge\\lvert\\dot q_j\\rvert<\\dot q_{\\text{th}}\\right]",
+          "params": {
+            "torque_thresh": 0.4,
+            "vel_thresh": 0.5
+          },
+          "desc": "力矩 > 0.4 N·m 而转速 < 0.5 rad/s 的舵机个数：肢体被压住、舵机还在硬顶（打齿、过热）。",
+          "note": "BAM 执行器力矩上限约 0.85–1.07 N·m，安静站立膝关节只有几十 mN·m，0.4 只在真正顶住时触发。上游 runs 5-6 试过 ×3 权重，起身变成爆发式、真机冲过头又摔倒，已回滚。起点 = -0.05 × PROTECT_STAGE0_FRAC 0.25（microduck_velstand_env_cfg.py:466, 461）；课程 <名>_weight（microduck_velstand_env_cfg.py:929-946）在 iter 1000（PROTECT_FULL_ITER = RECOVERY_ECON_KICKIN_ITER 600 + 400，:460）后升到满额 -0.05。iter 指本次运行的迭代数：上游启动命令带 MICRODUCK_WARM_START=1，加载热启动权重后把 common_step_counter 归零（mdp.py:116-146）；reward_weight 课程在 common_step_counter > iter×24 时切换（mdp.py:3584-3602）。函数：mjlab_microduck.tasks.mdp.servo_stall_penalty（mdp.py:738）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "servo_stall"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\lvert\\tau_j\\rvert",
+              "range": [
+                0,
+                1.2
+              ],
+              "unit": "N·m"
+            },
+            "f": "(x > tt && hv < vt) ? 1 : 0",
+            "params": [
+              {
+                "id": "tt",
+                "key": "torque_thresh",
+                "range": [
+                  0.05,
+                  1.1
+                ]
+              },
+              {
+                "id": "vt",
+                "key": "vel_thresh",
+                "range": [
+                  0.05,
+                  2
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "hv",
+                "tex": "\\lvert\\dot q_j\\rvert",
+                "range": [
+                  0,
+                  2
+                ],
+                "value": 0
+              }
+            ],
+            "notes": [
+              "画的是单个舵机的贡献（总值是堵转舵机的个数）：横轴是力矩，关节速度用滑块固定（默认 0 = 不动）。速度拖过阈值后整条线归零。"
+            ]
+          }
+        },
+        {
+          "id": "gentle_rise",
+          "group": "E",
+          "label": "躯干竖直加速度",
+          "weight": 0.00125,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "-\\lvert a_z\\rvert",
+          "desc": "躯干竖直加速度的绝对值（速度差分），函数已带负号、权重为正。既罚落地冲击，也鼓励匀速、平稳的升降。",
+          "note": "注意权重是正的（cfg:769 注释）：trunk_vertical_accel_penalty 返回 −|a_z|。行走中也一直在算。起点 = 0.005 × PROTECT_STAGE0_FRAC 0.25（microduck_velstand_env_cfg.py:467, 461）；课程 <名>_weight（microduck_velstand_env_cfg.py:929-946）在 iter 1000（PROTECT_FULL_ITER = RECOVERY_ECON_KICKIN_ITER 600 + 400，:460）后升到满额 0.005。iter 指本次运行的迭代数：上游启动命令带 MICRODUCK_WARM_START=1，加载热启动权重后把 common_step_counter 归零（mdp.py:116-146）；reward_weight 课程在 common_step_counter > iter×24 时切换（mdp.py:3584-3602）。函数：mjlab_microduck.tasks.mdp.trunk_vertical_accel_penalty（mdp.py:2609）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velstand_env_cfg.py",
+            "symbol": "gentle_rise"
+          },
+          "curve": {
+            "x": {
+              "tex": "a_z",
+              "range": [
+                -20,
+                20
+              ],
+              "unit": "m/s²"
+            },
+            "f": "-abs(x)",
+            "notes": [
+              "这一项没有可调参数定尺度，横轴范围只是示意。"
+            ]
+          }
+        }
+      ]
     }
   }
 }

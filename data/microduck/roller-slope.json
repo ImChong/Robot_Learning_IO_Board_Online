@@ -3,7 +3,7 @@
   "name": "RollerSlope",
   "subtitle": "斜坡轮滑下滑",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "在斜坡地形上轮滑下滑；奖励以 wheel_glide 为主。奖励注意：上游 microduck_roller_slope_env_cfg.py 在 Velocity 的基础上增删改了多项奖励，下方奖励面板暂沿用 Velocity 的 15 项，尚未按这个任务逐项核对。",
+  "diffSummary": "在斜坡地形上轮滑下滑；奖励以 wheel_glide 为主。奖励注意：上游这个任务在 Velocity 的基础上增删改了多项奖励，下方奖励面板暂沿用 Velocity 的 15 项，尚未按这个任务逐项核对。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-RollerSlope-Flat-MicroDuck",
   "links": {

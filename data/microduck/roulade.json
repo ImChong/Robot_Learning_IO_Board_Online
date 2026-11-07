@@ -3,7 +3,7 @@
   "name": "Roulade",
   "subtitle": "前滚翻落地",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "用头顶前滚翻越过并落回双脚；使用全碰撞模型。奖励注意：上游 microduck_roulade_env_cfg.py 在 Velocity 的基础上增删改了多项奖励，下方奖励面板暂沿用 Velocity 的 15 项，尚未按这个任务逐项核对。",
+  "diffSummary": "用头顶前滚翻越过并落回双脚；使用全碰撞模型。奖励按上游 microduck_roulade_env_cfg.py 逐项核对，共 20 项。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-Roulade-Flat-MicroDuck",
   "links": {
@@ -18,13 +18,890 @@
       "summary": "用头顶前滚翻越过并落回双脚；使用全碰撞模型。",
       "facts": {
         "任务 ID": "Mjlab-Roulade-Flat-MicroDuck",
-        "任务目标": "前滚翻（Roulade）"
+        "任务目标": "前滚翻（Roulade）",
+        "奖励项": "20 项手写奖励（microduck_roulade_env_cfg.py）"
       },
       "nodes": {
         "s.scene": {
           "sub": "robot_allcollisions.xml"
         }
-      }
+      },
+      "rewards-": [
+        "track_lin",
+        "track_ang",
+        "head_pose",
+        "air_time",
+        "pose",
+        "upright",
+        "foot_clear",
+        "foot_swing",
+        "foot_slip",
+        "self_col",
+        "body_ang",
+        "ang_mom",
+        "action_rate",
+        "head_bias",
+        "dof_pos_limits"
+      ],
+      "rewards+": [
+        {
+          "id": "body_ang_vel",
+          "group": "B",
+          "label": "躯干角速度",
+          "weight": -0.002,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\omega^{\\text{trunk}}_{xy}\\rVert^{2}",
+          "desc": "躯干角速度的 x、y 分量平方和，不罚 yaw。",
+          "note": "上游注释：必须保持 ≈ 0，翻滚本身就是大角速度（前滚的俯仰角速度正落在世界系 x/y 里）。比 Velocity 的 −0.05 小 25 倍。函数：mjlab body_angular_velocity_penalty。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "body_ang_vel"
+          }
+        },
+        {
+          "id": "angular_momentum",
+          "group": "D",
+          "label": "角动量",
+          "weight": -0.001,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert L\\rVert^{2}",
+          "params": {
+            "sensor_name": "robot/root_angmom"
+          },
+          "desc": "全身角动量的模的平方。",
+          "note": "比 Velocity 的 −0.02 小 20 倍。函数：mjlab angular_momentum_penalty。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "angular_momentum"
+          }
+        },
+        {
+          "id": "dof_pos_limits",
+          "canonical": "joint_limit",
+          "group": "E",
+          "label": "关节软限位",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{j}\\left[(q^{\\text{lo}}_{j}-q_j)_{+}+(q_j-q^{\\text{hi}}_{j})_{+}\\right]",
+          "desc": "越过软限位的部分按绝对值（L1，不是平方）求和，两侧都罚。",
+          "note": "Roulade 配置没有删掉也没有改这一项，沿用 mjlab 基础配置的 −1.0。函数：mjlab joint_pos_limits。",
+          "source": {
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
+            "symbol": "dof_pos_limits"
+          }
+        },
+        {
+          "id": "action_rate_l2",
+          "canonical": "action_rate",
+          "group": "D",
+          "label": "动作变化率",
+          "weight": -0.1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a_t-a_{t-1}\\rVert^{2}",
+          "desc": "相邻两步动作之差的平方和，压抖动。",
+          "note": "run-4 把上限从 −0.6 放松到 −0.4，并把 −0.4 推迟到 iter 3000：run-3 的落地指标在 iter ~2700 见顶后随收紧下降。从第 0 步起保持 −0.1（run-1 在近乎零平滑下学出了暴力动作）。函数：mjlab action_rate_l2。课程 action_rate_weight（microduck_roulade_env_cfg.py:681-691）：0 阶段 −0.1，iter 1500 后 −0.2，iter 3000 后 −0.4。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "action_rate_l2"
+          }
+        },
+        {
+          "id": "roulade_progress",
+          "group": "A",
+          "label": "翻滚进度",
+          "weight": 8,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\frac{\\min\\left(\\Delta\\bar m_t,\\,c\\,\\Delta t\\right)}{2\\pi\\,\\Delta t}",
+          "params": {
+            "target_angle": 6.2832,
+            "max_paid_rate": 5,
+            "Δt": 0.02
+          },
+          "desc": "只在身体触地且翻滚在矢状面内时积分前滚角速度，奖励累计转角「历史最大值」每步新推进的部分，每步最多按 5 rad/s 付，满一圈 2π 封顶。原地不动、来回摇摆都拿不到分。",
+          "note": "上游设计：唯一的稠密任务信号，势函数式——无论路径，满一圈总共付约 50 × 权重。max_paid_rate run-4 从 3 提到 5：实测越顶段 3.5–5.5 rad/s 是这台 10 cm 机器人的自然翻滚速度。空中旋转不计（支撑门，run-1 修正），侧肩翻滚不计（平面门，run-5 修正）。中途出生的回合从出生角度开始计。函数：microduck roulade_progress。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "roulade_progress"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\dot{\\bar m}",
+              "range": [
+                0,
+                10
+              ]
+            },
+            "f": "min(max(x,0),c)/T",
+            "params": [
+              {
+                "id": "c",
+                "key": "max_paid_rate",
+                "range": [
+                  1,
+                  10
+                ]
+              },
+              {
+                "id": "T",
+                "key": "target_angle",
+                "range": [
+                  3.1416,
+                  12.5664
+                ]
+              }
+            ],
+            "notes": [
+              "横轴是这一步旋转前沿的推进速度 Δm̄/Δt（rad/s）。前沿只增不减，只在机体触地、且翻滚在矢状面内时才积分；超过上限 c 的部分直接作废、不会顺延；前沿过了 2π 后不再付。"
+            ]
+          }
+        },
+        {
+          "id": "roulade_overspeed",
+          "group": "D",
+          "label": "超速翻滚",
+          "weight": -0.1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\max\\left(0,\\lvert\\omega_y\\rvert-\\omega_{\\max}\\right)^{2}",
+          "params": {
+            "omega_max": 7
+          },
+          "desc": "俯仰角速度超过 7 rad/s 的部分平方罚：抽打式的猛翻要付代价。",
+          "note": "run-4 把阈值从 4 提到 7 rad/s（实测自然翻滚的 p90 越顶速度约 5.5）：只罚真正的抽打。和进度项的付款上限配合——上限去掉快翻的收益，这一项再加一笔成本。函数：microduck roulade_overspeed_penalty。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "roulade_overspeed"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\omega_y",
+              "range": [
+                -12,
+                12
+              ]
+            },
+            "f": "max(0,abs(x)-w)^2",
+            "params": [
+              {
+                "id": "w",
+                "key": "omega_max",
+                "range": [
+                  2,
+                  12
+                ]
+              }
+            ],
+            "notes": [
+              "横轴是机体系俯仰角速度（rad/s）：|ω_y| 不超过 ω_max 一分不罚，超出部分按平方罚。"
+            ]
+          }
+        },
+        {
+          "id": "roulade_head_pivot",
+          "group": "C",
+          "label": "以头为支点",
+          "weight": 0.5,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\mathbb{1}[\\text{head}]\\cdot\\mathbb{1}[\\theta_{\\text{lo}}<A<\\theta_{\\text{hi}}]\\cdot\\operatorname{clip}(\\omega_y/r,0,1)\\cdot\\left(0.3+0.7\\,\\mathbb{1}[\\text{top}]\\right)",
+          "params": {
+            "sensor_name": "head_ground_contact",
+            "angle_lo": 0.5236,
+            "angle_hi": 4.1888,
+            "angle_lo_deg": 30,
+            "angle_hi_deg": 240,
+            "rate_norm": 2
+          },
+          "desc": "翻滚中段（累计转角 30°–240°）头碰地并且在向前转时给分，按前滚角速度 / 2 rad/s 封顶到 1；头顶平面着地（收下巴）给满分，脸或侧面着地给 30%。",
+          "note": "角速度因子防止「趴着把头搁地上」刷分。头顶朝下因子 run-5 加入，与完成门的头顶锁存一致，用来教收下巴。函数：microduck roulade_head_pivot。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "roulade_head_pivot"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\omega_y",
+              "range": [
+                -1,
+                4
+              ]
+            },
+            "f": "C*W*min(max(x/r,0),1)*(0.3+0.7*T)",
+            "params": [
+              {
+                "id": "r",
+                "key": "rate_norm",
+                "range": [
+                  0.5,
+                  8
+                ],
+                "log": true
+              }
+            ],
+            "held": [
+              {
+                "id": "C",
+                "tex": "\\mathbb{1}[\\text{head}]",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              },
+              {
+                "id": "W",
+                "tex": "\\mathbb{1}[\\theta_{\\text{lo}}<A<\\theta_{\\text{hi}}]",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              },
+              {
+                "id": "T",
+                "tex": "\\mathbb{1}[\\text{top}]",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴是机体系前滚角速度 ω_y（rad/s），ω_y ≥ r 时拿满。三个开关（头触地、转角在窗口内、头顶朝下）都是 0/1，默认 1；头顶不朝下时只给 30%。"
+            ]
+          }
+        },
+        {
+          "id": "roulade_landing_composite",
+          "group": "A",
+          "label": "落地站稳（宽）",
+          "weight": 4,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "G\\cdot\\exp\\!\\left(-\\frac{(z-h^{*})^{2}}{\\sigma_h^{2}}\\right)\\exp\\!\\left(-\\frac{1-\\cos\\theta}{\\sigma_u^{2}}\\right)\\exp\\!\\left(-\\frac{\\overline{e_q^{2}}}{\\sigma_q^{2}}\\right)",
+          "params": {
+            "target_height": 0.115,
+            "height_std": 0.04,
+            "upright_std": 0.4,
+            "pose_std": 0.4,
+            "joint_indices": "0–4, 9–13（10 个腿部伺服）",
+            "gate_lo": 4.5379,
+            "gate_hi": 5.7596,
+            "gate_lo_deg": 260,
+            "gate_hi_deg": 330
+          },
+          "desc": "翻滚基本完成后（转角前沿 ≥ 260°，且曾头顶着地）才打开：高度、直立、腿部 HOME 姿态三个高斯相乘，任何一项差都会把整项拉低。",
+          "note": "上游称之为主吸引子：完成后每一步站在 HOME 都拿分，「什么都不做」或站着出生都拿不到。std 故意放宽（站起任务的经验：部分落地也要有看得见的分数）。函数：microduck roulade_landing_composite → standing_composite_score。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "roulade_landing_composite"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\theta",
+              "range": [
+                0,
+                1.5708
+              ]
+            },
+            "f": "G*exp(-((dz/sh)^2))*exp(-(1-cos(x))/(su*su))*exp(-(e*e)/(sq*sq))",
+            "params": [
+              {
+                "id": "su",
+                "key": "upright_std",
+                "range": [
+                  0.1,
+                  1.6
+                ],
+                "log": true
+              },
+              {
+                "id": "sh",
+                "key": "height_std",
+                "range": [
+                  0.01,
+                  0.16
+                ],
+                "log": true
+              },
+              {
+                "id": "sq",
+                "key": "pose_std",
+                "range": [
+                  0.1,
+                  1.6
+                ],
+                "log": true
+              }
+            ],
+            "held": [
+              {
+                "id": "dz",
+                "tex": "z-h^{*}",
+                "range": [
+                  -0.1,
+                  0.05
+                ],
+                "value": 0
+              },
+              {
+                "id": "e",
+                "tex": "\\sqrt{\\overline{e_q^{2}}}",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 0
+              },
+              {
+                "id": "G",
+                "tex": "G",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴是躯干倾角 θ（rad）；高度偏差、腿关节均方根偏差和完成门 G 用滑块固定，默认 0、0、1。倾角因子用的是 1 − cos θ（≈ θ²/2），不是 θ²。"
+            ]
+          }
+        },
+        {
+          "id": "roulade_upright_after_roll",
+          "group": "B",
+          "label": "翻后直立（线性）",
+          "weight": 1.5,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "G\\cdot\\max(\\cos\\theta,0)",
+          "params": {
+            "gate_lo": 4.5379,
+            "gate_hi": 5.7596,
+            "gate_lo_deg": 260,
+            "gate_hi_deg": 330
+          },
+          "desc": "翻完后躯干越竖直分越高，倾角 90° 以上为 0。",
+          "note": "上游称为 bootstrap 层：宽乘积项在远离目标时接近 0，这一项给出从任意姿态出发的梯度；完成门关着时恒为 0，不会像常开的 upright 那样阻止翻滚。函数：microduck roulade_upright_after_roll。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "roulade_upright_after_roll"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\theta",
+              "range": [
+                0,
+                3.1416
+              ]
+            },
+            "f": "G*max(cos(x),0)",
+            "held": [
+              {
+                "id": "G",
+                "tex": "G",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴是躯干倾角（rad）：竖直拿 1，倒过 90° 为 0。是 cos 而不是高斯，离目标很远时也有梯度。"
+            ]
+          }
+        },
+        {
+          "id": "roulade_height_after_roll",
+          "group": "B",
+          "label": "翻后高度",
+          "weight": 1,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "G\\cdot\\exp\\!\\left(-(z-h^{*})^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "target_height": 0.115,
+            "std": 0.04,
+            "gate_lo": 4.5379,
+            "gate_hi": 5.7596,
+            "gate_lo_deg": 260,
+            "gate_hi_deg": 330
+          },
+          "desc": "翻完后躯干高度接近站立高度 0.115 m 给分，宽高斯 σ = 0.04 m。",
+          "note": "与上一项同为 bootstrap 层。函数：microduck roulade_height_after_roll。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "roulade_height_after_roll"
+          },
+          "curve": {
+            "x": {
+              "tex": "z",
+              "range": [
+                0,
+                0.2
+              ]
+            },
+            "f": "G*exp(-(((x-h)/s)^2))",
+            "params": [
+              {
+                "id": "h",
+                "key": "target_height",
+                "range": [
+                  0.08,
+                  0.15
+                ]
+              },
+              {
+                "id": "s",
+                "key": "std",
+                "range": [
+                  0.01,
+                  0.16
+                ],
+                "log": true
+              }
+            ],
+            "held": [
+              {
+                "id": "G",
+                "tex": "G",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴是躯干根高度（m，相对环境原点）；站立高度 h* = 0.115 m 是上游实测值。乘了完成门 G，所以不是纯高斯项。"
+            ]
+          }
+        },
+        {
+          "id": "roulade_landing_sharp",
+          "group": "A",
+          "label": "落地站稳（窄）",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "G\\cdot\\exp\\!\\left(-\\frac{1-\\cos\\theta}{\\sigma_u^{2}}\\right)\\exp\\!\\left(-\\frac{(z-h^{*})^{2}}{\\sigma_h^{2}}\\right)",
+          "params": {
+            "target_height": 0.115,
+            "height_std": 0.015,
+            "upright_std": 0.3,
+            "gate_lo": 4.5379,
+            "gate_hi": 5.7596,
+            "gate_lo_deg": 260,
+            "gate_hi_deg": 330
+          },
+          "desc": "窄 std 的直立 × 高度乘积，同样由完成门打开：只有真正站直、站到位才拿得到。",
+          "note": "run-4 加入：run-3 完成的回合全停在 z ≈ 0.105 m、前倾 27° 的姿势，宽复合项在那里约 0.5，没有梯度把它推完。按公式该姿势下这一项约 0.19（上游注释写 ~0.1），竖直站好为 1。函数：microduck roulade_landing_sharp。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "roulade_landing_sharp"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\theta",
+              "range": [
+                0,
+                1.5708
+              ]
+            },
+            "f": "G*exp(-(1-cos(x))/(su*su))*exp(-((dz/sh)^2))",
+            "params": [
+              {
+                "id": "su",
+                "key": "upright_std",
+                "range": [
+                  0.075,
+                  1.2
+                ],
+                "log": true
+              },
+              {
+                "id": "sh",
+                "key": "height_std",
+                "range": [
+                  0.004,
+                  0.06
+                ],
+                "log": true
+              }
+            ],
+            "held": [
+              {
+                "id": "dz",
+                "tex": "z-h^{*}",
+                "range": [
+                  -0.05,
+                  0.02
+                ],
+                "value": 0
+              },
+              {
+                "id": "G",
+                "tex": "G",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴是躯干倾角 θ（rad），高度偏差与完成门用滑块固定（默认 0 与 1）。倾角因子是 1 − cos θ，不是 θ²。"
+            ]
+          }
+        },
+        {
+          "id": "roulade_stand_tax",
+          "group": "B",
+          "label": "翻后站高税",
+          "weight": 5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "-G\\cdot\\max\\left(0,h^{*}-z\\right)",
+          "params": {
+            "target_height": 0.115,
+            "gate_lo": 4.5379,
+            "gate_hi": 5.7596,
+            "gate_lo_deg": 260,
+            "gate_hi_deg": 330
+          },
+          "desc": "翻完后躯干每低于站立高度 1 cm 就扣分：翻完瘫在地上从「不赚不赔」变成净亏。",
+          "note": "run-3 加入（站起任务的教训：盆地必须净负才会逼它站起来）。完成门在翻滚过程中关闭，翻滚本身不交税；中后段出生的回合出生就带着这笔税。函数：microduck roulade_stand_tax（自取负，权重为正）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "roulade_stand_tax"
+          },
+          "curve": {
+            "x": {
+              "tex": "z",
+              "range": [
+                0,
+                0.15
+              ]
+            },
+            "f": "-G*max(0,h-x)",
+            "params": [
+              {
+                "id": "h",
+                "key": "target_height",
+                "range": [
+                  0.08,
+                  0.15
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "G",
+                "tex": "G",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴是躯干根高度（m）：低于 h* 多少罚多少（L1），站到 h* 及以上不罚。"
+            ]
+          }
+        },
+        {
+          "id": "roulade_rise_velocity",
+          "group": "A",
+          "label": "起身速度",
+          "weight": 0.75,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "G_{\\text{rise}}\\cdot\\max(v_z,0)\\cdot\\mathbb{1}[z<z_{\\max}]",
+          "params": {
+            "max_height": 0.125,
+            "gate_lo": 3.1416,
+            "gate_hi": 4.5379,
+            "gate_lo_deg": 180,
+            "gate_hi_deg": 260
+          },
+          "desc": "翻过 180°（仰面）之后，躯干向上的速度直接给分，帮它从仰卧坐起、站起；高于 0.125 m 不给，防止靠跳刷分。",
+          "note": "上游：后半段翻滚就是仰面起身问题，只奖终态在零速处没有梯度，所以直接奖上升速度。门从 180° 开到 260°，比落地门早。函数：microduck roulade_rise_velocity。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "roulade_rise_velocity"
+          },
+          "curve": {
+            "x": {
+              "tex": "v_z",
+              "range": [
+                -0.5,
+                1
+              ]
+            },
+            "f": "G*max(x,0)*(zz<m?1:0)",
+            "params": [
+              {
+                "id": "m",
+                "key": "max_height",
+                "range": [
+                  0.08,
+                  0.2
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "zz",
+                "tex": "z",
+                "range": [
+                  0,
+                  0.2
+                ],
+                "value": 0.08
+              },
+              {
+                "id": "G",
+                "tex": "G_{\\text{rise}}",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴是躯干竖直速度（m/s），向上才给分、线性不封顶；躯干高度 z 用滑块固定（默认 0.08 m），超过 z_max = 0.125 m 时整项为 0。"
+            ]
+          }
+        },
+        {
+          "id": "roulade_sagittal",
+          "group": "B",
+          "label": "非矢状面旋转",
+          "weight": -0.1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert(\\omega_x,\\omega_z)\\rVert^{2}",
+          "desc": "机体系横滚与偏航角速度的平方和，俯仰（翻滚轴）不罚。",
+          "note": "run-5 把三项直线度惩罚（本项、侧向速度、侧倾）都提到 run-2 的 5 倍：run-4 策略学会了从肩膀斜着滚（比正着过头顶省力）。结构性修正在累计器的平面门和头顶锁存，这几项提供每步拉回矢状面的梯度。函数：microduck roulade_sagittal_penalty。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "roulade_sagittal"
+          }
+        },
+        {
+          "id": "roulade_lateral_vel",
+          "group": "B",
+          "label": "侧向速度",
+          "weight": -0.5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "v_y^{2}",
+          "desc": "机体系侧向线速度的平方：滚直线，不往旁边偏。",
+          "note": "函数：microduck roulade_lateral_velocity_penalty。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "roulade_lateral_vel"
+          }
+        },
+        {
+          "id": "roulade_flatness",
+          "group": "B",
+          "label": "侧倾（肩滚）",
+          "weight": -0.5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "y_z^{2}",
+          "desc": "机体侧向轴偏离水平的程度：纯俯仰翻滚时侧向轴始终水平，这一项为 0；侧翻到肩膀上时趋近 1。",
+          "note": "站立和干净的前滚全程为 0。累计器里有同一个量的平滑门（|y_z| < 0.5 满额计转角，> 0.866 不计），这一项补每步的梯度。函数：microduck roulade_flatness_penalty。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "roulade_flatness"
+          }
+        },
+        {
+          "id": "joint_torque_rate_l2",
+          "group": "E",
+          "label": "力矩变化率",
+          "weight": 0,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\tau_t-\\tau_{t-1}\\rVert^{2}",
+          "desc": "相邻两步执行器力矩之差的平方和：触地冲击时力矩突变，罚它保护减速箱。",
+          "note": "上游「站起任务的时机教训」：发现阶段任何尝试税都会让动作学不出来，所以等翻滚学会后再加。函数：microduck joint_torque_rate_l2。课程 torque_rate_weight（microduck_roulade_env_cfg.py:707-717）：0 阶段 0，iter 2500 后 −5e-4，iter 3500 后 −1e-3。权重为 0 时 RewardManager 直接跳过不调用（mjlab reward_manager.py:122）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "joint_torque_rate_l2"
+          }
+        },
+        {
+          "id": "arrival_damping",
+          "group": "B",
+          "label": "落地阻尼",
+          "weight": 0,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\omega_{xy}\\rVert^{2}\\cdot S\\!\\left(\\frac{z-z_{\\text{lo}}}{z_{\\text{hi}}-z_{\\text{lo}}}\\right)\\cdot S\\!\\left(\\frac{\\theta_{0}-\\theta}{\\theta_{0}-\\theta_{1}}\\right)",
+          "params": {
+            "height_low": 0.09,
+            "height_high": 0.11,
+            "tilt_full_deg": 20,
+            "tilt_zero_deg": 45
+          },
+          "desc": "躯干横滚 / 俯仰角速度平方，只在躯干站到 ≥ 0.11 m 且倾角 ≤ 20° 时满额（0.09 m 以下或 45° 以上为 0，中间平滑过渡）：只压站好之后的晃动，不碰翻滚本身。",
+          "note": "上游教训（2026-07）：只有高度门时，弯腰起身最后那下「挺直」本身就是大角速度，会被罚出一堵墙；加了倾角门后走向竖直是免费的，只阻尼竖直附近的来回晃。函数：microduck body_ang_vel_at_height。课程 arrival_damping_weight（microduck_roulade_env_cfg.py:696-706）：0 阶段 0，iter 2500 后 −0.025，iter 3500 后 −0.05。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "arrival_damping"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\lVert\\omega_{xy}\\rVert",
+              "range": [
+                0,
+                3
+              ]
+            },
+            "f": "x*x*hermite(min(max((zz-hl)/max(hh-hl,1e-6),0),1))*hermite(min(max((tz-tt)/max(tz-tf,1e-6),0),1))",
+            "params": [
+              {
+                "id": "hl",
+                "key": "height_low",
+                "range": [
+                  0.05,
+                  0.11
+                ]
+              },
+              {
+                "id": "hh",
+                "key": "height_high",
+                "range": [
+                  0.09,
+                  0.15
+                ]
+              },
+              {
+                "id": "tf",
+                "key": "tilt_full_deg",
+                "range": [
+                  0,
+                  40
+                ]
+              },
+              {
+                "id": "tz",
+                "key": "tilt_zero_deg",
+                "range": [
+                  20,
+                  90
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "zz",
+                "tex": "z",
+                "range": [
+                  0,
+                  0.15
+                ],
+                "value": 0.115
+              },
+              {
+                "id": "tt",
+                "tex": "\\theta\\,(^{\\circ})",
+                "range": [
+                  0,
+                  90
+                ],
+                "value": 0
+              }
+            ],
+            "notes": [
+              "横轴是躯干 x/y 角速度的模（rad/s）。躯干高度 z 与倾角 θ 用滑块固定（默认站好：0.115 m、0°）；z 低于 0.09 m 或 θ 超过 45° 时整条曲线压到 0。"
+            ]
+          }
+        },
+        {
+          "id": "gentle_landing",
+          "group": "E",
+          "label": "轻柔落地",
+          "weight": 0.002,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "-\\left\\lvert a_z\\right\\rvert",
+          "params": {
+            "Δt": 0.02
+          },
+          "desc": "躯干竖直加速度的绝对值取负：着地越硬扣得越多。",
+          "note": "上游注释：函数自取负，权重必须为正——run-2 冒烟测试里配成负权重，等于奖励暴力。从第 0 步就开（run-1 在零冲击代价下学出暴力动作并锁死）。函数：microduck trunk_vertical_accel_penalty。课程 gentle_landing_weight（microduck_roulade_env_cfg.py:718-728）：0 阶段 0.002，iter 2500 后 0.005。函数自身返回负值，所以权重为正。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "gentle_landing"
+          },
+          "curve": {
+            "x": {
+              "tex": "a_z",
+              "range": [
+                -30,
+                30
+              ]
+            },
+            "f": "-abs(x)",
+            "notes": [
+              "横轴是躯干竖直加速度（m/s²，相邻两步竖直速度差分），±30 只是示意。静止和匀速下落都为 0，冲击瞬间的尖峰扣得最多。"
+            ]
+          }
+        },
+        {
+          "id": "self_collisions",
+          "canonical": "self_collision",
+          "group": "E",
+          "label": "自碰撞",
+          "weight": -0.1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "N_{\\text{self-contact}}",
+          "params": {
+            "sensor_name": "self_collision"
+          },
+          "desc": "自碰撞传感器（trunk_base 子树内部接触）这一步检测到的接触计数。",
+          "note": "比 Velocity / 站起任务的 −1.0 轻 10 倍：上游注释说团身翻滚需要膝盖贴躯干之类的自接触。函数：mjlab self_collision_cost。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roulade_env_cfg.py",
+            "symbol": "self_collisions"
+          }
+        }
+      ]
     }
   }
 }

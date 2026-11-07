@@ -14,6 +14,8 @@
  * 奖励项在整个横轴上求值，确认曲线没有 NaN。
  */
 
+import { compile, identifiers, parseExpr } from "./curve-expr.js";
+
 /** 去掉只管排版的记号（\left \right \! \, …），压缩空白，匹配时不必再管它们。 */
 function norm(form) {
   return form
@@ -690,6 +692,58 @@ const NO_CURVE = [
 ];
 
 /**
+ * 数据里直接给出的曲线（reward.curve）。上游的奖励函数五花八门（平滑门控、几个因子相乘、
+ * 带符号的限速……），为每一种写一条 TeX 模板既脆又把项目专属逻辑塞进了页面代码，
+ * 所以允许数据自己写一行算式（语法见 curve-expr.js）。参数值一律从 reward.params[key]
+ * 读，与公式旁列出的参数是同一份数字；curve 里只写「怎么画」，不另存数值。
+ *
+ *   curve: {
+ *     x: { tex, range: [a, b], unit? },
+ *     f: "算式，可用 x、参数 id、held id",
+ *     params: [{ id, tex, key, range?, log? }],      // range 缺省时按数据值的 1/4 ~ 4 倍对数滑
+ *     held:   [{ id, tex, range, value, int?, label? }],
+ *     marks:  [{ x: "算式", label }],
+ *     notes:  ["画成一维时做的取舍"]
+ *   }
+ */
+export function dataCurve(reward) {
+  const c = reward.curve;
+  const params = (c.params ?? []).map((p) => {
+    const value = numberOf(reward.params?.[p.key]);
+    if (value == null) throw new Error(`curve 参数 ${p.id} 指向的 params.${p.key} 不是数字`);
+    const range = p.range ?? (p.log === false ? null : "scale");
+    if (!range) throw new Error(`curve 参数 ${p.id} 缺 range`);
+    const built = param(p.id, p.tex ?? null, { key: p.key, value }, null, range);
+    return p.range && p.log ? { ...built, log: true } : built;
+  });
+  const helds = (c.held ?? []).map((h) =>
+    held(h.id, h.tex, h.range, h.value ?? h.range[0], { int: Boolean(h.int), label: h.label ?? null }),
+  );
+  const fn = compile(c.f);
+  const marks = (c.marks ?? []).map((m) => ({ at: compile(String(m.x)), label: m.label }));
+  return {
+    kind: "curve",
+    family: "data",
+    xTex: c.x.tex,
+    x: c.x.range,
+    unit: c.x.unit ?? "",
+    params: [...params, ...helds],
+    f: (x, v) => fn({ ...v, x }),
+    marks: (v) => marks.map((m) => ({ x: m.at(v), label: m.label })),
+    notes: (c.notes ?? []).filter(Boolean),
+  };
+}
+
+/** 数据曲线里用到、却没有定义的标识符（校验脚本用）。 */
+export function undefinedInCurve(reward) {
+  const c = reward.curve;
+  const known = new Set(["x", ...(c.params ?? []).map((p) => p.id), ...(c.held ?? []).map((h) => h.id)]);
+  const used = identifiers(parseExpr(c.f));
+  for (const m of c.marks ?? []) identifiers(parseExpr(String(m.x)), used);
+  return [...used].filter((id) => !known.has(id));
+}
+
+/**
  * @returns {null}                                  没有公式（数据只写了名字与权重）
  *          {{ kind: "none", reason: string }}      有公式但没有连续自变量
  *          {{ kind: "unknown" }}                    有公式、本模块认不出
@@ -697,6 +751,9 @@ const NO_CURVE = [
  */
 export function curveFor(reward) {
   if (!reward?.form) return null;
+  // 数据明说画不了（带记忆的 0 / 1 项、接触计数……）时直接用它的理由。
+  if (reward.noCurve) return { kind: "none", reason: reward.noCurve };
+  if (reward.curve) return dataCurve(reward);
   const f = norm(reward.form);
   for (const [re, reason] of NO_CURVE) if (re.test(f)) return { kind: "none", reason };
   for (const family of FAMILIES) {
