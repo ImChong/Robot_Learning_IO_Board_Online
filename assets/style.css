@@ -1638,6 +1638,281 @@ kbd {
   font-weight: 400;
 }
 
+/* ---------- 抽屉里的维度地图（条形图 + 方格 + 说明卡） ---------- */
+
+.ix-head h3 {
+  margin: 0;
+}
+.ix-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ix-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.ix-caption,
+.ix-basis {
+  margin: 3px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.dd-section .ix-caption {
+  color: var(--text-soft);
+  font-size: 12px;
+}
+.dd-section .ix-basis {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.ix-level {
+  margin-top: 8px;
+}
+/* 下钻出来的那一层：左侧一道竖线把它挂在上一层底下，读者知道这是「上面那段的内部」。 */
+.ix-level + .ix-level {
+  margin-top: 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border-strong);
+}
+.ix-level-title {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ix-bar {
+  display: flex;
+  gap: 1px;
+  height: 26px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--border);
+}
+/* 段宽 ∝ 维数（flex-grow = size），但再小也要点得中。 */
+.ix-seg {
+  flex: 1 1 0;
+  min-width: 5px;
+  border: 0;
+  margin: 0;
+  padding: 0 4px;
+  background: var(--c);
+  color: var(--on-data-color);
+  font: inherit;
+  font-size: 10.5px;
+  line-height: 26px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition: opacity 0.13s, box-shadow 0.13s;
+}
+.ix-seg-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+.ix-seg.off {
+  opacity: 0.35;
+}
+.ix-seg.on {
+  box-shadow: inset 0 0 0 2px var(--text);
+}
+.ix-seg:hover {
+  opacity: 1;
+}
+.ix-seg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.ix-ruler {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-top: 1px;
+}
+
+.ix-grid-wrap {
+  margin-top: 8px;
+}
+/* 一格一个数。格子上限 18px：3 维的向量不该画成三块砖。 */
+.ix-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  gap: 2px;
+  max-width: calc(var(--cols) * 20px);
+  cursor: pointer;
+}
+.ix-cell {
+  aspect-ratio: 1;
+  background: var(--c);
+  border-radius: 2px;
+  transition: opacity 0.13s;
+}
+.ix-cell.off {
+  opacity: 0.2;
+}
+.ix-cell.on {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  position: relative;
+}
+@media (hover: hover) {
+  .ix-cell:hover {
+    opacity: 1;
+    outline: 1px solid var(--text-soft);
+  }
+}
+.dd-section .ix-legend,
+.dd-section .ix-note {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.dd-section .ix-note {
+  margin: 8px 0 0;
+}
+
+.ix-card {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 8px 10px;
+}
+.ix-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ix-card-idx {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.ix-step {
+  display: inline-flex;
+  gap: 4px;
+}
+.ix-step-btn {
+  min-width: 26px;
+  height: 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ix-step-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.ix-step-btn:not(:disabled):hover {
+  background: var(--bg-hover);
+}
+.ix-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 5px;
+  margin-top: 6px;
+  font-size: 12.5px;
+}
+.ix-path-sep {
+  color: var(--text-faint);
+}
+.ix-path-step {
+  color: var(--text-soft);
+}
+.ix-path-step.leaf {
+  color: var(--text);
+  font-weight: 600;
+}
+.dd-section .ix-card-label {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-weight: 600;
+}
+.dd-section .ix-where {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.dd-section .ix-text {
+  margin: 6px 0 0;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+.dd-section .ix-warn {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--warn);
+}
+.dd-section .ix-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.ix-card .ix-hint + .ix-hint,
+.ix-card .ix-text + .ix-hint {
+  margin-top: 6px;
+}
+.ix-module {
+  margin-top: 8px;
+}
+
+.ix-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 10px;
+}
+.ix-tab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--edge-color, var(--border-strong));
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.ix-tab[aria-selected="true"] {
+  color: var(--text);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  border-left-color: var(--edge-color, var(--accent));
+}
+.ix-tab-role {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.ix-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---------- 批注 ---------- */
 
 .callouts {

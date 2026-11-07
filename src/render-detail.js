@@ -2,6 +2,8 @@
 
 import { el, clear } from "./dom.js";
 import { nodeColor } from "./data.js";
+import { buildIndexMap, concatSources } from "./index-map.js";
+import { renderIndexPanel } from "./render-index.js";
 
 const REPO_URLS = {
   whole_body_tracking: "https://github.com/HybridRobotics/whole_body_tracking",
@@ -9,7 +11,7 @@ const REPO_URLS = {
   MimicKit: "https://github.com/xbpeng/MimicKit",
 };
 
-export function renderDetail({ emptyEl, bodyEl, node, taxonomy, graph, onClose, onSelectEdge }) {
+export function renderDetail({ emptyEl, bodyEl, node, taxonomy, graph, onClose, onSelectEdge, onSelectNode }) {
   if (!node) {
     emptyEl.hidden = false;
     bodyEl.hidden = true;
@@ -75,6 +77,13 @@ export function renderDetail({ emptyEl, bodyEl, node, taxonomy, graph, onClose, 
         node.dimLayout ? el("div", { class: "dd-dim-layout", text: node.dimLayout }) : null,
       ])
     );
+  }
+
+  if (graph) {
+    const panel = node.dim != null
+      ? vectorPanel(node, graph, taxonomy, onSelectNode, { title: "Index 分布" })
+      : neighbourVectors(node, graph, taxonomy, onSelectNode);
+    if (panel) bodyEl.append(panel);
   }
 
   if (node.desc) {
@@ -250,6 +259,32 @@ export function renderEdgeDetail({
   for (const [key, value] of kv) dl.append(el("dt", { text: key }), el("dd", { text: value }));
   bodyEl.append(el("div", { class: "dd-section" }, [dl]));
 
+  // 这条线搬的那个向量逐个 index 是什么；终点若是拼接节点，再标出它落在终点的哪一段。
+  const carried = from?.dim != null ? from : carriedByLabel(edge, to);
+  if (carried) {
+    bodyEl.append(
+      vectorPanel(carried, graph, taxonomy, onSelectNode, {
+        title: "搬的向量 · Index 分布",
+        caption:
+          carried === from
+            ? `起点「${from.label}」的 ${from.dim} 维输出，原样送到终点。`
+            : `起点没有标维数；线上标注 ${edge.label} 与终点「${to.label}」的维数一致，这里画的是终点那个向量。`,
+      })
+    );
+  }
+  const landing = from && to ? landingRange(from, to, graph) : null;
+  if (landing) {
+    bodyEl.append(
+      vectorPanel(to, graph, taxonomy, onSelectNode, {
+        title: "落在终点的位置",
+        caption: `「${to.label}」共 ${to.dim} 维，这条线搬来的 ${from.dim} 维占 index ${landing.start}–${
+          landing.start + landing.size - 1
+        }（已在条形图与方格上选中）。`,
+        focusRange: landing,
+      })
+    );
+  }
+
   bodyEl.append(
     el("div", { class: "dd-section" }, [
       el("h3", { text: "两端" }),
@@ -259,6 +294,98 @@ export function renderEdgeDetail({
       ]),
     ])
   );
+}
+
+/** 一个带维度模块的维度地图面板。 */
+function vectorPanel(node, graph, taxonomy, onSelectNode, { title, caption, focusRange } = {}) {
+  const map = buildIndexMap(node, graph);
+  if (!map) return null;
+  return el("div", { class: "dd-section" }, [
+    renderIndexPanel({
+      map,
+      title,
+      caption,
+      focusRange,
+      color: nodeColor(node, taxonomy),
+      colorOf: (n) => nodeColor(n, taxonomy),
+      graph,
+      onSelectNode,
+    }),
+  ]);
+}
+
+/**
+ * 没有维度的模块（网络、动作链上的处理环节、仿真环境）本身不是一个向量，
+ * 但它吃进与吐出的是。列成一排标签，点哪个画哪个的维度地图。
+ */
+function neighbourVectors(node, graph, taxonomy, onSelectNode) {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const seen = new Set();
+  const list = [];
+  for (const e of graph.edges) {
+    const role = e.to === node.id ? "吃进" : e.from === node.id ? "吐出" : null;
+    if (!role) continue;
+    const other = byId.get(role === "吃进" ? e.from : e.to);
+    if (!other || other.dim == null || seen.has(other.id)) continue;
+    seen.add(other.id);
+    list.push({ role, node: other });
+  }
+  if (!list.length) return null;
+
+  const wrap = el("div", { class: "dd-section" });
+  const host = el("div");
+  let current = 0;
+  const tabs = el("div", { class: "ix-tabs", role: "tablist", "aria-label": "这个模块吃进与吐出的向量" });
+  const show = (k) => {
+    current = k;
+    tabs.querySelectorAll(".ix-tab").forEach((t, i) => t.setAttribute("aria-selected", i === k ? "true" : "false"));
+    clear(host).append(
+      vectorPanel(list[k].node, graph, taxonomy, onSelectNode, {
+        title: `${list[k].role} · ${list[k].node.label}`,
+        caption: `这个模块本身不是一个定长向量；这里画的是它${list[k].role}的「${list[k].node.label}」。`,
+      })
+    );
+  };
+  list.forEach((item, k) =>
+    tabs.append(
+      el(
+        "button",
+        {
+          class: "ix-tab",
+          type: "button",
+          role: "tab",
+          style: { "--edge-color": nodeColor(item.node, taxonomy) },
+          onClick: () => show(k),
+        },
+        [
+          el("span", { class: "ix-tab-role", text: item.role }),
+          el("span", { class: "ix-tab-name", text: item.node.label }),
+          el("span", { class: "dd-edge-tag", text: `${item.node.dim}` }),
+        ]
+      )
+    )
+  );
+  wrap.append(el("h3", { text: "进出的向量" }), tabs, host);
+  show(current);
+  return wrap;
+}
+
+/** 起点没写维数（网络 → 动作）时，线上标注等于终点维数，就说明搬的是终点那个向量。 */
+function carriedByLabel(edge, to) {
+  if (!to || to.dim == null || !edge.label) return null;
+  return String(edge.label).trim() === String(to.dim) ? to : null;
+}
+
+/** 终点是拼接节点、起点是其中一段时，返回那一段在终点里的 index 范围。 */
+function landingRange(from, to, graph) {
+  const sources = concatSources(to, graph);
+  if (!sources) return null;
+  let start = 0;
+  for (const src of sources) {
+    if (src.id === from.id) return { start, size: src.dim };
+    start += src.dim;
+  }
+  return null;
 }
 
 function endpointButton(node, id, role, onSelectNode, taxonomy) {

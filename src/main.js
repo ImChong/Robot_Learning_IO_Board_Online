@@ -611,6 +611,7 @@ function showDetail(node) {
     graph: graph(),
     onClose: closeDetail,
     onSelectEdge: selectEdge,
+    onSelectNode: selectNode,
   });
 }
 
