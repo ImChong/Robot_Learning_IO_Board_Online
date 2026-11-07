@@ -513,7 +513,9 @@ const FAMILIES = [
     match(f, params) {
       // 符号可正可负（Isaac Lab 习惯是正值函数 × 负权重），也可以是均值 \\frac{1}{n}\\sum。
       const m = f.match(
-        new RegExp(String.raw`^(-)?\s*(?:\\frac\{1\}\{(\d+)\}\s*)?\\sum${SUB}\s*\\max\(0,\s*(.+?)-([\d.]+)\)\^\{2\}$`),
+        new RegExp(
+          String.raw`^(-)?\s*(?:\\frac\{1\}\{(\d+)\}\s*)?\\sum${SUB}\s*\\max\(0,\s*(.+?)-([\d.]+)\)\^\{2\}$`,
+        ),
       );
       if (!m) return null;
       const sign = m[1] ? -1 : 1;
