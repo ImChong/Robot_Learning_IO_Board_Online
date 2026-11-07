@@ -45,8 +45,10 @@ const toSlider = (p, value) =>
   Math.round(
     (p.log ? Math.log(value / p.min) / Math.log(p.max / p.min) : (value - p.min) / (p.max - p.min)) * STEPS,
   );
-const fromSlider = (p, t) =>
-  p.log ? p.min * (p.max / p.min) ** (t / STEPS) : p.min + ((p.max - p.min) * t) / STEPS;
+const fromSlider = (p, t) => {
+  const v = p.log ? p.min * (p.max / p.min) ** (t / STEPS) : p.min + ((p.max - p.min) * t) / STEPS;
+  return p.int ? Math.round(v) : v;
+};
 
 /**
  * @param {object} opts
@@ -210,7 +212,7 @@ export function renderCurve({ spec, reward }) {
           ? el("code", { text: p.key })
           : p.key
             ? null
-            : el("span", { class: "rc-src", text: p.held ? "固定" : "公式常数" }),
+            : el("span", { class: "rc-src", text: p.held ? (p.label ?? "固定") : "公式常数" }),
       ]),
       input,
       out,
@@ -218,7 +220,7 @@ export function renderCurve({ spec, reward }) {
         class: "rc-base",
         text: p.held ? `默认 ${fmt(p.value)}` : `数据值 ${fmt(p.value)}`,
         title: p.held
-          ? "这个量不是参数，是为了画成一维曲线而固定住的另一个误差"
+          ? "这个量不是配置参数，是为了画成一维曲线而固定住的另一个量"
           : p.key
             ? `params.${p.key}`
             : "公式里写死的常数",

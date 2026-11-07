@@ -23,7 +23,7 @@
   "modes": {
     "train": {
       "label": "训练态",
-      "summary": "mjlab 4096 并行环境，61 维策略观测（48 维本体 + 13 维指令），14 维关节目标，14 项手写奖励 + 多项课程学习。",
+      "summary": "mjlab 4096 并行环境，61 维策略观测（48 维本体 + 13 维指令），14 维关节目标，15 项手写奖励 + 多项课程学习。",
       "facts": [
         {
           "label": "任务 ID",
@@ -47,7 +47,7 @@
         },
         {
           "label": "奖励项",
-          "value": "14 项手写奖励"
+          "value": "15 项手写奖励"
         },
         {
           "label": "地形",
@@ -590,6 +590,14 @@
           "weight": 2,
           "direction": "positive",
           "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\left(\\lVert v^{\\text{cmd}}_{xy}-v_{xy}\\rVert^{2}+v_z^{2}\\right)/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.3162,
+            "σ²": 0.1
+          },
+          "target": "躯干（机体系 root_link_lin_vel_b）",
+          "desc": "xy 跟速度指令，z 方向要求为 0，两部分误差平方和过一个高斯核。",
+          "note": "std 在配置里写作 math.sqrt(0.1)，比 mjlab 默认的 √0.25 更紧。函数：mjlab track_linear_velocity。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
@@ -604,6 +612,14 @@
           "weight": 2,
           "direction": "positive",
           "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\left((\\omega^{\\text{cmd}}_z-\\omega_z)^{2}+\\lVert\\omega_{xy}\\rVert^{2}\\right)/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.7071,
+            "σ²": 0.5
+          },
+          "target": "躯干（机体系 root_link_ang_vel_b）",
+          "desc": "yaw 角速度跟指令，roll / pitch 角速度要求为 0。",
+          "note": "std = math.sqrt(0.5)，与 mjlab 默认相同。函数：mjlab track_angular_velocity。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
@@ -618,9 +634,16 @@
           "weight": 2,
           "direction": "positive",
           "confidence": "verified",
+          "form": "\\frac{1}{4}\\sum_{j=1}^{4}\\exp\\!\\left(-e_j^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.5
+          },
+          "target": "neck_pitch · head_pitch · head_yaw · head_roll",
+          "desc": "e_j = 实测关节角相对 HOME 的增量 − 头姿指令（齿隙模型读到输出侧）。四个关节各过一个高斯核再取均值：一个关节没跟上，只少拿四分之一。",
+          "note": "σ = 0.5 rad 故意放宽：指令放到 ±1 rad 时不跟踪的策略每关节仍有 exp(−4) ≈ 0.018 的梯度。上游试过收紧（fine_std = 0.1），策略直接不走路了。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
-            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "path": "src/mjlab_microduck/tasks/mdp.py",
             "symbol": "head_pose_tracking"
           }
         },
@@ -632,6 +655,15 @@
           "weight": 3,
           "direction": "positive",
           "confidence": "verified",
+          "form": "\\sum_{f}\\mathbb{1}\\!\\left[t_{\\min}<t^{\\text{air}}_{f}<t_{\\max}\\right]\\cdot\\mathbb{1}\\!\\left[\\lVert c\\rVert>0.01\\right]",
+          "params": {
+            "threshold_min": 0.125,
+            "threshold_max": 0.3,
+            "command_threshold": 0.01
+          },
+          "target": "左右脚（feet_ground_contact 传感器）",
+          "desc": "每只脚当前这次腾空已持续的时长落在 (0.125, 0.3) s 之内，这一步记 1；两只脚分别算。",
+          "note": "‖c‖ = ‖v_xy^cmd‖ + |ω_z^cmd|：速度指令总量不超过 command_threshold = 0.01 时整项为 0。零指令时不奖励迈步，站立由 standing_envs 课程教。函数：mjlab feet_air_time。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
@@ -646,6 +678,19 @@
           "weight": 1,
           "direction": "positive",
           "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\frac{1}{N}\\sum_{j}e_j^{2}/\\sigma_j^{2}\\right)",
+          "params": {
+            "σ_hip_yaw": 0.3,
+            "σ_hip_roll": 0.05,
+            "σ_hip_pitch": 0.4,
+            "σ_knee": 0.4,
+            "σ_ankle": 0.25,
+            "std_standing": "hip_yaw 0.1 · hip_roll 0.05 · hip_pitch 0.15 · knee 0.15 · ankle 0.1",
+            "walking_threshold": 0.01
+          },
+          "target": "10 个腿关节（排除颈、头与被动齿隙关节）",
+          "desc": "e_j 是关节角相对默认站姿的偏差，按关节各自的 σ_j 归一化后取均值再过 exp。上面 σ_* 是行走时的值（std_running 也取这一套）；指令总量 < 0.01 时换成 std_standing。",
+          "note": "hip_roll 的 σ 只有 0.05 rad：上游注释说是为了守住 5° 内八站姿、防止腿外撇。函数：mjlab variable_posture。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
@@ -660,6 +705,14 @@
           "weight": 2,
           "direction": "positive",
           "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\lVert g_{xy}\\rVert^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.2236,
+            "σ²": 0.05
+          },
+          "target": "trunk_base",
+          "desc": "g 是躯干系下的投影重力（单位向量），‖g_xy‖ = sin(倾角)。",
+          "note": "上游特意加强（权重 1.0 → 2.0、σ² 0.1 → 0.05）：前倾 4° 原来每步只扣约 0.05，现在约 0.19。函数：mjlab upright（平地不带地形法向）。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
@@ -671,12 +724,20 @@
           "canonical": "foot_clearance",
           "group": "C",
           "label": "摆动足离地",
-          "weight": 1,
-          "direction": "positive",
+          "weight": -2,
+          "direction": "negative",
           "confidence": "verified",
+          "form": "\\sum_{f}\\left\\lvert h_f-h^{*}\\right\\rvert\\cdot\\lVert v_{f,xy}\\rVert\\cdot\\mathbb{1}\\!\\left[\\lVert c\\rVert>0.01\\right]",
+          "params": {
+            "target_height": 0.02,
+            "command_threshold": 0.01
+          },
+          "target": "left_foot · right_foot",
+          "desc": "足端离地高度（地形射线测得）偏离 2 cm 的绝对值，乘以足端水平速度：脚在挪动时才要求它离地合适。",
+          "note": "‖c‖ = ‖v_xy^cmd‖ + |ω_z^cmd|：速度指令总量不超过 command_threshold = 0.01 时整项为 0。微鸭配置只改了 target_height 与 command_threshold，权重沿用 mjlab 基础配置的 −2.0。函数：mjlab feet_clearance。",
           "source": {
-            "repo": "pollen-robotics/microduck_rl",
-            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
             "symbol": "foot_clearance"
           }
         },
@@ -685,12 +746,20 @@
           "canonical": "foot_swing_height",
           "group": "C",
           "label": "摆腿高度",
-          "weight": 1,
-          "direction": "positive",
+          "weight": -0.25,
+          "direction": "negative",
           "confidence": "verified",
+          "form": "\\sum_{f}\\left(h^{\\text{peak}}_{f}/h^{*}-1\\right)^{2}\\cdot\\mathbb{1}\\!\\left[\\text{first contact}_f\\right]\\cdot\\mathbb{1}\\!\\left[\\lVert c\\rVert>0.01\\right]",
+          "params": {
+            "target_height": 0.02,
+            "command_threshold": 0.01
+          },
+          "target": "left_foot · right_foot",
+          "desc": "记下每次腾空的最高点，落地那一步按它相对 2 cm 的偏差平方罚一次。",
+          "note": "‖c‖ = ‖v_xy^cmd‖ + |ω_z^cmd|：速度指令总量不超过 command_threshold = 0.01 时整项为 0。权重沿用 mjlab 基础配置的 −0.25。函数：mjlab feet_swing_height。",
           "source": {
-            "repo": "pollen-robotics/microduck_rl",
-            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
             "symbol": "foot_swing_height"
           }
         },
@@ -702,6 +771,13 @@
           "weight": -0.1,
           "direction": "negative",
           "confidence": "verified",
+          "form": "\\sum_{f}\\lVert v_{f,xy}\\rVert^{2}\\cdot\\mathbb{1}\\!\\left[\\text{contact}_f\\right]\\cdot\\mathbb{1}\\!\\left[\\lVert c\\rVert>0.01\\right]",
+          "params": {
+            "command_threshold": 0.01
+          },
+          "target": "left_foot · right_foot",
+          "desc": "着地的脚还在水平滑动，按滑动速度平方罚。",
+          "note": "‖c‖ = ‖v_xy^cmd‖ + |ω_z^cmd|：速度指令总量不超过 command_threshold = 0.01 时整项为 0。权重故意只给 −0.1：−1.0 对这台靠原地拧脚转身的机器人太严。函数：mjlab feet_slip。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
@@ -716,6 +792,10 @@
           "weight": -1,
           "direction": "negative",
           "confidence": "verified",
+          "form": "N_{\\text{self-contact}}",
+          "target": "腿与电池架（self_collision_only 几何）",
+          "desc": "自碰撞传感器（trunk_base 子树内部接触）这一步检测到的接触计数。",
+          "note": "有关节限位时腿其实碰不到躯干，这一项只是让策略离远点。函数：mjlab self_collision_cost（传感器没开力历史，走 found 计数分支）。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
@@ -730,6 +810,10 @@
           "weight": -0.05,
           "direction": "negative",
           "confidence": "verified",
+          "form": "\\lVert\\omega^{\\text{trunk}}_{xy}\\rVert^{2}",
+          "target": "trunk_base（世界系）",
+          "desc": "躯干角速度的 x、y 分量平方和，不罚 yaw。",
+          "note": "函数：mjlab body_angular_velocity_penalty。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
@@ -744,6 +828,10 @@
           "weight": -0.02,
           "direction": "negative",
           "confidence": "verified",
+          "form": "\\lVert L\\rVert^{2}",
+          "target": "全身（robot/root_angmom 传感器）",
+          "desc": "全身角动量的模的平方。",
+          "note": "函数：mjlab angular_momentum_penalty。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
@@ -758,6 +846,10 @@
           "weight": -0.1,
           "direction": "negative",
           "confidence": "verified",
+          "form": "\\lVert a_t-a_{t-1}\\rVert^{2}",
+          "target": "14 维策略原始输出（缩放前）",
+          "desc": "相邻两步动作之差的平方和，压抖动。",
+          "note": "−0.1 是课程第 0 阶段的值：action_rate_weight 课程在 iter 500 / 750 / 1000 / 1250 / 1500 依次调到 −0.2 / −0.4 / −0.6 / −0.8 / −1.0。函数：mjlab action_rate_l2。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
@@ -772,10 +864,35 @@
           "weight": 0,
           "direction": "negative",
           "confidence": "verified",
+          "form": "-\\frac{1}{4}\\sum_{j=1}^{4}\\left\\lvert\\operatorname{EMA}_{\\tau}(e_j)\\right\\rvert",
+          "params": {
+            "tau_s": 1
+          },
+          "target": "neck_pitch · head_pitch · head_yaw · head_roll",
+          "desc": "e_j 与头姿跟踪相同，先做 τ = 1 s 的指数滑动平均，把走路时头的晃动平均掉，只罚剩下的直流偏置（头被重力压低的那一截）。L1 而不是高斯：偏置大时梯度也不消失。",
+          "note": "权重 0 是课程起点：head_pose_bias_weight 在 iter 600 前保持 0，之后 1.0 → 2.0（iter 1000）→ 3.0（iter 1500）。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
-            "path": "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
-            "symbol": "head_pose_bias"
+            "path": "src/mjlab_microduck/tasks/mdp.py",
+            "symbol": "head_pose_bias_penalty"
+          }
+        },
+        {
+          "id": "dof_pos_limits",
+          "canonical": "joint_limit",
+          "group": "E",
+          "label": "关节软限位",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{j}\\left[(q^{\\text{lo}}_{j}-q_j)_{+}+(q_j-q^{\\text{hi}}_{j})_{+}\\right]",
+          "target": "全部关节（软限位）",
+          "desc": "越过软限位的部分按绝对值（L1，不是平方）求和，两侧都罚。",
+          "note": "微鸭配置没有删掉也没有改这一项，沿用 mjlab 基础配置的 −1.0。函数：mjlab joint_pos_limits。",
+          "source": {
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
+            "symbol": "dof_pos_limits"
           }
         }
       ],

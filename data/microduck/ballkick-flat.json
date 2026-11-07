@@ -3,7 +3,7 @@
   "name": "BallKick · Flat",
   "subtitle": "右脚踢球（策略不见球）",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "从站立起步用右脚将 70 mm/15 g 球向前踢出；Actor 观测不含球状态。",
+  "diffSummary": "从站立起步用右脚将 70 mm/15 g 球向前踢出；Actor 观测不含球状态。奖励注意：上游 microduck_ball_kick_env_cfg.py 在 Velocity 的基础上增删改了多项奖励，下方奖励面板暂沿用 Velocity 的 15 项，尚未按这个任务逐项核对。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-BallKick-Flat-MicroDuck",
   "links": {

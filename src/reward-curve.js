@@ -65,10 +65,13 @@ function param(id, tex, found, fallback, range) {
   return { ...base, min: range[0], max: range[1] };
 }
 
-/** 多元公式里为了画成一维而固定住的那个量，读者也能拖。 */
-function held(id, tex, range, value = 0) {
-  return { id, tex, key: null, value, min: range[0], max: range[1], log: false, held: true };
+/** 多元公式里为了画成一维而固定住的那个量，读者也能拖。int 为真时只取整数（如「偏了几个关节」）。 */
+function held(id, tex, range, value = 0, { int = false, label = null } = {}) {
+  return { id, tex, key: null, value, min: range[0], max: range[1], log: false, held: true, int, label };
 }
+
+/** 求和下标：_j、_{f}、_{b \in \mathcal{B}}。 */
+const SUB = String.raw`_(?:\{(?:[^{}]|\{[^{}]*\})*\}|\w)`;
 
 const wrapPi = (x) => Math.atan2(Math.sin(x), Math.cos(x));
 
@@ -94,17 +97,20 @@ const FAMILIES = [
       if (!m) return null;
       const mean = m[1].match(/^\\overline\{(.+)\^\{2\}\}$/);
       const plain = m[1].match(/^(.+)\^\{2\}$/);
-      if (!mean && !plain) return null;
+      // 括号里是几项平方和（微鸭的速度跟踪：xy 误差 + 不该有的 z 分量）。
+      const sum = !mean && !plain ? m[1].match(/^\((.+\^\{2\}\s*\+\s*.+\^\{2\})\)$/) : null;
+      if (!mean && !plain && !sum) return null;
       const sigma = param("σ", "\\sigma", pick(params, ["σ", "sigma", "std"]), null, "scale");
       if (sigma.value == null) return null;
       return {
-        xTex: mean ? `\\sqrt{\\overline{${mean[1]}^{2}}}` : plain[1],
+        xTex: mean ? `\\sqrt{\\overline{${mean[1]}^{2}}}` : sum ? `\\sqrt{${sum[1]}}` : plain[1],
         x: [0, 3 * sigma.value],
         params: [sigma],
         f: (x, v) => Math.exp(-(x * x) / (v.σ * v.σ)),
         marks: (v) => [{ x: v.σ, label: "σ" }],
         notes: [
           mean ? "公式里是各连杆平方误差的均值；横轴取它的平方根，于是曲线仍是一条高斯钟形。" : null,
+          sum ? "指数里是几项误差的平方和；横轴取它的平方根（合成误差），于是曲线仍是一条高斯钟形。" : null,
           "误差等于 σ 时奖励掉到 e⁻¹ ≈ 0.37：σ 就是「多大的误差算跟丢了一半」。",
         ],
       };
@@ -272,11 +278,208 @@ const FAMILIES = [
     },
   },
   {
+    // (1/n) Σ exp(−e_j²/σ²)：微鸭的头姿跟踪，每个关节各过一个高斯核再取均值。
+    id: "mean-gauss",
+    match(f, params) {
+      const m = f.match(
+        /^\\frac\{1\}\{(\d+)\}\\sum_\{j=1\}\^\{\d+\}\s*\\exp\(-(.+?)\^\{2\}\/\\sigma\^\{2\}\)$/,
+      );
+      if (!m) return null;
+      const n = Number(m[1]);
+      const sigma = param("σ", "\\sigma", pick(params, ["σ", "sigma", "std"]), null, "scale");
+      if (sigma.value == null) return null;
+      const k = held("k", "k", [1, n], n, { int: true, label: "偏了几个关节" });
+      return {
+        xTex: m[2],
+        x: [0, 3 * sigma.value],
+        params: [sigma, k],
+        f: (x, v) => (n - v.k + v.k * Math.exp(-(x * x) / (v.σ * v.σ))) / n,
+        marks: (v) => [{ x: v.σ, label: "σ" }],
+        notes: [
+          `横轴是单个关节的误差 e；k 个关节都偏 e、其余关节跟得上时奖励是 (${n} − k + k·exp(−e²/σ²))/${n}，默认 k = ${n}（全部偏）。拖小 k 能看到「只偏一个关节，只少拿一部分」。`,
+        ],
+      };
+    },
+  },
+  {
+    // exp(−(1/N) Σ e_j²/σ_j²)：mjlab 的 variable_posture，每个关节一个 σ。
+    id: "posture",
+    match(f, params) {
+      if (!/^\\exp\(-\\frac\{1\}\{N\}\\sum_\{?j\}?\s*e_j\^\{2\}\/\\sigma_j\^\{2\}\)$/.test(f)) return null;
+      const keys = Object.keys(params ?? {}).filter((k) => /^σ_/.test(k) && numberOf(params[k]) != null);
+      if (!keys.length) return null;
+      const sigmas = keys.map((key) =>
+        param(
+          key,
+          `\\sigma_{\\text{${key.slice(2).replace(/_/g, "\\_")}}}`,
+          { key, value: numberOf(params[key]) },
+          null,
+          "scale",
+        ),
+      );
+      const widest = Math.max(...sigmas.map((p) => p.value));
+      return {
+        xTex: "e",
+        x: [0, 1.5 * widest],
+        params: sigmas,
+        f: (x, v) => Math.exp(-keys.reduce((sum, key) => sum + (x * x) / (v[key] * v[key]), 0) / keys.length),
+        marks: () => [],
+        notes: [
+          "横轴取所有关节同时偏同一个角度 e（rad）：每类关节左右各一个，对各类取均值就是对全部关节取均值。σ 最小的那类关节主导曲线下降得多快，拖它最明显。",
+        ],
+      };
+    },
+  },
+  {
+    // Σ 1[t_min < t < t_max]·1[‖c‖ > 阈值]：mjlab 的 feet_air_time，奖励落在窗口里的腾空时长。
+    id: "window",
+    match(f, params) {
+      const m = f.match(
+        new RegExp(
+          String.raw`^\\sum${SUB}\s*\\mathbb\{1\}\[t_\{\\min\}\s*<\s*([^\[\]]+?)\s*<\s*t_\{\\max\}\]\s*\\cdot\s*\\mathbb\{1\}\[[^\[\]]+\]$`,
+        ),
+      );
+      if (!m) return null;
+      const lo = param("lo", "t_{\\min}", pick(params, ["threshold_min", "t_min"]), null, [0, 0.5]);
+      const hi = param("hi", "t_{\\max}", pick(params, ["threshold_max", "t_max"]), null, [0, 1]);
+      if (lo.value == null || hi.value == null) return null;
+      return {
+        xTex: m[1],
+        x: [0, Math.max(0.5, 1.5 * hi.value)],
+        unit: "s",
+        params: [lo, hi],
+        f: (x, v) => (x > v.lo && x < v.hi ? 1 : 0),
+        marks: (v) => [
+          { x: v.lo, label: "t_min" },
+          { x: v.hi, label: "t_max" },
+        ],
+        notes: [
+          "画的是单只脚、指令非零时的值：腾空时长落进窗口就拿 1，太短（拖步）或太长（单腿跳太久）都不给。",
+        ],
+      };
+    },
+  },
+  {
+    // Σ |h − h*|·‖v‖·1[…]：mjlab 的 feet_clearance，按足端水平速度加权的离地高度偏差。
+    id: "clearance",
+    match(f, params) {
+      const m = f.match(
+        new RegExp(
+          String.raw`^\\sum${SUB}\s*\\lvert\s*(.+?)\s*-\s*h\^\{\*\}\s*\\rvert\s*\\cdot\s*(\\lVert.+?\\rVert)\s*\\cdot\s*\\mathbb\{1\}\[[^\[\]]+\]$`,
+        ),
+      );
+      if (!m) return null;
+      const target = param("h", "h^{*}", pick(params, ["target_height"]), null, "scale");
+      if (target.value == null) return null;
+      const v = held("v", m[2], [0, 1], 0.5, { label: "固定" });
+      return {
+        xTex: m[1],
+        x: [0, 3 * target.value],
+        unit: "m",
+        params: [target, v],
+        f: (x, p) => Math.abs(x - p.h) * p.v,
+        marks: (p) => [{ x: p.h, label: "h*" }],
+        notes: [
+          "画的是单只脚、指令非零时的值；足端水平速度用滑块固定（默认 0.5 m/s 只为看形状），速度为 0 时这一项不管脚抬多高。",
+        ],
+      };
+    },
+  },
+  {
+    // Σ (h_peak/h* − 1)²·1[落地]·1[…]：mjlab 的 feet_swing_height，落地那一步结算。
+    id: "swing",
+    match(f, params) {
+      const m = f.match(
+        new RegExp(
+          String.raw`^\\sum${SUB}\s*\((.+?)\/h\^\{\*\}\s*-\s*1\)\^\{2\}\s*\\cdot\s*\\mathbb\{1\}\[[^\[\]]+\]\s*\\cdot\s*\\mathbb\{1\}\[[^\[\]]+\]$`,
+        ),
+      );
+      if (!m) return null;
+      const target = param("h", "h^{*}", pick(params, ["target_height"]), null, "scale");
+      if (target.value == null) return null;
+      return {
+        xTex: m[1],
+        x: [0, 3 * target.value],
+        unit: "m",
+        params: [target],
+        f: (x, v) => (x / v.h - 1) ** 2,
+        marks: (v) => [{ x: v.h, label: "h*" }],
+        notes: ["画的是单只脚落地那一步的值：按目标高度归一化，抬到一半和抬到 1.5 倍罚得一样多。"],
+      };
+    },
+  },
+  {
+    // Σ ‖v‖²·1[着地]·1[…]：mjlab 的 feet_slip。
+    id: "gated-sq",
+    match(f) {
+      const m = f.match(
+        new RegExp(
+          String.raw`^\\sum${SUB}\s*(\\lVert.+?\\rVert)\^\{2\}\s*\\cdot\s*\\mathbb\{1\}\[[^\[\]]+\]\s*\\cdot\s*\\mathbb\{1\}\[[^\[\]]+\]$`,
+        ),
+      );
+      if (!m) return null;
+      return {
+        xTex: m[1],
+        x: [0, 0.5],
+        unit: "m/s",
+        params: [],
+        f: (x) => x * x,
+        marks: () => [],
+        notes: ["画的是单只着地的脚、指令非零时的值。", NOTE_SKETCH],
+      };
+    },
+  },
+  {
+    // −(1/n) Σ |EMA(e_j)|：微鸭的头姿直流偏置。稳态下滑动平均就是那个常值误差本身。
+    id: "neg-abs-mean",
+    match(f) {
+      const m = f.match(/^-\\frac\{1\}\{(\d+)\}\\sum_\{j=1\}\^\{\d+\}\s*\\lvert(.+)\\rvert$/);
+      if (!m) return null;
+      const n = Number(m[1]);
+      const k = held("k", "k", [1, n], n, { int: true, label: "偏了几个关节" });
+      return {
+        xTex: "b",
+        x: [-0.3, 0.3],
+        unit: "rad",
+        params: [k],
+        f: (x, v) => -(v.k * Math.abs(x)) / n,
+        marks: () => [{ x: 0, label: "0" }],
+        notes: [
+          `横轴 b 是稳态偏置（误差长期停在 b 时滑动平均就等于 b）；k 个关节都偏 b 时值为 −k·|b|/${n}。L1：偏多少罚多少，偏置大时梯度不会消失。`,
+        ],
+      };
+    },
+  },
+  {
+    // Σ [(q_lo − q)₊ + (q − q_hi)₊]：mjlab 的 joint_pos_limits，两侧 L1。
+    id: "limits-l1",
+    match(f) {
+      const m = f.match(
+        new RegExp(String.raw`^\\sum${SUB}\s*\[\((.+?)-(.+?)\)_\{\+\}\s*\+\s*\((.+?)-(.+?)\)_\{\+\}\]$`),
+      );
+      if (!m) return null;
+      return {
+        xTex: m[2],
+        x: [-1.5, 1.5],
+        params: [],
+        f: (x) => Math.max(0, -1 - x) + Math.max(0, x - 1),
+        marks: () => [
+          { x: -1, label: "下限" },
+          { x: 1, label: "上限" },
+        ],
+        notes: [
+          "画的是单个关节；横轴按软限位归一化（下限 −1、上限 1），限位内一分不罚，越出去按距离线性罚。",
+          NOTE_SKETCH,
+        ],
+      };
+    },
+  },
+  {
     // ±Σ 1[x > 阈值]：直立、关节贴限位、非期望接触。
     id: "step",
     match(f, params) {
       const m = f.match(
-        /^(-)?\s*(\\sum_(?:\{(?:[^{}]|\{[^{}]*\})*\}|\w)(?:\^\{\d+\})?\s*)?\\mathbb\{1\}\[(.+?)\s*>\s*([\d.]+)\s*(?:\\mathrm\{(\w+)\})?\]$/,
+        /^(-)?\s*(\\sum_(?:\{(?:[^{}]|\{[^{}]*\})*\}|\w)(?:\^\{\d+\})?\s*)?\\mathbb\{1\}\[([^\[\]]+?)\s*>\s*([\d.]+)\s*(?:\\mathrm\{(\w+)\})?\]$/,
       );
       if (!m) return null;
       const fallback = Number(m[4]);
@@ -374,16 +577,17 @@ const FAMILIES = [
     },
   },
   {
-    // −‖x‖²：动作变化率、踝关节加速度。
-    id: "neg-quad",
+    // ±‖x‖²：动作变化率、踝关节加速度、躯干角速度、角动量。
+    id: "norm-sq",
     match(f) {
-      const m = f.match(/^-(\\lVert.+\\rVert)\^\{2\}$/);
+      const m = f.match(/^(-)?(\\lVert.+\\rVert)\^\{2\}$/);
       if (!m) return null;
+      const sign = m[1] ? -1 : 1;
       return {
-        xTex: m[1],
+        xTex: m[2],
         x: [0, 1],
         params: [],
-        f: (x) => -x * x,
+        f: (x) => sign * x * x,
         marks: () => [],
         notes: [NOTE_SKETCH],
       };
@@ -477,6 +681,7 @@ const FAMILIES = [
 /** 没有自变量可画的写法：给一句话说明为什么没有曲线。 */
 const NO_CURVE = [
   [/^1$/, "常数：每一步都给 1，没有自变量。"],
+  [/^N_\{\\text\{[^}]+\}\}$/, "计数：这一步检测到的接触个数，没有连续自变量。"],
   [/^1?\s*-?\s*\\mathbb\{1\}\[\\text\{terminated\}\]$/, "只看这一步是否终止，取值 0 或 1，没有连续曲线。"],
 ];
 

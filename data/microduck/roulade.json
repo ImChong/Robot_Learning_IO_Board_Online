@@ -3,7 +3,7 @@
   "name": "Roulade",
   "subtitle": "前滚翻落地",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "用头顶前滚翻越过并落回双脚；使用全碰撞模型。",
+  "diffSummary": "用头顶前滚翻越过并落回双脚；使用全碰撞模型。奖励注意：上游 microduck_roulade_env_cfg.py 在 Velocity 的基础上增删改了多项奖励，下方奖励面板暂沿用 Velocity 的 15 项，尚未按这个任务逐项核对。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-Roulade-Flat-MicroDuck",
   "links": {

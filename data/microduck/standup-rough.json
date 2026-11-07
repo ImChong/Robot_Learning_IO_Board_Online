@@ -3,7 +3,7 @@
   "name": "StandUp · Rough",
   "subtitle": "粗糙地面站起",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "StandUp 在粗糙地形上的变体：从倒置或坐姿站起并维持站立。",
+  "diffSummary": "StandUp 在粗糙地形上的变体：从倒置或坐姿站起并维持站立。奖励注意：上游 microduck_standup_env_cfg.py 在 Velocity 的基础上增删改了多项奖励，下方奖励面板暂沿用 Velocity 的 15 项，尚未按这个任务逐项核对。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-StandUp-Rough-MicroDuck",
   "links": {

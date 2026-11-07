@@ -3,7 +3,7 @@
   "name": "Rollers · Velocity",
   "subtitle": "轮滑速度跟踪",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "脚底被动轮模型；奖励换成滑行/单支撑/对称步态等轮滑专用项。",
+  "diffSummary": "脚底被动轮模型；奖励换成滑行/单支撑/对称步态等轮滑专用项。奖励注意：上游 microduck_velocity_rollers_env_cfg.py 在 Velocity 的基础上增删改了多项奖励，下方奖励面板暂沿用 Velocity 的 15 项，尚未按这个任务逐项核对。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-Velocity-Flat-MicroDuck-Rollers",
   "links": {
