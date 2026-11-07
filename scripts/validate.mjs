@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 
 import { isInherited, mergeProject } from "../src/inherit.js";
 import { buildTour } from "../src/tour.js";
+import { buildIndexMap, concatSources, namedCount } from "../src/index-map.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DATA = join(ROOT, "data");
@@ -22,6 +23,7 @@ const errors = [];
 const warnings = [];
 
 const fail = (where, msg) => errors.push(`${where}: ${msg}`);
+const indexStats = { vectors: 0, indices: 0, named: 0 };
 const warn = (where, msg) => warnings.push(`${where}: ${msg}`);
 
 const readJson = async (name) => JSON.parse(await readFile(join(DATA, name), "utf8"));
@@ -238,8 +240,62 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
   }
 
   checkTour(where, graph, nodes);
+  checkIndexMaps(where, graph, nodes);
 
   return nodes.size;
+}
+
+/**
+ * 维度地图（详情抽屉里的条形图与方格）的两条前提：
+ *
+ * 1. 拼接节点的入边书写顺序就是拼接顺序——页面按入边顺序给每段标 index 范围。
+ *    这里拿 dimExpr 的分项核对：分项的边界必须落在入边的累计维数上（「64 + 930」
+ *    可以把后面几条入边合成一项写，但不能和入边顺序对不上）。
+ * 2. 从 dimLayout 推出来的树必须正好覆盖 dim 个 index。解析不出逐个分量只是提示，
+ *    页面会如实显示「只给位置」。
+ */
+function checkIndexMaps(where, graph, nodes) {
+  for (const node of nodes.values()) {
+    if (node.dim == null || node.dim <= 0) continue;
+    const at = `${where}/${node.id}`;
+
+    const sources = concatSources(node, graph);
+    if (sources && node.dimExpr) {
+      const terms = (node.dimExpr.match(/\d+/g) ?? []).map(Number);
+      const termSum = terms.reduce((s, n) => s + n, 0);
+      // 只核对纯加法算式（「58 + 3 + 6」「64 token + 930 本体历史」）；带乘号的算式分项不是段长。
+      if (!/[×✕*]/.test(node.dimExpr) && termSum === node.dim) {
+        const cuts = new Set();
+        let acc = 0;
+        for (const src of sources) cuts.add((acc += src.dim));
+        let run = 0;
+        for (const t of terms) {
+          run += t;
+          if (!cuts.has(run)) {
+            fail(
+              at,
+              `入边顺序与 dimExpr 对不上：算式在累计 ${run} 处分段，入边 ${sources
+                .map((n) => `${n.id}(${n.dim})`)
+                .join(" + ")} 没有这个边界。入边要按拼接顺序书写，详情里的 index 范围就是按它算的`
+            );
+            break;
+          }
+        }
+      }
+    }
+
+    const map = buildIndexMap(node, graph);
+    if (!map || map.layout.size !== node.dim) {
+      fail(at, `维度地图覆盖 ${map?.layout.size ?? 0} 个 index，与 dim=${node.dim} 不符`);
+      continue;
+    }
+    if (map.basis === "none" && node.dim > 1) {
+      warn(at, "dimLayout 解析不出逐个分量，详情里只能按位置标号");
+    }
+    indexStats.vectors += 1;
+    indexStats.indices += node.dim;
+    indexStats.named += namedCount(map.layout);
+  }
 }
 
 /**
@@ -457,6 +513,9 @@ async function main() {
   }
   console.log(
     `\n校验通过：${label(registry.projects.length, "个项目")}，${label(totalNodes, "个节点")}，${label(totalRewards, "个奖励项")}。`
+  );
+  console.log(
+    `维度地图：${indexStats.vectors} 个带维度的模块共 ${indexStats.indices} 个 index，其中 ${indexStats.named} 个能落到数据里写明的分量名。`
   );
 }
 
