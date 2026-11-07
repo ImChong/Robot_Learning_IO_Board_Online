@@ -188,8 +188,11 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
     if (reward.direction === "positive" && reward.weight < 0) {
       fail(at, `标为 positive 但权重是 ${reward.weight}`);
     }
-    if (reward.direction === "negative" && reward.weight > 0) {
-      fail(at, `标为 negative 但权重是 ${reward.weight}`);
+    // 惩罚也可以写成「函数取负值 × 正权重」（Microduck 坐站任务的写法），这时 form 必须以负号开头，
+    // 读者从公式上看得出它是负的。
+    const negativeForm = /^\s*-/.test(reward.form ?? "");
+    if (reward.direction === "negative" && reward.weight > 0 && !negativeForm) {
+      fail(at, `标为 negative 但权重是 ${reward.weight}（若函数本身取负值，form 要以负号开头）`);
     }
 
     // 学习式奖励（判别器 / 编码器 / 生成先验）没有可列表的分项权重，

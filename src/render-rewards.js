@@ -24,6 +24,14 @@ function formatWeight(weight) {
 }
 
 const kindOf = (reward) => reward.rewardKind ?? "handcrafted";
+
+/**
+ * 这一项是奖励还是惩罚。多数项目里权重的符号就说明了一切，但也有上游把惩罚写成
+ * 「函数取负值 × 正权重」（Microduck 的坐站任务就是这样），那时以数据里的 direction 为准。
+ */
+export const isReward = (reward) => (reward.direction ? reward.direction === "positive" : reward.weight > 0);
+/** 函数本身取负值、权重为正的惩罚项。 */
+const negativeValued = (reward) => reward.direction === "negative" && reward.weight > 0;
 const isLearned = (reward) => LEARNED_LABEL[kindOf(reward)] != null;
 
 const LEARNED_LABEL = {
@@ -50,7 +58,7 @@ export function renderRewards({ container, graph, taxonomy, project }) {
     return;
   }
 
-  const positive = rewards.filter((r) => r.weight > 0).reduce((sum, r) => sum + r.weight, 0);
+  const positive = rewards.filter((r) => isReward(r) && r.weight > 0).reduce((sum, r) => sum + r.weight, 0);
   const learned = rewards.filter(isLearned);
   const intro =
     `${project.name} 训练期的全部奖励项，按「替谁说话」分六类。正向权重合计 ${positive.toFixed(1)}，` +
@@ -117,7 +125,7 @@ function buildGroup(group, items, project) {
 }
 
 function buildItem(reward, group, project) {
-  const positive = reward.weight > 0;
+  const positive = isReward(reward);
   const bar = el("div", { class: "ri-bar" }, [
     el("span", {
       style: {
@@ -200,6 +208,13 @@ function buildItem(reward, group, project) {
         }),
         bar,
         learned ? el("div", { class: "ri-weight-hint", text: "混合系数" }) : null,
+        negativeValued(reward)
+          ? el("div", {
+              class: "ri-weight-hint",
+              text: "函数取负值，乘正权重后是惩罚",
+              title: "上游把这一项写成负值函数 × 正权重；方向以函数值的符号为准",
+            })
+          : null,
       ]),
       main,
     ]

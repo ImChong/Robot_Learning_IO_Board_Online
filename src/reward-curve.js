@@ -437,15 +437,19 @@ const FAMILIES = [
       if (!m) return null;
       const n = Number(m[1]);
       const k = held("k", "k", [1, n], n, { int: true, label: "偏了几个关节" });
+      // 带滑动平均的（头姿直流偏置）横轴是稳态偏置；不带的就是误差本身。
+      const ema = /EMA/.test(m[2]);
+      const sym = ema ? "b" : "e";
       return {
-        xTex: "b",
+        xTex: sym,
         x: [-0.3, 0.3],
         unit: "rad",
         params: [k],
         f: (x, v) => -(v.k * Math.abs(x)) / n,
         marks: () => [{ x: 0, label: "0" }],
         notes: [
-          `横轴 b 是稳态偏置（误差长期停在 b 时滑动平均就等于 b）；k 个关节都偏 b 时值为 −k·|b|/${n}。L1：偏多少罚多少，偏置大时梯度不会消失。`,
+          ema ? "横轴 b 是稳态偏置：误差长期停在 b 时，滑动平均就等于 b。" : "横轴 e 是单个关节的误差。",
+          `k 个关节都偏 ${sym} 时值为 −k·|${sym}|/${n}。L1：偏多少罚多少，偏差大时梯度不会消失。`,
         ],
       };
     },
