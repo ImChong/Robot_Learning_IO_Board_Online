@@ -257,6 +257,70 @@
         "form": { "type": "string", "description": "KaTeX 公式源码，不带定界符。" },
         "params": { "type": "object", "additionalProperties": { "type": ["string", "number"] } },
         "target": { "type": "string", "description": "这一项作用在谁身上。" },
+        "noCurve": {
+          "type": "string",
+          "description": "这一项为什么画不出一维曲线（带记忆的 0 / 1 项、接触计数等），奖励面板原样显示。"
+        },
+        "curve": {
+          "type": "object",
+          "description": "奖励面板里怎么画这一项的一维曲线（form 的写法认不出时用）。数值一律从 params 读，这里只写画法；算式语法见 src/curve-expr.js。",
+          "required": ["x", "f"],
+          "additionalProperties": false,
+          "properties": {
+            "x": {
+              "type": "object",
+              "required": ["tex", "range"],
+              "additionalProperties": false,
+              "properties": {
+                "tex": { "type": "string" },
+                "range": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+                "unit": { "type": "string" }
+              }
+            },
+            "f": { "type": "string", "description": "一行算式，可用 x、参数 id、held id。" },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "key"],
+                "additionalProperties": false,
+                "properties": {
+                  "id": { "type": "string" },
+                  "tex": { "type": "string" },
+                  "key": { "type": "string", "description": "params 里的键，滑块的数据值从那里读。" },
+                  "range": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+                  "log": { "type": "boolean" }
+                }
+              }
+            },
+            "held": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "tex", "range"],
+                "additionalProperties": false,
+                "properties": {
+                  "id": { "type": "string" },
+                  "tex": { "type": "string" },
+                  "range": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+                  "value": { "type": "number" },
+                  "int": { "type": "boolean" },
+                  "label": { "type": "string" }
+                }
+              }
+            },
+            "marks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["x", "label"],
+                "additionalProperties": false,
+                "properties": { "x": { "type": ["string", "number"] }, "label": { "type": "string" } }
+              }
+            },
+            "notes": { "type": "array", "items": { "type": "string" } }
+          }
+        },
         "direction": { "type": "string", "enum": ["positive", "negative"] },
         "desc": { "type": "string" },
         "note": { "type": "string" },

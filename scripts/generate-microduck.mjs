@@ -369,21 +369,158 @@ function buildDeployGraph() {
   };
 }
 
+/**
+ * 奖励项：公式与参数逐条对照上游源码核对（microduck_rl@bae39f5，mjlab==1.3.0；
+ * 与 2026-09-01 时的上游相比，速度环境配置与这几个奖励函数都没有改动）。
+ *
+ * 权重与参数在 microduck_velocity_env_cfg.py 里设置；没被它覆盖的取 mjlab 基础配置
+ * mjlab/tasks/velocity/velocity_env_cfg.py 的默认值。函数本体在
+ * mjlab/tasks/velocity/mdp/rewards.py、mjlab/envs/mdp/rewards.py 与本仓库的 mdp.py。
+ */
+const CFG = "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py";
+const MJLAB = "mujocolab/mjlab";
+const MJLAB_CFG = "src/mjlab/tasks/velocity/velocity_env_cfg.py";
+const GATE = "\\mathbb{1}\\!\\left[\\lVert c\\rVert>0.01\\right]";
+const GATE_NOTE = "‖c‖ = ‖v_xy^cmd‖ + |ω_z^cmd|：速度指令总量不超过 command_threshold = 0.01 时整项为 0。";
+
+function velocityReward(id, canonical, group, label, weight, extra) {
+  return {
+    id,
+    canonical,
+    group,
+    label,
+    weight,
+    direction: weight > 0 ? "positive" : "negative",
+    confidence: "verified",
+    ...extra,
+  };
+}
+
 const VELOCITY_REWARDS = [
-  { id: "track_lin", canonical: "track_lin_vel", group: "A", label: "线速度跟踪", weight: 2.0, direction: "positive", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "track_linear_velocity" } },
-  { id: "track_ang", canonical: "track_ang_vel", group: "A", label: "角速度跟踪", weight: 2.0, direction: "positive", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "track_angular_velocity" } },
-  { id: "head_pose", canonical: "head_pose", group: "A", label: "头姿跟踪", weight: 2.0, direction: "positive", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "head_pose_tracking" } },
-  { id: "air_time", canonical: "feet_air_time", group: "C", label: "腾空时间", weight: 3.0, direction: "positive", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "air_time" } },
-  { id: "pose", canonical: "pose", group: "B", label: "腿部姿态", weight: 1.0, direction: "positive", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "pose" } },
-  { id: "upright", canonical: "upright", group: "B", label: "躯干直立", weight: 2.0, direction: "positive", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "upright" } },
-  { id: "foot_clear", canonical: "foot_clearance", group: "C", label: "摆动足离地", weight: 1.0, direction: "positive", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "foot_clearance" } },
-  { id: "foot_swing", canonical: "foot_swing_height", group: "C", label: "摆腿高度", weight: 1.0, direction: "positive", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "foot_swing_height" } },
-  { id: "foot_slip", canonical: "foot_slip", group: "C", label: "足端滑移", weight: -0.1, direction: "negative", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "foot_slip" } },
-  { id: "self_col", canonical: "self_collision", group: "E", label: "自碰撞", weight: -1.0, direction: "negative", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "self_collisions" } },
-  { id: "body_ang", canonical: "body_ang_vel", group: "B", label: "躯干角速度", weight: -0.05, direction: "negative", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "body_ang_vel" } },
-  { id: "ang_mom", canonical: "angular_momentum", group: "D", label: "角动量", weight: -0.02, direction: "negative", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "angular_momentum" } },
-  { id: "action_rate", canonical: "action_rate", group: "D", label: "动作变化率", weight: -0.1, direction: "negative", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "action_rate_l2" } },
-  { id: "head_bias", canonical: "head_pose_bias", group: "B", label: "头姿直流偏置", weight: 0.0, direction: "negative", confidence: "verified", source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "head_pose_bias" } },
+  velocityReward("track_lin", "track_lin_vel", "A", "线速度跟踪", 2.0, {
+    form: "\\exp\\!\\left(-\\left(\\lVert v^{\\text{cmd}}_{xy}-v_{xy}\\rVert^{2}+v_z^{2}\\right)/\\sigma^{2}\\right)",
+    params: { "σ": 0.3162, "σ²": 0.1 },
+    target: "躯干（机体系 root_link_lin_vel_b）",
+    desc: "xy 跟速度指令，z 方向要求为 0，两部分误差平方和过一个高斯核。",
+    note: "std 在配置里写作 math.sqrt(0.1)，比 mjlab 默认的 √0.25 更紧。函数：mjlab track_linear_velocity。",
+    source: { repo: REPO, path: CFG, symbol: "track_linear_velocity" },
+  }),
+  velocityReward("track_ang", "track_ang_vel", "A", "角速度跟踪", 2.0, {
+    form: "\\exp\\!\\left(-\\left((\\omega^{\\text{cmd}}_z-\\omega_z)^{2}+\\lVert\\omega_{xy}\\rVert^{2}\\right)/\\sigma^{2}\\right)",
+    params: { "σ": 0.7071, "σ²": 0.5 },
+    target: "躯干（机体系 root_link_ang_vel_b）",
+    desc: "yaw 角速度跟指令，roll / pitch 角速度要求为 0。",
+    note: "std = math.sqrt(0.5)，与 mjlab 默认相同。函数：mjlab track_angular_velocity。",
+    source: { repo: REPO, path: CFG, symbol: "track_angular_velocity" },
+  }),
+  velocityReward("head_pose", "head_pose", "A", "头姿跟踪", 2.0, {
+    form: "\\frac{1}{4}\\sum_{j=1}^{4}\\exp\\!\\left(-e_j^{2}/\\sigma^{2}\\right)",
+    params: { "σ": 0.5 },
+    target: "neck_pitch · head_pitch · head_yaw · head_roll",
+    desc: "e_j = 实测关节角相对 HOME 的增量 − 头姿指令（齿隙模型读到输出侧）。四个关节各过一个高斯核再取均值：一个关节没跟上，只少拿四分之一。",
+    note: "σ = 0.5 rad 故意放宽：指令放到 ±1 rad 时不跟踪的策略每关节仍有 exp(−4) ≈ 0.018 的梯度。上游试过收紧（fine_std = 0.1），策略直接不走路了。",
+    source: { repo: REPO, path: "src/mjlab_microduck/tasks/mdp.py", symbol: "head_pose_tracking" },
+  }),
+  velocityReward("air_time", "feet_air_time", "C", "腾空时间", 3.0, {
+    form: `\\sum_{f}\\mathbb{1}\\!\\left[t_{\\min}<t^{\\text{air}}_{f}<t_{\\max}\\right]\\cdot${GATE}`,
+    params: { threshold_min: 0.125, threshold_max: 0.3, command_threshold: 0.01 },
+    target: "左右脚（feet_ground_contact 传感器）",
+    desc: "每只脚当前这次腾空已持续的时长落在 (0.125, 0.3) s 之内，这一步记 1；两只脚分别算。",
+    note: `${GATE_NOTE}零指令时不奖励迈步，站立由 standing_envs 课程教。函数：mjlab feet_air_time。`,
+    source: { repo: REPO, path: CFG, symbol: "air_time" },
+  }),
+  velocityReward("pose", "pose", "B", "腿部姿态", 1.0, {
+    form: "\\exp\\!\\left(-\\frac{1}{N}\\sum_{j}e_j^{2}/\\sigma_j^{2}\\right)",
+    params: {
+      "σ_hip_yaw": 0.3,
+      "σ_hip_roll": 0.05,
+      "σ_hip_pitch": 0.4,
+      "σ_knee": 0.4,
+      "σ_ankle": 0.25,
+      std_standing: "hip_yaw 0.1 · hip_roll 0.05 · hip_pitch 0.15 · knee 0.15 · ankle 0.1",
+      walking_threshold: 0.01,
+    },
+    target: "10 个腿关节（排除颈、头与被动齿隙关节）",
+    desc: "e_j 是关节角相对默认站姿的偏差，按关节各自的 σ_j 归一化后取均值再过 exp。上面 σ_* 是行走时的值（std_running 也取这一套）；指令总量 < 0.01 时换成 std_standing。",
+    note: "hip_roll 的 σ 只有 0.05 rad：上游注释说是为了守住 5° 内八站姿、防止腿外撇。函数：mjlab variable_posture。",
+    source: { repo: REPO, path: CFG, symbol: "pose" },
+  }),
+  velocityReward("upright", "upright", "B", "躯干直立", 2.0, {
+    form: "\\exp\\!\\left(-\\lVert g_{xy}\\rVert^{2}/\\sigma^{2}\\right)",
+    params: { "σ": 0.2236, "σ²": 0.05 },
+    target: "trunk_base",
+    desc: "g 是躯干系下的投影重力（单位向量），‖g_xy‖ = sin(倾角)。",
+    note: "上游特意加强（权重 1.0 → 2.0、σ² 0.1 → 0.05）：前倾 4° 原来每步只扣约 0.05，现在约 0.19。函数：mjlab upright（平地不带地形法向）。",
+    source: { repo: REPO, path: CFG, symbol: "upright" },
+  }),
+  velocityReward("foot_clear", "foot_clearance", "C", "摆动足离地", -2.0, {
+    form: `\\sum_{f}\\left\\lvert h_f-h^{*}\\right\\rvert\\cdot\\lVert v_{f,xy}\\rVert\\cdot${GATE}`,
+    params: { target_height: 0.02, command_threshold: 0.01 },
+    target: "left_foot · right_foot",
+    desc: "足端离地高度（地形射线测得）偏离 2 cm 的绝对值，乘以足端水平速度：脚在挪动时才要求它离地合适。",
+    note: `${GATE_NOTE}微鸭配置只改了 target_height 与 command_threshold，权重沿用 mjlab 基础配置的 −2.0。函数：mjlab feet_clearance。`,
+    source: { repo: MJLAB, path: MJLAB_CFG, symbol: "foot_clearance" },
+  }),
+  velocityReward("foot_swing", "foot_swing_height", "C", "摆腿高度", -0.25, {
+    form: `\\sum_{f}\\left(h^{\\text{peak}}_{f}/h^{*}-1\\right)^{2}\\cdot\\mathbb{1}\\!\\left[\\text{first contact}_f\\right]\\cdot${GATE}`,
+    params: { target_height: 0.02, command_threshold: 0.01 },
+    target: "left_foot · right_foot",
+    desc: "记下每次腾空的最高点，落地那一步按它相对 2 cm 的偏差平方罚一次。",
+    note: `${GATE_NOTE}权重沿用 mjlab 基础配置的 −0.25。函数：mjlab feet_swing_height。`,
+    source: { repo: MJLAB, path: MJLAB_CFG, symbol: "foot_swing_height" },
+  }),
+  velocityReward("foot_slip", "foot_slip", "C", "足端滑移", -0.1, {
+    form: `\\sum_{f}\\lVert v_{f,xy}\\rVert^{2}\\cdot\\mathbb{1}\\!\\left[\\text{contact}_f\\right]\\cdot${GATE}`,
+    params: { command_threshold: 0.01 },
+    target: "left_foot · right_foot",
+    desc: "着地的脚还在水平滑动，按滑动速度平方罚。",
+    note: `${GATE_NOTE}权重故意只给 −0.1：−1.0 对这台靠原地拧脚转身的机器人太严。函数：mjlab feet_slip。`,
+    source: { repo: REPO, path: CFG, symbol: "foot_slip" },
+  }),
+  velocityReward("self_col", "self_collision", "E", "自碰撞", -1.0, {
+    form: "N_{\\text{self-contact}}",
+    target: "腿与电池架（self_collision_only 几何）",
+    desc: "自碰撞传感器（trunk_base 子树内部接触）这一步检测到的接触计数。",
+    note: "有关节限位时腿其实碰不到躯干，这一项只是让策略离远点。函数：mjlab self_collision_cost（传感器没开力历史，走 found 计数分支）。",
+    source: { repo: REPO, path: CFG, symbol: "self_collisions" },
+  }),
+  velocityReward("body_ang", "body_ang_vel", "B", "躯干角速度", -0.05, {
+    form: "\\lVert\\omega^{\\text{trunk}}_{xy}\\rVert^{2}",
+    target: "trunk_base（世界系）",
+    desc: "躯干角速度的 x、y 分量平方和，不罚 yaw。",
+    note: "函数：mjlab body_angular_velocity_penalty。",
+    source: { repo: REPO, path: CFG, symbol: "body_ang_vel" },
+  }),
+  velocityReward("ang_mom", "angular_momentum", "D", "角动量", -0.02, {
+    form: "\\lVert L\\rVert^{2}",
+    target: "全身（robot/root_angmom 传感器）",
+    desc: "全身角动量的模的平方。",
+    note: "函数：mjlab angular_momentum_penalty。",
+    source: { repo: REPO, path: CFG, symbol: "angular_momentum" },
+  }),
+  velocityReward("action_rate", "action_rate", "D", "动作变化率", -0.1, {
+    form: "\\lVert a_t-a_{t-1}\\rVert^{2}",
+    target: "14 维策略原始输出（缩放前）",
+    desc: "相邻两步动作之差的平方和，压抖动。",
+    note: "−0.1 是课程第 0 阶段的值：action_rate_weight 课程在 iter 500 / 750 / 1000 / 1250 / 1500 依次调到 −0.2 / −0.4 / −0.6 / −0.8 / −1.0。函数：mjlab action_rate_l2。",
+    source: { repo: REPO, path: CFG, symbol: "action_rate_l2" },
+  }),
+  velocityReward("head_bias", "head_pose_bias", "B", "头姿直流偏置", 0.0, {
+    direction: "negative",
+    form: "-\\frac{1}{4}\\sum_{j=1}^{4}\\left\\lvert\\operatorname{EMA}_{\\tau}(e_j)\\right\\rvert",
+    params: { tau_s: 1.0 },
+    target: "neck_pitch · head_pitch · head_yaw · head_roll",
+    desc: "e_j 与头姿跟踪相同，先做 τ = 1 s 的指数滑动平均，把走路时头的晃动平均掉，只罚剩下的直流偏置（头被重力压低的那一截）。L1 而不是高斯：偏置大时梯度也不消失。",
+    note: "权重 0 是课程起点：head_pose_bias_weight 在 iter 600 前保持 0，之后 1.0 → 2.0（iter 1000）→ 3.0（iter 1500）。",
+    source: { repo: REPO, path: "src/mjlab_microduck/tasks/mdp.py", symbol: "head_pose_bias_penalty" },
+  }),
+  velocityReward("dof_pos_limits", "joint_limit", "E", "关节软限位", -1.0, {
+    form: "\\sum_{j}\\left[(q^{\\text{lo}}_{j}-q_j)_{+}+(q_j-q^{\\text{hi}}_{j})_{+}\\right]",
+    target: "全部关节（软限位）",
+    desc: "越过软限位的部分按绝对值（L1，不是平方）求和，两侧都罚。",
+    note: "微鸭配置没有删掉也没有改这一项，沿用 mjlab 基础配置的 −1.0。函数：mjlab joint_pos_limits。",
+    source: { repo: MJLAB, path: MJLAB_CFG, symbol: "dof_pos_limits" },
+  }),
 ];
 
 const VELOCITY_FACTS = [
@@ -392,7 +529,7 @@ const VELOCITY_FACTS = [
   { label: "策略观测", value: "61 维" },
   { label: "动作输出", value: "14 维关节位置目标" },
   { label: "Actor 网络", value: "MLP [512, 256, 128] · ELU" },
-  { label: "奖励项", value: "14 项手写奖励" },
+  { label: "奖励项", value: "15 项手写奖励" },
   { label: "地形", value: "平面" },
   { label: "并行环境", value: "4096（推荐）" },
   { label: "控制频率", value: "50 Hz（物理 200 Hz）" },
@@ -413,6 +550,64 @@ function baseProject(id, name, subtitle, tagline, train, extra = {}) {
     modes: { train, deploy: buildDeployGraph() },
     ...extra,
   };
+}
+
+/**
+ * 除 Velocity（平地 / 粗糙及其齿隙版）外，各任务的环境配置都在 mjlab 基础配置或
+ * Velocity / Rollers 配置之上增删改了奖励。逐任务的奖励组合对照上游源码核对后放在
+ * scripts/microduck-rewards.json，这里按任务 ID 找到对应的一组，替换掉变体从 Velocity
+ * 继承来的那 15 项。齿隙版用同一组：backlash.py 只把 dof_pos_limits 与 pose 的关节
+ * 范围收窄到伺服关节，公式不变。
+ */
+const MICRODUCK_REWARDS = JSON.parse(await readFile(join(ROOT, "scripts", "microduck-rewards.json"), "utf8"));
+
+const REWARD_FAMILY = [
+  ["VelStand", "VelStand"],
+  ["StandUp", "StandUp"],
+  ["SitStand", "SitStand"],
+  ["GroundPick", "GroundPick"],
+  ["BallKick", "BallKick"],
+  ["Swizzle", "Swizzle"],
+  ["RollerCrouch", "RollerCrouch"],
+  ["RollerSlope", "RollerSlope"],
+  ["RollerStandUp", "RollerStandUp"],
+  ["Rollers", "Rollers"],
+  ["Spin", "Spin"],
+  ["Roulade", "Roulade"],
+];
+
+function familyOf(taskId) {
+  return REWARD_FAMILY.find(([key]) => taskId.includes(`-${key}-`) || taskId.endsWith(`-${key}`))?.[1] ?? null;
+}
+
+/** 这个任务核对过的奖励组合；还没核对的任务返回 null，页面沿用 Velocity 的并在顶部说明。 */
+function familyRewards(taskId) {
+  const name = familyOf(taskId);
+  return name ? (MICRODUCK_REWARDS.families[name] ?? null) : null;
+}
+
+/** 变体的奖励覆盖：删掉继承来的 Velocity 奖励，换成这个任务自己的一组。 */
+function rewardOverride(taskId) {
+  const family = familyRewards(taskId);
+  if (!family) return {};
+  return {
+    "rewards-": VELOCITY_REWARDS.map((r) => r.id),
+    "rewards+": family.rewards,
+  };
+}
+
+function rewardFacts(taskId) {
+  const family = familyRewards(taskId);
+  return family ? { "奖励项": `${family.rewards.length} 项手写奖励（${family.cfg.split("/").pop()}）` } : {};
+}
+
+function rewardSummary(taskId) {
+  const family = familyRewards(taskId);
+  if (family) return `奖励按上游 ${family.cfg.split("/").pop()} 逐项核对，共 ${family.rewards.length} 项。`;
+  if (familyOf(taskId)) {
+    return "奖励注意：上游这个任务在 Velocity 的基础上增删改了多项奖励，下方奖励面板暂沿用 Velocity 的 15 项，尚未按这个任务逐项核对。";
+  }
+  return "";
 }
 
 /** @type {Array<{registry: object, file: string, project: object}>} */
@@ -436,7 +631,7 @@ OUTPUTS.push({
     "主任务：速度跟踪 + 头姿指令",
     "约 800 g 双足的主行走策略：BAM 执行器物理 + 61 维共享观测契约。",
     buildTrainGraph({
-      summary: "mjlab 4096 并行环境，61 维策略观测（48 维本体 + 13 维指令），14 维关节目标，14 项手写奖励 + 多项课程学习。",
+      summary: "mjlab 4096 并行环境，61 维策略观测（48 维本体 + 13 维指令），14 维关节目标，15 项手写奖励 + 多项课程学习。",
       facts: VELOCITY_FACTS,
       rewards: VELOCITY_REWARDS,
       callouts: [
@@ -652,15 +847,16 @@ for (const fam of FAMILIES) {
       name: fam.name,
       subtitle: fam.subtitle,
       inherits: fam.parent,
-      diffSummary: fam.diff,
+      diffSummary: [fam.diff, rewardSummary(fam.taskId)].filter(Boolean).join(""),
       verifiedAt: "2026-09-01",
       verifiedRef: `${REPO}@main · ${fam.taskId}`,
       links: { ...COMMON_LINKS, "任务注册": `${REPO_URL}/blob/main/src/mjlab_microduck/tasks/__init__.py` },
       overrides: {
         "modes.train": {
           summary: fam.diff,
-          facts: { "任务 ID": fam.taskId, ...(fam.facts ?? {}) },
+          facts: { "任务 ID": fam.taskId, ...(fam.facts ?? {}), ...rewardFacts(fam.taskId) },
           ...(fam.nodes ? { nodes: fam.nodes } : {}),
+          ...rewardOverride(fam.taskId),
         },
       },
     },
@@ -703,7 +899,7 @@ for (const bl of BACKLASH) {
       name: bl.name,
       subtitle: bl.subtitle,
       inherits: bl.parent,
-      diffSummary: `每个伺服关节串联 ±1° 齿隙（共 2°）的被动铰链；编码器与关节观测读穿齿隙（BacklashEncoderBamActuator）。观测/动作维度不变，ONNX 与真机运行时无需改动。`,
+      diffSummary: `每个伺服关节串联 ±1° 齿隙（共 2°）的被动铰链；编码器与关节观测读穿齿隙（BacklashEncoderBamActuator）。观测/动作维度不变，ONNX 与真机运行时无需改动。${rewardSummary(bl.taskId)}`,
       verifiedAt: "2026-09-01",
       verifiedRef: `${REPO}@main · ${bl.taskId}`,
       links: {
@@ -712,7 +908,12 @@ for (const bl of BACKLASH) {
       },
       overrides: {
         "modes.train": {
-          facts: { "任务 ID": bl.taskId, "齿隙": "±1°/关节 · 观测读穿齿隙", ...(bl.extraFacts ?? {}) },
+          facts: {
+            "任务 ID": bl.taskId,
+            "齿隙": "±1°/关节 · 观测读穿齿隙",
+            ...(bl.extraFacts ?? {}),
+            ...rewardFacts(bl.taskId),
+          },
           nodes: {
             "a.bam": {
               label: "BAM + 齿隙编码器反馈",
@@ -720,6 +921,7 @@ for (const bl of BACKLASH) {
               desc: "执行器与 joint_pos/joint_vel 观测均读 qpos[servo]+qpos[backlash]，匹配真机编码器在齿隙输出侧的位置。",
             },
           },
+          ...rewardOverride(bl.taskId),
         },
       },
     },

@@ -3,7 +3,7 @@
   "name": "BallKick · Flat",
   "subtitle": "右脚踢球（策略不见球）",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "从站立起步用右脚将 70 mm/15 g 球向前踢出；Actor 观测不含球状态。",
+  "diffSummary": "从站立起步用右脚将 70 mm/15 g 球向前踢出；Actor 观测不含球状态。奖励按上游 microduck_ball_kick_env_cfg.py 逐项核对，共 12 项。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-BallKick-Flat-MicroDuck",
   "links": {
@@ -19,13 +19,321 @@
       "facts": {
         "任务 ID": "Mjlab-BallKick-Flat-MicroDuck",
         "任务目标": "踢球",
-        "观测": "球盲（ball-blind）"
+        "观测": "球盲（ball-blind）",
+        "奖励项": "12 项手写奖励（microduck_ball_kick_env_cfg.py）"
       },
       "nodes": {
         "s.scene": {
           "sub": "robot_allcollisions.xml + 球"
         }
-      }
+      },
+      "rewards-": [
+        "track_lin",
+        "track_ang",
+        "head_pose",
+        "air_time",
+        "pose",
+        "upright",
+        "foot_clear",
+        "foot_swing",
+        "foot_slip",
+        "self_col",
+        "body_ang",
+        "ang_mom",
+        "action_rate",
+        "head_bias",
+        "dof_pos_limits"
+      ],
+      "rewards+": [
+        {
+          "id": "ball_forward_velocity",
+          "group": "A",
+          "label": "球前向速度",
+          "weight": 12,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\operatorname{clip}\\!\\left(v_{\\text{fwd}},\\,0,\\,v_{\\max}\\right)",
+          "params": {
+            "max_speed": 1
+          },
+          "desc": "球沿开局朝向滚得越快给分越多，线性，在 1 m/s 封顶；往后或侧向滚只是 0，不倒扣。",
+          "note": "策略看不到球（只有 critic 观测球的位置/速度），靠 ±1.5 cm 的球位随机化学会盲踢。上游注释写“权重 12 = 3/目标速度（目标 0.25 m/s），到目标约 +3/步”，但 BALL_TARGET_SPEED 现在是 1.0（:95），权重没跟着改：到目标时这一项是 +12/步。函数：mjlab_microduck.tasks.mdp.ball_forward_velocity（mdp.py:6153）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ball_kick_env_cfg.py",
+            "symbol": "ball_forward_velocity"
+          },
+          "curve": {
+            "x": {
+              "tex": "v_{\\text{fwd}}",
+              "range": [
+                -0.5,
+                2
+              ]
+            },
+            "f": "min(max(x, 0), vmax)",
+            "params": [
+              {
+                "id": "vmax",
+                "key": "max_speed",
+                "range": [
+                  0.25,
+                  3
+                ]
+              }
+            ],
+            "notes": [
+              "横轴是球沿开局朝向的速度（m/s）。往后滚为 0，不倒扣；0 到 v_max 之间线性给分，超过 v_max 封顶。"
+            ]
+          }
+        },
+        {
+          "id": "ball_speed_overshoot",
+          "group": "A",
+          "label": "球速超调",
+          "weight": -4,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\operatorname{clip}\\!\\left(v_{\\text{fwd}}-v^{*},\\,0,\\,\\Delta_{\\max}\\right)",
+          "params": {
+            "target_speed": 1,
+            "max_penalty": 5
+          },
+          "desc": "球速超过目标 1 m/s 的部分线性罚，超出 5 m/s 后不再增加。",
+          "note": "与上一项合起来：r = 12·clip(v,0,1) − 4·clip(v−1,0,5)，v = 1 m/s 时峰值 +12，v = 4 m/s 时净值回到 0，v ≥ 6 m/s 为 −8。上游注释（:224–237）仍按旧目标 0.25 m/s 写“净值在约 1.0 m/s 归零”。函数：mjlab_microduck.tasks.mdp.ball_speed_overshoot_penalty（mdp.py:6179）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ball_kick_env_cfg.py",
+            "symbol": "ball_speed_overshoot"
+          },
+          "curve": {
+            "x": {
+              "tex": "v_{\\text{fwd}}",
+              "range": [
+                0,
+                8
+              ]
+            },
+            "f": "min(max(x - vt, 0), pmax)",
+            "params": [
+              {
+                "id": "vt",
+                "key": "target_speed",
+                "range": [
+                  0.25,
+                  3
+                ]
+              },
+              {
+                "id": "pmax",
+                "key": "max_penalty",
+                "range": [
+                  1,
+                  10
+                ]
+              }
+            ],
+            "notes": [
+              "横轴是球沿开局朝向的速度（m/s）。目标速度以内为 0，超出部分线性增加，超出量到 Δ_max 后封顶。"
+            ]
+          }
+        },
+        {
+          "id": "support_foot_grounded",
+          "group": "C",
+          "label": "支撑脚着地",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\mathbb{1}\\!\\left[\\text{contact}_{\\text{left foot}}\\right]",
+          "params": {
+            "sensor_name": "support_foot_ground_contact"
+          },
+          "desc": "非踢球脚（左脚）着地每步给 1。",
+          "note": "上游注释：抬支撑脚每步都丢这份奖励，防止跳着踢，也压制走路或盘带式的投机。踢哪只脚由球的出生位置决定：球心在机器人根部前方 9 cm、右脚中线（y = −4.2 cm）上，每轴 ±1.5 cm 随机。函数：mjlab_microduck.tasks.mdp.single_foot_grounded_reward（mdp.py:6201）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ball_kick_env_cfg.py",
+            "symbol": "support_foot_grounded"
+          },
+          "noCurve": "布尔量：支撑脚着地为 1，否则为 0，没有连续自变量。"
+        },
+        {
+          "id": "pose_stand_legs",
+          "group": "B",
+          "label": "站姿·腿",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\frac{1}{10}\\sum_{j=1}^{10}\\exp\\!\\left(-e_j^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.5,
+            "joint_indices": "0–4, 9–13（左右腿各 5 个）"
+          },
+          "desc": "10 个腿关节相对 HOME 站姿各过一个高斯核再取均值，σ = 0.5 rad 故意放宽。",
+          "note": "取代 Velocity 的 pose（variable_posture，已删除）。上游注释：踢腿本身是一次大的瞬时偏离，σ 放宽才付得起。mdp.py 里 pose_target_match 定义了两次（:2201 与 :2538），后者生效，两者算式相同。函数：mjlab_microduck.tasks.mdp.pose_target_match（mdp.py:2538）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ball_kick_env_cfg.py",
+            "symbol": "pose_stand_legs"
+          }
+        },
+        {
+          "id": "pose_stand_neck",
+          "group": "B",
+          "label": "站姿·颈头",
+          "weight": 1,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\frac{1}{4}\\sum_{j=1}^{4}\\exp\\!\\left(-e_j^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.3,
+            "joint_indices": "5–8（neck_pitch · head_pitch · head_yaw · head_roll）"
+          },
+          "desc": "颈、头 4 个关节保持 HOME（本任务没有头姿指令）。",
+          "note": "头不参与踢球，σ 比腿紧。函数：mjlab_microduck.tasks.mdp.pose_target_match（mdp.py:2538）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ball_kick_env_cfg.py",
+            "symbol": "pose_stand_neck"
+          }
+        },
+        {
+          "id": "upright",
+          "group": "B",
+          "label": "躯干直立",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\lVert g_{xy}\\rVert^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.2236,
+            "σ²": 0.05
+          },
+          "desc": "g 是躯干系下的投影重力，‖g_xy‖ = sin(倾角)。",
+          "note": "与 Velocity 完全相同（权重 2.0、σ² = 0.05）。函数：mjlab.tasks.velocity.mdp.upright（rewards.py:67）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ball_kick_env_cfg.py",
+            "symbol": "upright"
+          }
+        },
+        {
+          "id": "height_stand",
+          "group": "B",
+          "label": "站立高度",
+          "weight": 1,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\left(z_{\\text{trunk}}-z^{*}\\right)^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.04,
+            "target_height": 0.115
+          },
+          "desc": "躯干高度贴近 HOME 站立平衡高度 0.115 m，压制先下蹲蓄力的踢法。",
+          "note": "0.115 m（STAND_Z）是 HOME 姿态下实测的自然平衡高度。函数：mjlab_microduck.tasks.mdp.height_target_gaussian（mdp.py:2582）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ball_kick_env_cfg.py",
+            "symbol": "height_stand"
+          }
+        },
+        {
+          "id": "action_rate_l2",
+          "canonical": "action_rate",
+          "group": "D",
+          "label": "动作变化率",
+          "weight": -0.1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a_t-a_{t-1}\\rVert^{2}",
+          "desc": "相邻两步动作之差的平方和，压抖动。",
+          "note": "上游注释：踢球是快速的一次性摆腿，若最终踢得太软，首先尝试把课程终值从 −1.0 放松到 −0.6。−0.1 是课程第 0 阶段的值：action_rate_weight 课程（src/mjlab_microduck/tasks/microduck_ball_kick_env_cfg.py:561，mdp.reward_weight src/mjlab_microduck/tasks/mdp.py:3584）在 iter 500 / 750 / 1000 / 1250 / 1500 之后依次调到 −0.2 / −0.4 / −0.6 / −0.8 / −1.0（step = iter × 24），与 Velocity 完全相同。函数：mjlab.envs.mdp.action_rate_l2（rewards.py:58）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ball_kick_env_cfg.py",
+            "symbol": "action_rate_l2"
+          }
+        },
+        {
+          "id": "body_ang_vel",
+          "group": "B",
+          "label": "躯干角速度",
+          "weight": -0.05,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\omega^{\\text{trunk}}_{xy}\\rVert^{2}",
+          "params": {
+            "body": "trunk_base"
+          },
+          "desc": "躯干角速度的 x、y 分量平方和，不罚 yaw。",
+          "note": "与 Velocity 相同。函数：mjlab.tasks.velocity.mdp.body_angular_velocity_penalty（rewards.py:184）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ball_kick_env_cfg.py",
+            "symbol": "body_ang_vel"
+          }
+        },
+        {
+          "id": "angular_momentum",
+          "group": "D",
+          "label": "角动量",
+          "weight": -0.02,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert L\\rVert^{2}",
+          "params": {
+            "sensor_name": "robot/root_angmom"
+          },
+          "desc": "全身角动量的模的平方。",
+          "note": "与 Velocity 相同。函数：mjlab.tasks.velocity.mdp.angular_momentum_penalty（rewards.py:196）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ball_kick_env_cfg.py",
+            "symbol": "angular_momentum"
+          }
+        },
+        {
+          "id": "self_collisions",
+          "canonical": "self_collision",
+          "group": "E",
+          "label": "自碰撞",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "N_{\\text{self-contact}}",
+          "params": {
+            "sensor_name": "self_collision"
+          },
+          "desc": "机身子树内部这一步检测到的接触计数。",
+          "note": "与 Velocity 同一函数、同一权重；传感器没开力历史，走 found 计数分支。函数：mjlab.tasks.velocity.mdp.self_collision_cost（rewards.py:162）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ball_kick_env_cfg.py",
+            "symbol": "self_collisions"
+          }
+        },
+        {
+          "id": "dof_pos_limits",
+          "canonical": "joint_limit",
+          "group": "E",
+          "label": "关节软限位",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{j}\\left[(q^{\\text{lo}}_{j}-q_j)_{+}+(q_j-q^{\\text{hi}}_{j})_{+}\\right]",
+          "params": {
+            "soft_joint_pos_limit_factor": 0.9
+          },
+          "desc": "越过软限位的部分按绝对值（L1）求和，两侧都罚。",
+          "note": "BallKick 配置没有删也没有改这一项，沿用 mjlab 基础配置的 −1.0。函数：mjlab.envs.mdp.joint_pos_limits（rewards.py:81）。",
+          "source": {
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
+            "symbol": "dof_pos_limits"
+          }
+        }
+      ]
     }
   }
 }

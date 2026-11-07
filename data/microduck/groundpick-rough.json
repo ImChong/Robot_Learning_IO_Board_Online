@@ -3,7 +3,7 @@
   "name": "GroundPick · Rough",
   "subtitle": "粗糙地面触地",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "GroundPick 在粗糙地形上的变体：下蹲让嘴尖触地后回到站立。",
+  "diffSummary": "GroundPick 在粗糙地形上的变体：下蹲让嘴尖触地后回到站立。奖励按上游 microduck_ground_pick_env_cfg.py 逐项核对，共 18 项。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-GroundPick-Rough-MicroDuck",
   "links": {
@@ -19,8 +19,665 @@
       "facts": {
         "任务 ID": "Mjlab-GroundPick-Rough-MicroDuck",
         "地形": "粗糙地形生成器",
-        "任务目标": "触地拾取姿态"
-      }
+        "任务目标": "触地拾取姿态",
+        "奖励项": "18 项手写奖励（microduck_ground_pick_env_cfg.py）"
+      },
+      "rewards-": [
+        "track_lin",
+        "track_ang",
+        "head_pose",
+        "air_time",
+        "pose",
+        "upright",
+        "foot_clear",
+        "foot_swing",
+        "foot_slip",
+        "self_col",
+        "body_ang",
+        "ang_mom",
+        "action_rate",
+        "head_bias",
+        "dof_pos_limits"
+      ],
+      "rewards+": [
+        {
+          "id": "mouth_ground_proximity",
+          "group": "A",
+          "label": "嘴尖贴地",
+          "weight": 3,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "b(\\phi)\\cdot\\exp\\!\\left(-\\left(z_{\\text{mouth}}-h^{*}\\right)^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.1,
+            "target_height": 0,
+            "descent_end": 0.375,
+            "hold_end": 0.425,
+            "rise_end": 0.8
+          },
+          "desc": "嘴尖离地越低奖励越高：以 0 m 为目标的高斯核，σ = 0.10 m；只在下蹲与低位段按 b(φ) 打开。",
+          "note": "相位 4 s 一周期：下蹲 1.5 s（φ 0→0.375）、低位 0.2 s（→0.425）、起身 1.5 s（→0.8）、站立 0.8 s（→1）。上游注释：σ = 0.10 让站立时（嘴尖约 20 cm 高）就有梯度，权重从 2.0 提到 3.0 是为了贴得更近；“不碰地”交给 head_impact_penalty，平衡点是嘴尖悬在地面上方。函数：mjlab_microduck.tasks.mdp.mouth_ground_proximity_phased（mdp.py:3129）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "mouth_ground_proximity"
+          },
+          "curve": {
+            "x": {
+              "tex": "z_{\\text{mouth}}",
+              "range": [
+                0,
+                0.3
+              ]
+            },
+            "f": "b * exp(-((x - h) ^ 2) / (s * s))",
+            "params": [
+              {
+                "id": "s",
+                "key": "σ",
+                "range": [
+                  0.025,
+                  0.4
+                ],
+                "log": true
+              },
+              {
+                "id": "h",
+                "key": "target_height",
+                "range": [
+                  -0.05,
+                  0.1
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "b",
+                "tex": "b(\\phi)",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴是嘴尖的世界系高度（m），平地上就是离地高度。下行门控 b(φ) 用滑块固定，默认 1（低位段 φ∈[0.375, 0.425)）；下蹲段 b 从 0 线性升到 1，起身段线性降回 0，站立段为 0。高度等于 σ 时（门控全开）奖励掉到 e⁻¹ ≈ 0.37。"
+            ]
+          }
+        },
+        {
+          "id": "mouth_perpendicular_to_ground",
+          "group": "A",
+          "label": "嘴尖朝下",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "b(\\phi)\\cdot\\left(\\hat{x}_{\\text{mouth}}\\cdot(-\\hat{z})\\right)",
+          "params": {
+            "descent_end": 0.375,
+            "hold_end": 0.425,
+            "rise_end": 0.8
+          },
+          "desc": "嘴尖站点的 x 轴越接近竖直向下奖励越高（= cos α）；水平为 0，朝上为负，所以下蹲时抬头会倒扣分。只在下蹲与低位段按 b(φ) 打开。",
+          "note": "上游把权重从 1.0 提到 2.0：“朝向正确”是显式目标。函数：mjlab_microduck.tasks.mdp.mouth_perpendicular_phased（mdp.py:3147）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "mouth_perpendicular_to_ground"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\alpha",
+              "range": [
+                0,
+                3.1416
+              ]
+            },
+            "f": "b * cos(x)",
+            "held": [
+              {
+                "id": "b",
+                "tex": "b(\\phi)",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴 α 是嘴尖 x 轴与竖直向下方向的夹角（rad）：0 是正对地面，π/2 是水平，π 是朝天。值为 b·cos α，朝上时为负。下行门控 b(φ) 用滑块固定，默认 1。"
+            ]
+          }
+        },
+        {
+          "id": "ground_pick_return_pose_legs",
+          "group": "A",
+          "label": "回位姿态·腿",
+          "weight": 6,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "g(\\phi)\\cdot\\frac{1}{10}\\sum_{j=1}^{10}\\exp\\!\\left(-e_j^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.3,
+            "hold_end": 0.425,
+            "rise_end": 0.8,
+            "joint_indices": "0–4, 9–13（左右腿各 5 个）"
+          },
+          "desc": "起身与站立段按 g(φ) 奖励 10 个腿关节回到 HOME：每个关节各过一个 σ = 0.3 rad 的高斯核再取均值。",
+          "note": "取代了 Velocity 的 pose（variable_posture，已删除）。权重上游从 4 提到 6，用来加强起身时把腿伸直。函数：mjlab_microduck.tasks.mdp.ground_pick_return_pose_phased（mdp.py:3165）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "ground_pick_return_pose_legs"
+          },
+          "curve": {
+            "x": {
+              "tex": "e",
+              "range": [
+                0,
+                0.9
+              ]
+            },
+            "f": "g * (10 - k + k * exp(-(x * x) / (s * s))) / 10",
+            "params": [
+              {
+                "id": "s",
+                "key": "σ",
+                "range": [
+                  0.075,
+                  1.2
+                ],
+                "log": true
+              }
+            ],
+            "held": [
+              {
+                "id": "g",
+                "tex": "g(\\phi)",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              },
+              {
+                "id": "k",
+                "tex": "k",
+                "range": [
+                  1,
+                  10
+                ],
+                "value": 10,
+                "int": true
+              }
+            ],
+            "notes": [
+              "横轴是单个关节相对 HOME 的偏差 e（rad）；k 个关节都偏 e、其余关节在 HOME 时值为 g·(10 − k + k·exp(−e²/σ²))/10，默认 k = 10（全部偏）。相位门控 g(φ) 用滑块固定，默认 1（φ ≥ 0.8 的站立段）；起身段 g 从 0 线性升到 1，下蹲与低位段 g = 0、整项为 0。"
+            ]
+          }
+        },
+        {
+          "id": "ground_pick_return_pose_neck",
+          "group": "A",
+          "label": "回位姿态·颈头",
+          "weight": 6,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "g(\\phi)\\cdot\\frac{1}{4}\\sum_{j=1}^{4}\\exp\\!\\left(-e_j^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.15,
+            "hold_end": 0.425,
+            "rise_end": 0.8,
+            "joint_indices": "5–8（neck_pitch · head_pitch · head_yaw · head_roll）"
+          },
+          "desc": "与腿部回位同一个函数，作用于颈、头 4 个关节，σ 收紧到 0.15 rad。",
+          "note": "上游注释：σ 收紧是为了防止起身时头向后过冲、撞到身体——头部几何没有碰撞网格，self_collisions 抓不到，只能靠这一项。函数：mjlab_microduck.tasks.mdp.ground_pick_return_pose_phased（mdp.py:3165）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "ground_pick_return_pose_neck"
+          },
+          "curve": {
+            "x": {
+              "tex": "e",
+              "range": [
+                0,
+                0.45
+              ]
+            },
+            "f": "g * (4 - k + k * exp(-(x * x) / (s * s))) / 4",
+            "params": [
+              {
+                "id": "s",
+                "key": "σ",
+                "range": [
+                  0.0375,
+                  0.6
+                ],
+                "log": true
+              }
+            ],
+            "held": [
+              {
+                "id": "g",
+                "tex": "g(\\phi)",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              },
+              {
+                "id": "k",
+                "tex": "k",
+                "range": [
+                  1,
+                  4
+                ],
+                "value": 4,
+                "int": true
+              }
+            ],
+            "notes": [
+              "横轴是单个关节相对 HOME 的偏差 e（rad）；k 个关节都偏 e、其余关节在 HOME 时值为 g·(4 − k + k·exp(−e²/σ²))/4，默认 k = 4（全部偏）。相位门控 g(φ) 用滑块固定，默认 1（φ ≥ 0.8 的站立段）；起身段 g 从 0 线性升到 1，下蹲与低位段 g = 0、整项为 0。"
+            ]
+          }
+        },
+        {
+          "id": "return_upright",
+          "group": "B",
+          "label": "起身躯干直立",
+          "weight": 4,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "g(\\phi)\\cdot\\exp\\!\\left(-\\left(1-\\cos\\theta\\right)/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.4,
+            "hold_end": 0.425,
+            "rise_end": 0.8
+          },
+          "desc": "只在起身与站立段按 g(φ) 奖励躯干竖直，下蹲前倾时不起作用。",
+          "note": "上游注释写“σ = 0.4 rad ≈ 23°”，但核里的量是 1 − cos θ 而不是 θ²，按代码奖励在 θ ≈ 33° 才掉到 e⁻¹。权重上游从 2 提到 4，帮起身时稳住躯干。函数：mjlab_microduck.tasks.mdp.ground_pick_return_upright_phased（mdp.py:3186）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "return_upright"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\theta",
+              "range": [
+                0,
+                1.5708
+              ]
+            },
+            "f": "g * exp(-(1 - cos(x)) / (s * s))",
+            "params": [
+              {
+                "id": "s",
+                "key": "σ",
+                "range": [
+                  0.1,
+                  1.6
+                ],
+                "log": true
+              }
+            ],
+            "held": [
+              {
+                "id": "g",
+                "tex": "g(\\phi)",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴是躯干倾角 θ（rad）。指数里是 1 − cos θ（≈ θ²/2），不是 θ²：σ = 0.4 时奖励在 θ ≈ 33° 掉到 e⁻¹。上升门控 g(φ) 用滑块固定，默认 1（站立段）。"
+            ]
+          }
+        },
+        {
+          "id": "neck_vel_descent",
+          "group": "D",
+          "label": "下探颈速",
+          "weight": -0.1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\mathbb{1}\\!\\left[\\phi<\\phi_{\\text{hold}}\\right]\\cdot\\frac{1}{4}\\sum_{j=1}^{4}\\dot q_j^{2}",
+          "params": {
+            "hold_end": 0.425,
+            "joint_indices": "5–8（颈、头 4 个关节）"
+          },
+          "desc": "下蹲与低位段（φ < 0.425）罚颈、头四个关节速度平方的均值，刹住“扎头”；起身段不罚，不妨碍抬头。",
+          "note": "函数：mjlab_microduck.tasks.mdp.neck_vel_descent_penalty（mdp.py:3203）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "neck_vel_descent"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\lvert\\dot q\\rvert",
+              "range": [
+                0,
+                4
+              ]
+            },
+            "f": "m * x * x",
+            "held": [
+              {
+                "id": "m",
+                "tex": "\\mathbb{1}[\\phi<\\phi_{\\text{hold}}]",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1,
+                "int": true
+              }
+            ],
+            "notes": [
+              "横轴取 4 个颈、头关节以同一速度 |q̇|（rad/s）转动，均值就等于 q̇²。相位门控只取 0 或 1，默认 1（下蹲与低位段）；起身与站立段为 0。横轴范围只是示意。"
+            ]
+          }
+        },
+        {
+          "id": "feet_grounded",
+          "group": "C",
+          "label": "双脚着地",
+          "weight": 3,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\min\\!\\left(N_{\\text{L}}+N_{\\text{R}},\\,2\\right)/2",
+          "params": {
+            "sensor_name": "feet_ground_contact"
+          },
+          "desc": "左右脚底触地就给分，两只都着地拿满 1；全程开启。",
+          "note": "只管接触，不管脚是否放平（那是 feet_flat）。found 是接触点计数：若一只脚底同时有 ≥ 2 个接触点，单脚着地也可能拿满。函数：mjlab_microduck.tasks.mdp.feet_grounded_reward（mdp.py:1767）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "feet_grounded"
+          },
+          "noCurve": "离散计数：N 是脚底与地形的接触数（整数），奖励只取 0 / 0.5 / 1，没有连续自变量。"
+        },
+        {
+          "id": "feet_flat",
+          "group": "C",
+          "label": "脚掌放平",
+          "weight": -2,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{f}\\lVert g^{(f)}_{xy}\\rVert^{2}",
+          "params": {
+            "sites": "left_foot · right_foot"
+          },
+          "desc": "把重力投到每只脚的站点坐标系，水平分量的平方就是 sin²(脚的倾角)，两脚相加：脚绕踝关节翻转就罚。",
+          "note": "上游注释：feet_grounded 只看接触，脚绕踝翻到侧缘或脚尖时仍可能留着接触点，所以另加这一项禁止“翻脚”。函数：mjlab_microduck.tasks.mdp.feet_flat_penalty（mdp.py:1605）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "feet_flat"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\theta_f",
+              "range": [
+                0,
+                1.5708
+              ]
+            },
+            "f": "n * sin(x) ^ 2",
+            "held": [
+              {
+                "id": "n",
+                "tex": "n",
+                "range": [
+                  1,
+                  2
+                ],
+                "value": 1,
+                "int": true,
+                "label": "倾斜的脚数"
+              }
+            ],
+            "notes": [
+              "横轴是脚站点相对水平的倾角 θ（rad）；每只倾斜 θ 的脚贡献 sin²θ。n 是同样倾斜的脚数，默认 1（只看一只脚）。"
+            ]
+          }
+        },
+        {
+          "id": "upright",
+          "group": "B",
+          "label": "躯干直立",
+          "weight": 0.2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\lVert g_{xy}\\rVert^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.4472,
+            "σ²": 0.2
+          },
+          "desc": "躯干倾斜越小奖励越高，全程开启。",
+          "note": "相对 Velocity 大幅减弱：权重 2.0 → 0.2，σ 沿用 mjlab 默认 √0.2（Velocity 收紧到 √0.05）——下蹲时必须前倾。起身段的直立交给 return_upright。函数：mjlab.tasks.velocity.mdp.upright（rewards.py:67）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "upright"
+          }
+        },
+        {
+          "id": "body_ang_vel",
+          "group": "B",
+          "label": "躯干角速度",
+          "weight": -0.05,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\omega^{\\text{trunk}}_{xy}\\rVert^{2}",
+          "params": {
+            "body": "trunk_base"
+          },
+          "desc": "躯干角速度的 x、y 分量平方和，不罚 yaw。",
+          "note": "与 Velocity 相同（mjlab 基础配置权重为 0，这里设为 −0.05）。函数：mjlab.tasks.velocity.mdp.body_angular_velocity_penalty（rewards.py:184）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "body_ang_vel"
+          }
+        },
+        {
+          "id": "angular_momentum",
+          "group": "D",
+          "label": "角动量",
+          "weight": -0.02,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert L\\rVert^{2}",
+          "params": {
+            "sensor_name": "robot/root_angmom"
+          },
+          "desc": "全身角动量的模的平方。",
+          "note": "与 Velocity 相同。函数：mjlab.tasks.velocity.mdp.angular_momentum_penalty（rewards.py:196）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "angular_momentum"
+          }
+        },
+        {
+          "id": "soft_landing",
+          "group": "C",
+          "label": "软着陆",
+          "weight": -0.00001,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{f}\\lVert F_f\\rVert\\cdot\\mathbb{1}\\!\\left[\\text{first contact}_f\\right]\\cdot\\mathbb{1}\\!\\left[\\lVert c\\rVert>0.05\\right]",
+          "params": {
+            "sensor_name": "feet_ground_contact",
+            "command_threshold": 0.05
+          },
+          "desc": "脚刚落地的那一步按冲击力（N）罚。",
+          "note": "Velocity 删掉了这一项（microduck_velocity_env_cfg.py:317），GroundPick 保留并显式写回 mjlab 默认的 −1e-5。双脚基本不离地，很少触发。函数：mjlab.tasks.velocity.mdp.soft_landing（rewards.py:356）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "soft_landing"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\lVert F_f\\rVert",
+              "range": [
+                0,
+                30
+              ]
+            },
+            "f": "x",
+            "notes": [
+              "画的是单只脚落地那一步的值：落地冲击力（N）原样计入，是一条直线；不在落地那一步时为 0。本任务的相位指令模长恒为 1，指令门控恒为真。横轴范围只是示意。"
+            ]
+          }
+        },
+        {
+          "id": "action_rate_l2",
+          "canonical": "action_rate",
+          "group": "D",
+          "label": "动作变化率",
+          "weight": -0.8,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a_t-a_{t-1}\\rVert^{2}",
+          "desc": "相邻两步动作之差的平方和，压抖动。",
+          "note": "上游注释：拾取是慢而精细的动作，平滑正则故意比 Velocity 重；先轻后重，让大幅动作先成形。RewardTermCfg 写的是 −2.0（src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py:339），但 action_rate_weight 课程（src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py:622，mdp.reward_weight src/mjlab_microduck/tasks/mdp.py:3584，判据 common_step_counter > step，只在有环境重置时求值）在训练开始后第一次重置就改成第 0 阶段的 −0.8；iter 250 之后 −1.5，iter 500 之后 −2.0（step = iter × 24）。终值是 Velocity（−1.0）的两倍。函数：mjlab.envs.mdp.action_rate_l2（rewards.py:58）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "action_rate_l2"
+          }
+        },
+        {
+          "id": "neck_action_rate_l2",
+          "group": "D",
+          "label": "颈部动作变化率",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a^{\\text{neck}}_t-a^{\\text{neck}}_{t-1}\\rVert^{2}",
+          "params": {
+            "action_indices": "5–8"
+          },
+          "desc": "只看颈、头 4 维动作的变化率平方和。",
+          "note": "这 4 维同时也在 action_rate_l2 里，颈部抖动等于被罚两遍（合计系数 = action_rate 当前权重 − 1.0）。上游注释：头在本任务里用得很多。函数：mjlab_microduck.tasks.mdp.neck_action_rate_l2（mdp.py:437）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "neck_action_rate_l2"
+          }
+        },
+        {
+          "id": "joint_torques_l2",
+          "group": "D",
+          "label": "关节力矩",
+          "weight": -0.005,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\tau\\rVert^{2}",
+          "desc": "执行器输出力的平方和，压快而猛的动作。",
+          "note": "用的是 microduck 自己的 joint_torques_l2，不是 mjlab 同名函数（后者按 actuator_ids 取子集）。函数：mjlab_microduck.tasks.mdp.joint_torques_l2（mdp.py:1721）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "joint_torques_l2"
+          }
+        },
+        {
+          "id": "self_collisions",
+          "canonical": "self_collision",
+          "group": "E",
+          "label": "自碰撞",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "N_{\\text{self-contact}}",
+          "params": {
+            "sensor_name": "self_collision"
+          },
+          "desc": "机身子树内部这一步检测到的接触计数。",
+          "note": "与 Velocity 同一函数、同一权重。传感器没开力历史，走 found 计数分支。上游注释：深蹲时头颈可能蹭到腿。函数：mjlab.tasks.velocity.mdp.self_collision_cost（rewards.py:162）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "self_collisions"
+          }
+        },
+        {
+          "id": "head_impact_penalty",
+          "group": "E",
+          "label": "头部触地",
+          "weight": -2,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\left(\\lVert F_{\\text{neck}}\\rVert-F_{\\text{th}}\\right)_{+}",
+          "params": {
+            "threshold": 1,
+            "sensor_name": "head_impact_contact"
+          },
+          "desc": "颈/头子树压地的力超过 1 N 的部分线性罚。",
+          "note": "与 mouth_ground_proximity 对抗，定出“尽量贴近但不碰地”的平衡点；轻触（< 1 N）不罚。函数：mjlab_microduck.tasks.mdp.body_impact_cost（mdp.py:1786）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",
+            "symbol": "head_impact_penalty"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\lVert F_{\\text{neck}}\\rVert",
+              "range": [
+                0,
+                5
+              ]
+            },
+            "f": "max(0, x - th)",
+            "params": [
+              {
+                "id": "th",
+                "key": "threshold",
+                "range": [
+                  0,
+                  3
+                ]
+              }
+            ],
+            "notes": [
+              "横轴是颈/头子树压地的合力（N）。阈值以内一分不罚，超出部分线性罚。"
+            ]
+          }
+        },
+        {
+          "id": "dof_pos_limits",
+          "canonical": "joint_limit",
+          "group": "E",
+          "label": "关节软限位",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{j}\\left[(q^{\\text{lo}}_{j}-q_j)_{+}+(q_j-q^{\\text{hi}}_{j})_{+}\\right]",
+          "params": {
+            "soft_joint_pos_limit_factor": 0.9
+          },
+          "desc": "越过软限位的部分按绝对值（L1）求和，两侧都罚。",
+          "note": "GroundPick 配置没有删也没有改这一项，沿用 mjlab 基础配置的 −1.0。函数：mjlab.envs.mdp.joint_pos_limits（rewards.py:81）。",
+          "source": {
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
+            "symbol": "dof_pos_limits"
+          }
+        }
+      ]
     }
   }
 }

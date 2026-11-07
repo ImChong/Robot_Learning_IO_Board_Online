@@ -1,6 +1,7 @@
 /** 对比视图：两个项目在同一模式下的关键指标、奖励项与观测维度对照。 */
 
 import { el, clear } from "./dom.js";
+import { isReward } from "./render-rewards.js";
 
 /**
  * 对比视图：当前项目 vs 一个选定的对比对象。
@@ -261,7 +262,7 @@ function rewardTable(projects, modeId, taxonomy) {
 
   const totals = rewardsByProject.map((rewards) => ({
     count: rewards.length,
-    positive: rewards.filter((r) => r.weight > 0).reduce((s, r) => s + r.weight, 0),
+    positive: rewards.filter((r) => isReward(r) && r.weight > 0).reduce((s, r) => s + r.weight, 0),
   }));
   body.append(
     el("tr", {}, [

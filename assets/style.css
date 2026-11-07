@@ -742,9 +742,12 @@ kbd {
 
 /* ---------- 画布 ---------- */
 
+/* 宽屏上节点图占 2/3、右栏（详情 / 讲解）占 1/3：右栏要摆得下维度地图的条形图与方格，
+   固定 340px 时几十段的条形图每段只剩几个像素。窄到 1/3 不足 340px 时保底 340px，
+   再窄（≤ 1080px）就改成上下排，见下方媒体查询。 */
 .stage {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 2fr) minmax(340px, 1fr);
   gap: 16px;
   padding: 14px var(--pad-x) 0;
   align-items: start;
@@ -2144,6 +2147,202 @@ kbd {
   border-left: 2px solid var(--border-strong);
   padding-left: 9px;
 }
+/* ---------- 奖励曲线 ---------- */
+
+/* 有曲线的项：文字一栏、曲线一栏。 */
+.ri-body.has-curve {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 400px);
+  gap: 8px 22px;
+  align-items: start;
+}
+.ri-body .ri-nocurve {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+/* 曲线色 = 奖励分组色。分组色都是亮色：浅色主题下掺黑到 62%，2px 线对白底 ≥ 3.6:1；
+   深色主题直接用原色（对深底 ≥ 6:1）。 */
+.rc {
+  --rc-line: color-mix(in srgb, var(--group-color, var(--accent)) 62%, #000);
+}
+html[data-theme="dark"] .rc {
+  --rc-line: var(--group-color, var(--accent));
+}
+.rc-plot {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  touch-action: pan-y;
+}
+.rc-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.rc-zero {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+.rc-tick {
+  fill: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+}
+.rc-mark {
+  stroke: var(--text-faint);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.rc-mark-label {
+  fill: var(--text-soft);
+  font-size: 10px;
+}
+.rc-line {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.rc-line.now {
+  stroke: var(--rc-line);
+  stroke-width: 2;
+}
+.rc-line.base {
+  stroke: var(--text-faint);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.rc-hit {
+  fill: transparent;
+  cursor: crosshair;
+}
+.rc-cross {
+  stroke: var(--text-soft);
+  stroke-width: 1;
+}
+.rc-dot {
+  fill: var(--rc-line);
+  stroke: var(--bg-soft);
+  stroke-width: 2;
+}
+.rc-hover {
+  pointer-events: none;
+}
+.rc-axis {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-soft);
+  margin-top: 1px;
+}
+.rc-axis-name {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.ri-body .rc-readout {
+  margin: 2px 0 0;
+  min-height: 1.5em;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+}
+.ri-body .rc-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-soft);
+}
+.ri-body .rc-legend[hidden] {
+  display: none;
+}
+.rc-key {
+  display: inline-block;
+  width: 16px;
+  border-top: 2px solid var(--rc-line);
+}
+.rc-key.base {
+  margin-left: 8px;
+  border-top: 1.5px dashed var(--text-faint);
+}
+.rc-params {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+/* 一行一个参数：名字 | 滑块 | 当前值 | 数据值。 */
+.rc-param {
+  display: grid;
+  grid-template-columns: minmax(84px, auto) minmax(90px, 1fr) 3.6em auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.rc-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text);
+}
+.rc-name code {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rc-src {
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+.rc-param input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--rc-line);
+}
+.rc-val {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-align: right;
+  color: var(--text);
+}
+.rc-base {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.rc-reset {
+  margin-top: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.rc-reset:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.rc-reset[hidden] {
+  display: none;
+}
+.ri-body .rc-note {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-faint);
+}
+
 .reward-scale-note {
   padding: 8px var(--pad-x) 0;
   font-size: 12px;
@@ -2630,6 +2829,9 @@ table.tv caption {
   }
   .reward-item {
     padding: 11px var(--pad-x);
+  }
+  .ri-body.has-curve {
+    grid-template-columns: minmax(0, 1fr);
   }
   /* 「吃什么 / 正样本 / 网络」这些值本身就长，再挤成两列就每行两三个字。 */
   .ri-model {

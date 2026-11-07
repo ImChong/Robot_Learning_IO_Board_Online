@@ -3,7 +3,7 @@
   "name": "Spin",
   "subtitle": "原地快速旋转",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "轮滑上原地高速旋转；奖励以 spin_rate_track 等为主。",
+  "diffSummary": "轮滑上原地高速旋转；奖励以 spin_rate_track 等为主。奖励按上游 microduck_spin_env_cfg.py 逐项核对，共 14 项。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-Spin-Flat-MicroDuck",
   "links": {
@@ -19,13 +19,493 @@
       "facts": {
         "任务 ID": "Mjlab-Spin-Flat-MicroDuck",
         "碰撞模型": "robot_allcollisions_rollers.xml",
-        "任务目标": "原地旋转"
+        "任务目标": "原地旋转",
+        "奖励项": "14 项手写奖励（microduck_spin_env_cfg.py）"
       },
       "nodes": {
         "s.scene": {
           "sub": "robot_allcollisions_rollers.xml"
         }
-      }
+      },
+      "rewards-": [
+        "track_lin",
+        "track_ang",
+        "head_pose",
+        "air_time",
+        "pose",
+        "upright",
+        "foot_clear",
+        "foot_swing",
+        "foot_slip",
+        "self_col",
+        "body_ang",
+        "ang_mom",
+        "action_rate",
+        "head_bias",
+        "dof_pos_limits"
+      ],
+      "rewards+": [
+        {
+          "id": "upright",
+          "group": "B",
+          "label": "躯干直立",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\lVert g_{xy}\\rVert^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.4472,
+            "σ²": 0.2
+          },
+          "desc": "g 是躯干系下的投影重力（单位向量），‖g_xy‖ = sin(倾角)。",
+          "note": "σ² = 0.2 是 mjlab 基础配置的默认值：Spin 直接从 mjlab make_velocity_env_cfg 出发，没有用 Velocity 收紧后的 0.05，只把权重从 1.0 改成 2.0、body 设为 trunk_base。函数：mjlab upright（平地不带地形法向）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "upright"
+          }
+        },
+        {
+          "id": "body_ang_vel",
+          "group": "B",
+          "label": "躯干角速度",
+          "weight": -0.05,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\omega^{\\text{trunk}}_{xy}\\rVert^{2}",
+          "desc": "躯干角速度的 x、y 分量平方和，不罚 yaw。",
+          "note": "上游注释：只罚 x/y，所以保留它压横滚 / 俯仰的晃动，不妨碍偏航旋转（而 angular_momentum 罚三维模长，会直接对抗旋转，已删除）。函数：mjlab body_angular_velocity_penalty。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "body_ang_vel"
+          }
+        },
+        {
+          "id": "action_rate_l2",
+          "canonical": "action_rate",
+          "group": "D",
+          "label": "动作变化率",
+          "weight": -0.5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a_t-a_{t-1}\\rVert^{2}",
+          "desc": "相邻两步动作之差的平方和，压抖动。",
+          "note": "设计文档 2026-08-04-spin-env-design.md 也写作「−1.0（curriculum −0.5 → −1.0）」。函数：mjlab action_rate_l2。配置第 135 行写的是 −1.0，但课程 action_rate_weight（microduck_spin_env_cfg.py:396-406）第 0 阶段是 −0.5：reward_weight（mdp.py:3584）在 common_step_counter > 0 后的第一次 reset 就改写为 −0.5（mjlab train.py 用 init_at_random_ep_len=True，回合长度随机初始化，第一轮迭代内就有环境 reset），所以 −1.0 只作用于训练最开始的几步；iter 250 后 −0.8，iter 500 后 −1.0。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "action_rate_l2"
+          }
+        },
+        {
+          "id": "spin_rate_track",
+          "group": "A",
+          "label": "偏航角速度跟踪",
+          "weight": 6,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\left(\\omega_z-\\omega^{*}(\\phi)\\right)^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 1.5,
+            "std": 1.5,
+            "rate_max": 3,
+            "accel_end": 0.125,
+            "hold_end": 0.525,
+            "brake_end": 0.65,
+            "period_s": 4
+          },
+          "desc": "机体系偏航角速度跟随按相位生成的梯形目标 ω*(φ)：0.5 s 加速到 3 rad/s、保持 1.6 s、0.5 s 减到 0、静止 1.4 s（周期 4 s），误差过 σ = 1.5 rad/s 的高斯核。",
+          "note": "目标为正（逆时针），反向转比不动得分更低。静止段目标为 0，即要求停稳。每周期目标转角 = 2.1 × 3 ≈ 6.3 rad，约一圈。函数：microduck spin_rate_track。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "spin_rate_track"
+          }
+        },
+        {
+          "id": "spin_rate_l1",
+          "group": "A",
+          "label": "偏航角速度 L1 引导",
+          "weight": 0.5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "-\\left\\lvert\\omega_z-\\omega^{*}(\\phi)\\right\\rvert",
+          "params": {
+            "rate_max": 3,
+            "accel_end": 0.125,
+            "hold_end": 0.525,
+            "brake_end": 0.65
+          },
+          "desc": "同一目标 ω*(φ) 的绝对误差取负，整个周期都生效。",
+          "note": "上游注释：高斯核离目标远时饱和、梯度消失，这一项给恒定梯度做引导。函数：microduck spin_rate_l1。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "spin_rate_l1"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\omega_z-\\omega^{*}(\\phi)",
+              "range": [
+                -6,
+                6
+              ]
+            },
+            "f": "-abs(x)",
+            "notes": [
+              "横轴是偏航角速度误差（rad/s）；L1 在任何误差下斜率都是 1，不像高斯核那样离目标远时饱和。±6 rad/s 只是示意（目标最大 3 rad/s）。"
+            ]
+          }
+        },
+        {
+          "id": "spin_stay_in_place",
+          "group": "A",
+          "label": "原地旋转（躯干平移）",
+          "weight": -3,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert v_{xy}\\rVert^{2}\\cdot\\left(s\\,\\mathbb{1}[\\phi<\\phi_{a}]+\\mathbb{1}[\\phi\\ge\\phi_{a}]\\right)",
+          "params": {
+            "launch_scale": 0.2,
+            "accel_end": 0.125
+          },
+          "desc": "躯干水平线速度的平方：要原地转、不要平移，也要把入场时带的前冲（0–0.3 m/s）消掉。",
+          "note": "权重从 −1.0 加到 −3.0：上游 500 iter 标定 run 里躯干以 ~0.35 m/s 平移（≈ ω × 半轮距），是绕单只脚转而不是绕躯干转，上游说这是唯一能区分两者的项。加速段只罚 0.2 倍，因为此时要蹬地注入角动量、把入场前冲转成旋转。函数：microduck spin_stay_in_place。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "spin_stay_in_place"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\lVert v_{xy}\\rVert",
+              "range": [
+                0,
+                0.5
+              ]
+            },
+            "f": "x*x*(L>=0.5?s:1)",
+            "params": [
+              {
+                "id": "s",
+                "key": "launch_scale",
+                "range": [
+                  0.05,
+                  1
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "L",
+                "tex": "\\mathbb{1}[\\phi<\\phi_{a}]",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 0
+              }
+            ],
+            "notes": [
+              "横轴是躯干水平速度（m/s），0.5 只是示意（入场速度最多 0.3 m/s）。L 是「是否在加速段」的开关（0 或 1，拖过 0.5 即切换）：加速段只罚 s = 0.2 倍。"
+            ]
+          }
+        },
+        {
+          "id": "spin_wheel_differential",
+          "group": "C",
+          "label": "左右轮速差引导",
+          "weight": 1,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "g(\\phi)\\cdot\\tanh\\!\\left(\\max(\\omega_R-\\omega_L,0)/\\Omega\\right)",
+          "params": {
+            "omega_scale": 17,
+            "rate_max": 3,
+            "accel_end": 0.125,
+            "hold_end": 0.525,
+            "brake_end": 0.65
+          },
+          "desc": "逆时针原地转时左侧轮组后滚、右侧前滚：奖励右减左的轮速差，tanh 在 Ω = 17 rad/s 附近饱和，只在包络非零的加速 / 保持 / 减速段生效。",
+          "note": "上游称「引导 1」：要它靠滚动转，而不是靠打滑转。Ω = 2 × 3 rad/s × 半轮距 0.0499 m / 轮半径 0.0175 m ≈ 17.1；旧目标 6 rad/s 时是 34，不改的话这一项最多只拿到 tanh(17/34) ≈ 0.47。函数：microduck spin_wheel_differential。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "spin_wheel_differential"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\omega_R-\\omega_L",
+              "range": [
+                -20,
+                60
+              ]
+            },
+            "f": "g*tanh(max(x,0)/W)",
+            "params": [
+              {
+                "id": "W",
+                "key": "omega_scale",
+                "range": [
+                  4.25,
+                  68
+                ],
+                "log": true
+              }
+            ],
+            "held": [
+              {
+                "id": "g",
+                "tex": "g(\\phi)",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴是右侧与左侧轮组平均轮速之差（rad/s）；差为负（转反了）不罚，只是不给分。g 是相位包络，默认 1（保持段）。"
+            ]
+          }
+        },
+        {
+          "id": "leg_antisymmetry",
+          "group": "C",
+          "label": "剪刀腿引导",
+          "weight": 1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "-g(\\phi)\\cdot\\frac{1}{2}\\sum_{j}\\left\\lvert q^{L}_{j}-q^{R}_{j}\\right\\rvert",
+          "params": {
+            "joint_bases": "hip_pitch, knee",
+            "rate_max": 3,
+            "accel_end": 0.125,
+            "hold_end": 0.525,
+            "brake_end": 0.65
+          },
+          "desc": "髋俯仰与膝的左右原始关节角之差的绝对值取均值、取负，再乘相位包络 g(φ)。左右关节符号互为镜像，上游据此认为 q_L ≈ q_R 就是「一前一后」的剪刀姿态。",
+          "note": "上游称「引导 2」，靠课程逐步减弱，让策略之后自己调动作。按代码：因为符号镜像，|q_L − q_R| 等于两腿物理屈曲量之和的绝对值，罚的是两腿同向屈曲的分量（以关节零位为基准，不是 HOME），对剪刀幅度本身不敏感：绕 HOME 一前一后对称摆动，这一项不变。函数：microduck leg_antisymmetry。课程 leg_antisym_weight（microduck_spin_env_cfg.py:409-419）：0 阶段 1.0，iter 1500 后 0.5，iter 3000 后 0.25（reward_weight 在 common_step_counter > step 后的首次 reset 时改写）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "leg_antisymmetry"
+          },
+          "curve": {
+            "x": {
+              "tex": "q^{L}_{j}-q^{R}_{j}",
+              "range": [
+                -1.5,
+                1.5
+              ]
+            },
+            "f": "-g*abs(x)",
+            "held": [
+              {
+                "id": "g",
+                "tex": "g(\\phi)",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴取 hip_pitch 与 knee 两个关节的左右原始角差相同时的值，于是两者的均值就是 |x|。HOME 站姿下 hip_pitch 左右为 −0.458 / +0.458（差 0.916），knee 差约 0.01，站着不动时这一项约 −0.46·g。"
+            ]
+          }
+        },
+        {
+          "id": "spin_grounded",
+          "group": "C",
+          "label": "双脚着地",
+          "weight": 0.5,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "g(\\phi)\\cdot\\mathbb{1}\\!\\left[N_{\\text{contact}}\\ge 2\\right]",
+          "params": {
+            "sensor_name": "feet_ground_contact",
+            "rate_max": 3,
+            "accel_end": 0.125,
+            "hold_end": 0.525,
+            "brake_end": 0.65
+          },
+          "desc": "加速 / 保持 / 减速段两只脚（含轮组）都触地时给分，按相位包络加权：不许跳起来在空中拧。",
+          "note": "静止段包络为 0，这一项不管。swizzle 的 grounded_reward 按 cmd_x 加权，在相位指令下 cmd_x = cos 2πφ，不能复用，所以另写。函数：microduck spin_grounded。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "spin_grounded"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\phi",
+              "range": [
+                0,
+                1
+              ]
+            },
+            "f": "(B>=0.5?1:0)*(x<a ? x/a : x<h ? 1 : x<b ? 1-(x-h)/(b-h) : 0)",
+            "params": [
+              {
+                "id": "a",
+                "key": "accel_end",
+                "range": [
+                  0.02,
+                  0.4
+                ]
+              },
+              {
+                "id": "h",
+                "key": "hold_end",
+                "range": [
+                  0.2,
+                  0.8
+                ]
+              },
+              {
+                "id": "b",
+                "key": "brake_end",
+                "range": [
+                  0.3,
+                  1
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "B",
+                "tex": "\\mathbb{1}[N_{\\text{contact}}\\ge 2]",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴是相位 φ（一个 4 s 周期）。两脚都着地（B = 1）时奖励就是包络 g(φ)：加速段线性升到 1、保持段为 1、减速段降回 0、静止段为 0。B 是开关（0 或 1）。三个相位端点要满足 a < h < b。"
+            ]
+          }
+        },
+        {
+          "id": "feet_flat",
+          "group": "C",
+          "label": "着地脚放平",
+          "weight": -2,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{f}\\lVert g^{f}_{xy}\\rVert^{2}\\cdot\\mathbb{1}\\!\\left[\\text{contact}_f\\right]",
+          "params": {
+            "sites": "left_foot, right_foot",
+            "sensor_name": "feet_ground_contact"
+          },
+          "desc": "着地的脚（刀片 + 轮组）相对地面的倾斜：把重力投到脚 site 坐标系，罚 xy 分量的平方；离地的脚不管。",
+          "note": "上游注释归为「稳定 / sim2real」。docstring 写「每只脚最大约 2.0」，按代码（单位重力向量 xy 分量平方和）每只脚最大是 1.0。函数：microduck feet_flat_penalty（传了 sensor_name，按每只脚自己的接触门控）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "feet_flat"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\theta_f",
+              "range": [
+                0,
+                1.5708
+              ]
+            },
+            "f": "c*sin(x)^2",
+            "held": [
+              {
+                "id": "c",
+                "tex": "\\mathbb{1}[\\text{contact}_f]",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "画的是单只脚：横轴是脚 site 的倾角 θ（rad），‖g_xy‖² = sin²θ。腾空的脚（c = 0）不罚。"
+            ]
+          }
+        },
+        {
+          "id": "self_collisions",
+          "canonical": "self_collision",
+          "group": "E",
+          "label": "自碰撞",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "N_{\\text{self-contact}}",
+          "params": {
+            "sensor_name": "self_collision"
+          },
+          "desc": "自碰撞传感器（trunk_base 子树内部接触）这一步检测到的接触计数。",
+          "note": "权重与 Velocity 相同。函数：mjlab self_collision_cost。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "self_collisions"
+          }
+        },
+        {
+          "id": "neck_action_rate_l2",
+          "group": "D",
+          "label": "颈部动作变化率",
+          "weight": -0.5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a^{\\text{neck}}_t-a^{\\text{neck}}_{t-1}\\rVert^{2}",
+          "desc": "颈 / 头 4 个关节的动作变化率平方和。",
+          "note": "在全身 action_rate_l2 之外再单独压一次头部抖动。函数：microduck neck_action_rate_l2。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "neck_action_rate_l2"
+          }
+        },
+        {
+          "id": "neck_joint_pos_l2",
+          "group": "B",
+          "label": "颈部回中",
+          "weight": -0.2,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert q^{\\text{neck}}-q^{\\text{neck}}_{0}\\rVert^{2}",
+          "params": {
+            "pattern": "^(neck_pitch|head_pitch|head_roll)$"
+          },
+          "desc": "颈俯仰、头俯仰、头横滚三个关节偏离默认位置的平方和。",
+          "note": "head_yaw 特意排除：上游注释说头的偏航可以当飞轮帮助起转。函数：microduck neck_joint_pos_l2（pattern 参数）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "neck_joint_pos_l2"
+          }
+        },
+        {
+          "id": "joint_torques_l2",
+          "group": "D",
+          "label": "关节力矩",
+          "weight": -0.001,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\tau\\rVert^{2}",
+          "desc": "14 个执行器输出力矩的平方和，鼓励省力。",
+          "note": "函数：microduck joint_torques_l2（不是 mjlab 的同名函数）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_spin_env_cfg.py",
+            "symbol": "joint_torques_l2"
+          }
+        }
+      ]
     }
   }
 }

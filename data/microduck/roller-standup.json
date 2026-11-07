@@ -3,7 +3,7 @@
   "name": "RollerStandUp",
   "subtitle": "地上站起到轮滑姿态",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "从地面在轮滑鞋上站起；专用站起策略。",
+  "diffSummary": "从地面在轮滑鞋上站起；专用站起策略。奖励按上游 microduck_roller_standup_env_cfg.py 逐项核对，共 19 项。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-RollerStandUp-Flat-MicroDuck",
   "links": {
@@ -19,13 +19,625 @@
       "facts": {
         "任务 ID": "Mjlab-RollerStandUp-Flat-MicroDuck",
         "碰撞模型": "robot_allcollisions_rollers.xml",
-        "任务目标": "轮滑站起"
+        "任务目标": "轮滑站起",
+        "奖励项": "19 项手写奖励（microduck_roller_standup_env_cfg.py）"
       },
       "nodes": {
         "s.scene": {
           "sub": "robot_allcollisions_rollers.xml"
         }
-      }
+      },
+      "rewards-": [
+        "track_lin",
+        "track_ang",
+        "head_pose",
+        "air_time",
+        "pose",
+        "upright",
+        "foot_clear",
+        "foot_swing",
+        "foot_slip",
+        "self_col",
+        "body_ang",
+        "ang_mom",
+        "action_rate",
+        "head_bias",
+        "dof_pos_limits"
+      ],
+      "rewards+": [
+        {
+          "id": "pose_stand_legs",
+          "group": "B",
+          "label": "腿部站姿",
+          "weight": 8,
+          "direction": "positive",
+          "confidence": "inferred",
+          "form": "\\frac{1}{10}\\sum_{j=1}^{10}\\exp\\!\\left(-e_j^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.5,
+            "std": 0.5,
+            "joint_indices": "[0, 1, 2, 3, 4, 11, 12, 13, 14, 15]（意图：10 个腿关节）",
+            "target_overrides": "None（目标 = HOME）"
+          },
+          "desc": "腿关节相对 HOME 站姿的误差各过 σ = 0.5 rad 的高斯核再取均值；颈与头不在这里，由 neck_joint_pos_l2 负责。",
+          "note": "上游注释：趴着时腿也能摆在 HOME，这一项几乎白拿（实测 +7.72/8），要靠 height_stand_l1 让“留在地上”净为负。mdp.py 里 pose_target_match 定义了两次（:2201 与 :2538），导入后生效的是后者，两者公式相同。⚠ joint_indices = [0–4, 11–15] 是按含被动轮的 18 关节顺序写的（cfg:94-109，test_roller_standup_cfg.py:122 也按这个顺序验证），但 HEAD 的函数先取 _servo_joint_pos（mdp.py:191，去掉 passive_* 后只剩 14 列）再按这组下标索引：11–13 落到 right_hip_pitch / right_knee / right_ankle，14、15 越界。函数：mjlab_microduck.tasks.mdp.pose_target_match（mdp.py:2538）。推断（只读代码、没跑过）：越界的下标会让训练在第一次算奖励时就报错，这一项按配置注释的本意（10 个腿关节、目标 HOME）画。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
+            "symbol": "pose_stand_legs"
+          }
+        },
+        {
+          "id": "pose_stand_l1",
+          "group": "B",
+          "label": "腿部站姿 L1",
+          "weight": 5,
+          "direction": "negative",
+          "confidence": "inferred",
+          "form": "-\\frac{1}{10}\\sum_{j=1}^{10}\\left\\lvert e_j\\right\\rvert",
+          "params": {
+            "joint_indices": "[0, 1, 2, 3, 4, 11, 12, 13, 14, 15]（意图：10 个腿关节）",
+            "target_overrides": "None（目标 = HOME）"
+          },
+          "desc": "腿关节到 HOME 的平均绝对误差取负：L1 梯度恒定，离 HOME 很远时也有拉力。",
+          "note": "上游注释：L1 启动项，高斯核饱和时仍有梯度。⚠ 函数返回值 ≤ 0、权重为正，实际是惩罚。⚠ joint_indices = [0–4, 11–15] 是按含被动轮的 18 关节顺序写的（cfg:94-109，test_roller_standup_cfg.py:122 也按这个顺序验证），但 HEAD 的函数先取 _servo_joint_pos（mdp.py:191，去掉 passive_* 后只剩 14 列）再按这组下标索引：11–13 落到 right_hip_pitch / right_knee / right_ankle，14、15 越界。函数：mjlab_microduck.tasks.mdp.pose_l1_penalty（mdp.py:2563）。推断（只读代码、没跑过）：越界的下标会让训练在第一次算奖励时就报错，这一项按配置注释的本意（10 个腿关节、目标 HOME）画。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
+            "symbol": "pose_stand_l1"
+          }
+        },
+        {
+          "id": "height_stand",
+          "group": "A",
+          "label": "躯干高度（宽）",
+          "weight": 4,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-(z-z^{*})^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.04,
+            "std": 0.04,
+            "target_height": 0.138
+          },
+          "desc": "躯干高度靠近站立高度 0.138 m 的宽高斯（σ = 4 cm），从地面附近就开始有梯度。",
+          "note": "上游注释：高度分三层——宽高斯把机器人从地上拉起，窄高斯管最后几厘米，L1 让留在地上净为负。0.138 m 是带轮模型的站立高度（无轮 standup 用 0.115）。函数：mjlab_microduck.tasks.mdp.height_target_gaussian（mdp.py:2582）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
+            "symbol": "height_stand"
+          }
+        },
+        {
+          "id": "height_stand_sharp",
+          "group": "A",
+          "label": "躯干高度（窄）",
+          "weight": 4,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-(z-z^{*})^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.015,
+            "std": 0.015,
+            "target_height": 0.138
+          },
+          "desc": "同一高度目标的窄高斯（σ = 1.5 cm），在宽高斯已饱和的最后几厘米继续拉。",
+          "note": "与 height_stand 同一个函数，只换 σ。函数：mjlab_microduck.tasks.mdp.height_target_gaussian（mdp.py:2582）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
+            "symbol": "height_stand_sharp"
+          }
+        },
+        {
+          "id": "height_stand_l1",
+          "group": "A",
+          "label": "躯干高度 L1",
+          "weight": 30,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "-\\left\\lvert z-z^{*}\\right\\rvert",
+          "params": {
+            "target_height": 0.138
+          },
+          "desc": "躯干高度与 0.138 m 之差的绝对值取负、权重 30：离站立高度越远扣得越多，梯度处处恒定。",
+          "note": "上游注释：这一项要让“静止躺在地上”这个懒惰最优净为负；上游测试锁定权重 ≥ 30。⚠ 函数返回值 ≤ 0、权重为正，实际是惩罚。函数：mjlab_microduck.tasks.mdp.height_l1_penalty（mdp.py:2596）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
+            "symbol": "height_stand_l1"
+          },
+          "curve": {
+            "x": {
+              "tex": "z",
+              "range": [
+                0.03,
+                0.2
+              ]
+            },
+            "f": "-abs(x - zt)",
+            "params": [
+              {
+                "id": "zt",
+                "key": "target_height",
+                "range": [
+                  0.05,
+                  0.2
+                ]
+              }
+            ],
+            "notes": [
+              "横轴是躯干高度 z（m）；函数返回 −|z − z*|，斜率恒定。趴着（z ≈ 0.075 m）每步约 −0.063，乘权重 30 约 −1.9；仰躺（z ≈ 0.048 m）约 −2.7。"
+            ]
+          }
+        },
+        {
+          "id": "com_upward_velocity",
+          "group": "A",
+          "label": "向上速度",
+          "weight": 3,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\max(v_z,\\,0)\\cdot\\mathbb{1}\\!\\left[z<z_{\\max}\\right]",
+          "params": {
+            "max_height": 0.148
+          },
+          "desc": "躯干还没到 0.148 m 时，按向上的竖直速度给奖励：奖励起身的过程，而不只是终点。",
+          "note": "上游注释：不奖励过程的话，“坐着拿部分姿态分”会占优；截止高度设在目标上方 10 mm（0.138 + 0.010），否则策略会停在截止高度不再往上。函数：mjlab_microduck.tasks.mdp.com_upward_velocity（mdp.py:1042）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
+            "symbol": "com_upward_velocity"
+          },
+          "curve": {
+            "x": {
+              "tex": "v_z",
+              "range": [
+                -0.2,
+                0.5
+              ]
+            },
+            "f": "(z < zmax ? max(x, 0) : 0)",
+            "params": [
+              {
+                "id": "zmax",
+                "key": "max_height",
+                "range": [
+                  0.08,
+                  0.2
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "z",
+                "tex": "z",
+                "range": [
+                  0.03,
+                  0.2
+                ],
+                "value": 0.1
+              }
+            ],
+            "notes": [
+              "横轴是躯干竖直速度 v_z（m/s，世界系）；躯干高度 z 用滑块固定，默认 0.1 m（在截止高度之下）。z ≥ z_max 时整项为 0；不封顶，向上越快给得越多。"
+            ]
+          }
+        },
+        {
+          "id": "gentle_rise",
+          "group": "D",
+          "label": "平缓起身",
+          "weight": 0.02,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "-\\left\\lvert\\frac{v_{z,t}-v_{z,t-1}}{\\Delta t}\\right\\rvert",
+          "params": {
+            "step_dt_s": 0.02
+          },
+          "desc": "罚躯干竖直加速度的绝对值，偏好匀速、平缓地起身；静止或匀速上升时为 0。",
+          "note": "上游修过符号：函数已返回 −|a_z|，从 standup 继承的 −0.02 是双重负号，实际在奖励猛烈起身（run vweolw91 记到 Episode_Reward/gentle_rise = +0.0118），现改为 +0.02。幅度故意很小：从背面翻身时 |a_z| 必然大；真正的阻尼交给 joint_torque_rate_l2。⚠ 函数返回值 ≤ 0、权重为正，实际是惩罚。函数：mjlab_microduck.tasks.mdp.trunk_vertical_accel_penalty（mdp.py:2609）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
+            "symbol": "gentle_rise"
+          },
+          "curve": {
+            "x": {
+              "tex": "a_z",
+              "range": [
+                -10,
+                10
+              ]
+            },
+            "f": "-abs(x)",
+            "notes": [
+              "横轴是躯干竖直加速度 a_z（m/s²，相邻两步竖直速度差分）；函数返回 −|a_z|，所以配置用正权重。没有可调参数定尺度，横轴范围只是示意。"
+            ]
+          }
+        },
+        {
+          "id": "upright_linear",
+          "group": "B",
+          "label": "直立（线性）",
+          "weight": 6,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "1-2\\left(q_x^{2}+q_y^{2}\\right)",
+          "desc": "躯干直立程度取 cos(倾角)：趴着或仰面时也有梯度，告诉策略往竖直方向转。",
+          "note": "上游注释：cos(tilt) 在躺着时梯度大、接近竖直时变弱，所以再配一个高度门控的窄高斯 upright_sharp。两者一起替代了 Rollers 的 upright（mjlab 高斯，已删）。函数：mjlab_microduck.tasks.mdp.body_upright_linear（mdp.py:825）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
+            "symbol": "upright_linear"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\theta",
+              "range": [
+                0,
+                3.1416
+              ]
+            },
+            "f": "cos(x)",
+            "notes": [
+              "横轴是躯干倾角 θ（rad）：1 − 2(q_x² + q_y²) 恰好等于 cos θ。直立附近梯度 sin θ 趋于 0，由 upright_sharp 补上。"
+            ]
+          }
+        },
+        {
+          "id": "upright_sharp",
+          "group": "B",
+          "label": "直立（高度门控）",
+          "weight": 6,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-(1-\\cos\\theta)/\\sigma^{2}\\right)\\cdot S\\!\\left(\\frac{z-z_{\\text{lo}}}{z_{\\text{hi}}-z_{\\text{lo}}}\\right)",
+          "params": {
+            "σ": 0.3,
+            "std": 0.3,
+            "height_low": 0.075,
+            "height_high": 0.138
+          },
+          "desc": "躯干接近竖直的窄高斯，乘以按躯干高度的 smoothstep 门控：只有站到足够高时才奖励“真正竖直”。",
+          "note": "上游注释：专门压制 standup 的失败模式——伸直腿时向后仰；高度门控防止“蹲低但竖直”的局部最优白拿这一项。height_low = 0.075 是趴着的静止高度，height_high = 0.138 是站立高度。函数：mjlab_microduck.tasks.mdp.upright_gaussian_at_height（mdp.py:876）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
+            "symbol": "upright_sharp"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\theta",
+              "range": [
+                0,
+                1.5708
+              ]
+            },
+            "f": "exp(-(1 - cos(x)) / (s * s)) * min(1, max(0, (z - zlo) / (zhi - zlo))) ^ 2 * (3 - 2 * min(1, max(0, (z - zlo) / (zhi - zlo))))",
+            "params": [
+              {
+                "id": "s",
+                "key": "std",
+                "range": [
+                  0.075,
+                  1.2
+                ],
+                "log": true
+              },
+              {
+                "id": "zlo",
+                "key": "height_low",
+                "range": [
+                  0.03,
+                  0.12
+                ]
+              },
+              {
+                "id": "zhi",
+                "key": "height_high",
+                "range": [
+                  0.08,
+                  0.2
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "z",
+                "tex": "z",
+                "range": [
+                  0.03,
+                  0.2
+                ],
+                "value": 0.138
+              }
+            ],
+            "notes": [
+              "横轴是躯干倾角 θ（rad），2(q_x² + q_y²) = 1 − cos θ；躯干高度 z 用滑块固定，默认 0.138 m（门控取满）。z 降到 z_lo 以下整项为 0。小角度时 1 − cos θ ≈ θ²/2，相当于对 θ 的 σ ≈ 0.42 rad。"
+            ]
+          }
+        },
+        {
+          "id": "standing_composite",
+          "group": "A",
+          "label": "站立综合分",
+          "weight": 15,
+          "direction": "positive",
+          "confidence": "inferred",
+          "form": "\\exp\\!\\left(-\\frac{(z-z^{*})^{2}}{\\sigma_h^{2}}\\right)\\cdot\\exp\\!\\left(-\\frac{1-\\cos\\theta}{\\sigma_u^{2}}\\right)\\cdot\\exp\\!\\left(-\\frac{1}{10}\\sum_{j}\\frac{e_j^{2}}{\\sigma_p^{2}}\\right)",
+          "params": {
+            "target_height": 0.138,
+            "height_std": 0.04,
+            "upright_std": 0.4,
+            "pose_std": 0.4,
+            "joint_indices": "[0, 1, 2, 3, 4, 11, 12, 13, 14, 15]（意图：10 个腿关节）",
+            "target_overrides": "None（目标 = HOME）"
+          },
+          "desc": "高度、直立、腿部姿态三个高斯相乘的综合分：三项必须同时达标才拿得到，打破“高度对了但躯干歪着”这类加法奖励允许的折中。",
+          "note": "上游注释：σ 故意放宽（高度 4 cm、直立 0.4、姿态 0.4 rad），起身途中也有可见梯度；之前用窄 σ 时分数约 5e-5，等于没有梯度。直立因子里 2(q_x² + q_y²) = 1 − cos θ，e⁻¹ 点约在 θ ≈ 33°。⚠ joint_indices = [0–4, 11–15] 是按含被动轮的 18 关节顺序写的（cfg:94-109，test_roller_standup_cfg.py:122 也按这个顺序验证），但 HEAD 的函数先取 _servo_joint_pos（mdp.py:191，去掉 passive_* 后只剩 14 列）再按这组下标索引：11–13 落到 right_hip_pitch / right_knee / right_ankle，14、15 越界。函数：mjlab_microduck.tasks.mdp.standing_composite_score（mdp.py:952）。推断（只读代码、没跑过）：越界的下标会让训练在第一次算奖励时就报错，这一项按配置注释的本意（10 个腿关节、目标 HOME）画。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
+            "symbol": "standing_composite"
+          },
+          "curve": {
+            "x": {
+              "tex": "z",
+              "range": [
+                0.03,
+                0.2
+              ]
+            },
+            "f": "exp(-(((x - zt) / sh) ^ 2)) * exp(-(1 - cos(th)) / (su * su)) * exp(-(e * e) / (sp * sp))",
+            "params": [
+              {
+                "id": "zt",
+                "key": "target_height",
+                "range": [
+                  0.08,
+                  0.2
+                ]
+              },
+              {
+                "id": "sh",
+                "key": "height_std",
+                "range": [
+                  0.01,
+                  0.16
+                ],
+                "log": true
+              },
+              {
+                "id": "su",
+                "key": "upright_std",
+                "range": [
+                  0.1,
+                  1.6
+                ],
+                "log": true
+              },
+              {
+                "id": "sp",
+                "key": "pose_std",
+                "range": [
+                  0.1,
+                  1.6
+                ],
+                "log": true
+              }
+            ],
+            "held": [
+              {
+                "id": "th",
+                "tex": "\\theta",
+                "range": [
+                  0,
+                  1.5708
+                ],
+                "value": 0
+              },
+              {
+                "id": "e",
+                "tex": "e_{\\text{rms}}",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 0
+              }
+            ],
+            "notes": [
+              "横轴是躯干高度 z（m）；躯干倾角 θ 与腿关节的均方根误差 e_rms 用滑块固定，默认都为 0（只看高度因子）。三个因子相乘：任何一个掉到 0，整项就是 0。"
+            ]
+          }
+        },
+        {
+          "id": "joint_torque_rate_l2",
+          "group": "D",
+          "label": "力矩变化率",
+          "weight": -0.2,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\tau_t-\\tau_{t-1}\\rVert^{2}",
+          "desc": "罚相邻两步执行器力矩的变化量平方和：压抖动，但不罚力矩大小，也不罚躯干转动。",
+          "note": "上游注释：standup 认定这是唯一不会冻住“从背面起身”的阻尼项。继承值 −2e-3 每步只贡献约 −0.0002（相对约 +41.6 的任务奖励等于没有）；−2.0 实测约 −0.255/步；现取 −0.2，好单独观察 gentle_rise 修符号的效果。函数：mjlab_microduck.tasks.mdp.joint_torque_rate_l2（mdp.py:1743）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
+            "symbol": "joint_torque_rate_l2"
+          }
+        },
+        {
+          "id": "body_ang_vel",
+          "group": "B",
+          "label": "躯干角速度",
+          "weight": -0.05,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\omega^{\\text{trunk}}_{xy}\\rVert^{2}",
+          "desc": "躯干角速度的 x、y 分量平方和，不罚 yaw。",
+          "note": "继承自 Rollers（cfg:184–185），RollerStandUp 未改；上游测试锁定 −0.05（standup 记录到 −0.15 时会冻住起身）。函数：mjlab body_angular_velocity_penalty（基础权重 0.0，由任务覆盖）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "body_ang_vel"
+          }
+        },
+        {
+          "id": "angular_momentum",
+          "group": "D",
+          "label": "角动量",
+          "weight": -0.02,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert L\\rVert^{2}",
+          "params": {
+            "sensor_name": "robot/root_angmom"
+          },
+          "desc": "全身角动量的模的平方。",
+          "note": "继承自 Rollers，未改。函数：mjlab angular_momentum_penalty。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "angular_momentum"
+          }
+        },
+        {
+          "id": "action_rate_l2",
+          "canonical": "action_rate",
+          "group": "D",
+          "label": "动作变化率",
+          "weight": -0.4,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a_t-a_{t-1}\\rVert^{2}",
+          "desc": "相邻两步动作之差的平方和，压抖动。",
+          "note": "上游注释：Rollers 的课程升到 −2.0，是“运动阻断项”，会拖慢从背面起身需要的快动作，所以换成 standup 的课程（封顶 −1.0）；平滑主要交给 joint_torque_rate_l2。函数：mjlab action_rate_l2。RewardTermCfg 在 microduck_roller_standup_env_cfg.py:476 设为 −0.6，但同文件 :477–487 的 action_rate_weight 课程（覆盖 Rollers 的同名课程，函数 mdp.reward_weight，mdp.py:3584）在第一次 env reset（common_step_counter > 0）就写入第 0 阶段的 −0.4；iter 250（step > 250×24）→ −0.8，iter 500（step > 500×24）→ −1.0。课程只在 reset 时执行，判断是严格大于。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
+            "symbol": "action_rate_l2"
+          }
+        },
+        {
+          "id": "self_collisions",
+          "canonical": "self_collision",
+          "group": "E",
+          "label": "自碰撞",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "N_{\\text{self-contact}}",
+          "params": {
+            "sensor_name": "self_collision"
+          },
+          "desc": "自碰撞传感器这一步检测到的接触计数。",
+          "note": "继承自 Rollers（cfg:194–198），未改；带轮模型 collisions=()，实际能产生哪些自接触未编译模型核实。函数：mjlab self_collision_cost（force_threshold 只在有力历史时使用，这里不起作用）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "self_collisions"
+          }
+        },
+        {
+          "id": "neck_action_rate_l2",
+          "group": "D",
+          "label": "颈部动作变化率",
+          "weight": -0.5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a^{\\text{neck}}_{t}-a^{\\text{neck}}_{t-1}\\rVert^{2}",
+          "params": {
+            "action_indices": "5–8（neck_pitch, head_pitch, head_yaw, head_roll）"
+          },
+          "desc": "只看颈 / 头 4 维动作的相邻两步差的平方和，单独加重对头部抖动的惩罚。",
+          "note": "继承自 Rollers（cfg:211–213），未改。与 action_rate_l2 叠加：这 4 维动作的变化会被罚两次。函数：mjlab_microduck.tasks.mdp.neck_action_rate_l2（mdp.py:437）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "neck_action_rate_l2"
+          }
+        },
+        {
+          "id": "neck_joint_pos_l2",
+          "group": "B",
+          "label": "颈部回中",
+          "weight": -0.5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert q^{\\text{neck}}-q^{\\text{neck}}_{\\text{home}}\\rVert^{2}",
+          "params": {
+            "pattern": "^(?!passive_).*(neck|head).*"
+          },
+          "desc": "颈 / 头 4 个关节偏离 HOME 的平方和：没有头姿指令，头就保持在默认位置。",
+          "note": "继承自 Rollers（cfg:214–216），未改。上游注释：roller 系列没有 head_pose 指令（头 / 身体指令槽补零），头部由这一项按名字扶正，所以不受被动轮插在关节顺序里的影响。函数：mjlab_microduck.tasks.mdp.neck_joint_pos_l2（mdp.py:1697）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "neck_joint_pos_l2"
+          }
+        },
+        {
+          "id": "joint_torques_l2",
+          "group": "D",
+          "label": "关节力矩",
+          "weight": -0.001,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\tau\\rVert^{2}",
+          "desc": "全部执行器输出力矩的平方和，鼓励省力。",
+          "note": "继承自 Rollers（cfg:217–219），未改。注意是 microduck 自己的 joint_torques_l2（mdp.py），不是 mjlab envs/mdp 里的同名函数（后者按 asset_cfg.actuator_ids 取子集）。函数：mjlab_microduck.tasks.mdp.joint_torques_l2（mdp.py:1721）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "joint_torques_l2"
+          }
+        },
+        {
+          "id": "action_over_limit",
+          "group": "E",
+          "label": "指令越限",
+          "weight": -0.5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{i}\\left[\\max(0,\\,u_i-q^{\\text{hi}}_i-\\delta)+\\max(0,\\,q^{\\text{lo}}_i-\\delta-u_i)\\right]",
+          "params": {
+            "overshoot": 0.3,
+            "action_name": "joint_pos"
+          },
+          "desc": "罚策略把关节目标角指令到硬限位之外 0.3 rad 以上：只看指令，关节仍可用满全行程。",
+          "note": "继承自 Rollers（cfg:226–230），未改。上游注释：hip_roll 硬限位 ±0.38 rad 而 ctrlrange 有 ±10 rad，低 kp 舵机会被指令远超限位去撞止挡，这是仿真独有的技巧；不在环境侧裁剪动作，是为了和部署端（infer_policy.py 不裁剪）一致。函数：mjlab_microduck.tasks.mdp.action_over_limit_penalty（mdp.py:5152）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "action_over_limit"
+          },
+          "curve": {
+            "x": {
+              "tex": "u_i-q^{\\text{hi}}_i",
+              "range": [
+                -0.3,
+                1
+              ]
+            },
+            "f": "max(0, x - d)",
+            "params": [
+              {
+                "id": "d",
+                "key": "overshoot",
+                "range": [
+                  0,
+                  0.6
+                ]
+              }
+            ],
+            "notes": [
+              "画的是单个关节、指令越过上限一侧的贡献：横轴是目标角超出硬上限的量（rad），超出不到 δ 不罚，再往外按距离线性罚；下限一侧对称。"
+            ]
+          }
+        }
+      ]
     }
   }
 }

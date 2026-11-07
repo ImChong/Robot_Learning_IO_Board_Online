@@ -15,6 +15,7 @@ import { dirname, join } from "node:path";
 import { isInherited, mergeProject } from "../src/inherit.js";
 import { buildTour } from "../src/tour.js";
 import { buildIndexMap, concatSources, namedCount } from "../src/index-map.js";
+import { curveFor, defaults, sample, undefinedInCurve } from "../src/reward-curve.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DATA = join(ROOT, "data");
@@ -24,6 +25,7 @@ const warnings = [];
 
 const fail = (where, msg) => errors.push(`${where}: ${msg}`);
 const indexStats = { vectors: 0, indices: 0, named: 0 };
+const curveStats = { curve: 0, none: 0, formless: 0 };
 const warn = (where, msg) => warnings.push(`${where}: ${msg}`);
 
 const readJson = async (name) => JSON.parse(await readFile(join(DATA, name), "utf8"));
@@ -186,8 +188,16 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
     if (reward.direction === "positive" && reward.weight < 0) {
       fail(at, `标为 positive 但权重是 ${reward.weight}`);
     }
-    if (reward.direction === "negative" && reward.weight > 0) {
-      fail(at, `标为 negative 但权重是 ${reward.weight}`);
+    // 惩罚也可以写成「函数取负值 × 正权重」（Microduck 坐站任务的写法），这时 form 必须以负号开头，
+    // 读者从公式上看得出它是负的。
+    const negativeForm = /^\s*-/.test(reward.form ?? "");
+    if (reward.direction === "negative" && reward.weight > 0 && !negativeForm) {
+      fail(at, `标为 negative 但权重是 ${reward.weight}（若函数本身取负值，form 要以负号开头）`);
+    }
+    // 反过来：负权重配负值公式，两个负号相乘其实是奖励。上游真这么写时 direction 要明写 positive，
+    // 否则多半是把惩罚的负号在公式和权重里各写了一遍（曾在 BeyondMimic / SONIC 的数据里出现过）。
+    if (reward.weight < 0 && negativeForm && reward.direction !== "positive") {
+      fail(at, `权重 ${reward.weight} 与以负号开头的 form 相乘是正的；惩罚的负号只能写在一处`);
     }
 
     // 学习式奖励（判别器 / 编码器 / 生成先验）没有可列表的分项权重，
@@ -241,8 +251,54 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
 
   checkTour(where, graph, nodes);
   checkIndexMaps(where, graph, nodes);
+  checkRewardCurves(where, graph);
 
   return nodes.size;
+}
+
+/**
+ * 奖励曲线（奖励面板里的折线图与滑块）：有公式的项要么能画，要么明说为什么没有曲线
+ * （只取 0 / 1、常数）。认不出的写法只是提示——页面会不画，不会画错。能画的项在
+ * 数据值与每个参数滑块的两端各求一遍值，曲线上不能出现 NaN。
+ */
+function checkRewardCurves(where, graph) {
+  for (const reward of graph.rewards ?? []) {
+    const at = `${where}/reward[${reward.id}]`;
+    let curve;
+    try {
+      if (reward.curve) {
+        const missing = undefinedInCurve(reward);
+        if (missing.length) fail(at, `curve 算式里的 ${missing.join("、")} 没有定义（只能用 x、参数 id、held id）`);
+      }
+      curve = curveFor(reward);
+    } catch (error) {
+      fail(at, `curve 写错了：${error.message}`);
+      continue;
+    }
+    if (!curve) {
+      curveStats.formless += 1;
+      continue;
+    }
+    if (curve.kind === "none") {
+      curveStats.none += 1;
+      continue;
+    }
+    if (curve.kind === "unknown") {
+      warn(at, "form 的写法 src/reward-curve.js 认不出，奖励面板里不画曲线");
+      continue;
+    }
+    curveStats.curve += 1;
+    const base = defaults(curve);
+    const trials = [base];
+    for (const p of curve.params) trials.push({ ...base, [p.id]: p.min }, { ...base, [p.id]: p.max });
+    for (const values of trials) {
+      const bad = sample(curve, values, 60).find(([, y]) => Number.isNaN(y));
+      if (bad) {
+        fail(at, `奖励曲线在横轴 ${bad[0]} 处求值为 NaN（参数 ${JSON.stringify(values)}）`);
+        break;
+      }
+    }
+  }
 }
 
 /**
@@ -513,6 +569,9 @@ async function main() {
   }
   console.log(
     `\n校验通过：${label(registry.projects.length, "个项目")}，${label(totalNodes, "个节点")}，${label(totalRewards, "个奖励项")}。`
+  );
+  console.log(
+    `奖励曲线：${curveStats.curve} 项可画，${curveStats.none} 项只取 0 / 1 或常数，${curveStats.formless} 项数据里没有公式。`
   );
   console.log(
     `维度地图：${indexStats.vectors} 个带维度的模块共 ${indexStats.indices} 个 index，其中 ${indexStats.named} 个能落到数据里写明的分量名。`

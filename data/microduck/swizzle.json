@@ -3,7 +3,7 @@
   "name": "Swizzle",
   "subtitle": "经典对称 Swizzle 滑法",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "轮滑对称 Swizzle 步态；双脚保持接地。使用 robot_allcollisions_rollers 模型。",
+  "diffSummary": "轮滑对称 Swizzle 步态；双脚保持接地。使用 robot_allcollisions_rollers 模型。奖励按上游 microduck_velocity_swizzle_env_cfg.py 逐项核对，共 18 项。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-Velocity-Swizzle-MicroDuck",
   "links": {
@@ -19,13 +19,600 @@
       "facts": {
         "任务 ID": "Mjlab-Velocity-Swizzle-MicroDuck",
         "碰撞模型": "robot_allcollisions_rollers.xml",
-        "任务目标": "Swizzle 滑法"
+        "任务目标": "Swizzle 滑法",
+        "奖励项": "18 项手写奖励（microduck_velocity_swizzle_env_cfg.py）"
       },
       "nodes": {
         "s.scene": {
           "sub": "robot_allcollisions_rollers.xml"
         }
-      }
+      },
+      "rewards-": [
+        "track_lin",
+        "track_ang",
+        "head_pose",
+        "air_time",
+        "pose",
+        "upright",
+        "foot_clear",
+        "foot_swing",
+        "foot_slip",
+        "self_col",
+        "body_ang",
+        "ang_mom",
+        "action_rate",
+        "head_bias",
+        "dof_pos_limits"
+      ],
+      "rewards+": [
+        {
+          "id": "wheel_speed",
+          "group": "A",
+          "label": "轮速推进（双向）",
+          "weight": 10,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\lvert c_x\\rvert\\cdot\\tanh\\!\\left(\\max(\\operatorname{sgn}(c_x)\\,\\bar\\omega r,0)/v_s\\right)",
+          "params": {
+            "vel_scale": 0.3,
+            "wheel_radius": 0.0175,
+            "bidirectional": "true"
+          },
+          "desc": "按指令方向给分：c_x > 0 奖励轮子前滚，c_x < 0 奖励倒滚，幅度乘 |c_x|，tanh 在约 0.3 m/s 饱和。",
+          "note": "Swizzle 把 c_x < 0 改成「后退」而不是刹车（删掉 braking），采样范围对称为 (−0.6, 0.6)；要停就给 c_x ≈ 0。rel_forward_envs = 0.2 仍在：20% 的重采样 c_x = max(|c_x|, 0.3)。函数：mjlab_microduck.tasks.mdp.wheel_speed_reward（mdp.py:1816）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "wheel_speed"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\bar\\omega r",
+              "range": [
+                -1,
+                1
+              ]
+            },
+            "f": "abs(c)*tanh(max(sign(c)*x,0)/vs)",
+            "params": [
+              {
+                "id": "vs",
+                "key": "vel_scale",
+                "range": [
+                  0.075,
+                  1.2
+                ],
+                "log": true
+              }
+            ],
+            "held": [
+              {
+                "id": "c",
+                "tex": "c_x",
+                "range": [
+                  -0.6,
+                  0.6
+                ],
+                "value": 0.6
+              }
+            ],
+            "notes": [
+              "横轴是轮子的滚动线速度 ω̄r（m/s，负为倒滚）；c_x 用滑块固定（默认 0.6）。c_x > 0 时只奖励前滚，c_x < 0 时只奖励倒滚，幅度都乘 |c_x|。"
+            ]
+          }
+        },
+        {
+          "id": "heading_hold",
+          "group": "A",
+          "label": "保持出生朝向",
+          "weight": 1,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\Delta\\psi^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.4,
+            "σ²": 0.16
+          },
+          "desc": "奖励 yaw 角保持在出生朝向附近（走直线）；偏了可以自己转回来拿回分数。",
+          "note": "先走直线（保持出生朝向），课程再把它换成 heading_tracking 跟随指令方向。课程 heading_hold_weight（src/mjlab_microduck/tasks/microduck_velocity_swizzle_env_cfg.py:85-96）：iter 1750 起 0.5，iter 2500 起 0（权重为 0 后 RewardManager 不再计算这一项）。函数：mjlab_microduck.tasks.mdp.heading_hold_reward（mdp.py:5117）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "heading_hold"
+          }
+        },
+        {
+          "id": "heading_tracking",
+          "group": "A",
+          "label": "朝向跟踪",
+          "weight": 0,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\frac{\\min(\\lvert\\Delta\\psi^{*}\\rvert,\\,c_{\\max})^{2}}{\\sigma^{2}}\\right)",
+          "params": {
+            "std": 0.5,
+            "heading_clip": 0.5
+          },
+          "desc": "朝向误差越小分越高；误差直接从指令通道 cmd[2] 读出，策略也在观测里看到同一个量。",
+          "note": "cmd[2] 截在 ±0.5 rad：真实误差超过约 29° 后奖励恒为 e⁻¹ ≈ 0.37，只在 ±0.5 rad 内引导。上游把截断从 ±1.0 减到 ±0.5，是因为 ±1.0 训出来的策略真机转向太猛。先由 heading_hold 走直线，再由课程交给这一项跟随方向。初值 0；课程 heading_tracking_weight（src/mjlab_microduck/tasks/microduck_velocity_swizzle_env_cfg.py:97-108）：iter 1750 前保持 0，iter 1750 起 1.5，iter 2500 起 3.0。函数：mjlab_microduck.tasks.mdp.heading_tracking_reward（mdp.py:4877）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_swizzle_env_cfg.py",
+            "symbol": "heading_tracking"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\lvert\\Delta\\psi^{*}\\rvert",
+              "range": [
+                0,
+                3.1416
+              ]
+            },
+            "f": "exp(-(min(abs(x),cm)^2)/(s*s))",
+            "params": [
+              {
+                "id": "s",
+                "key": "std",
+                "range": [
+                  0.125,
+                  2
+                ],
+                "log": true
+              },
+              {
+                "id": "cm",
+                "key": "heading_clip",
+                "range": [
+                  0.1,
+                  3.1416
+                ]
+              }
+            ],
+            "notes": [
+              "横轴是真实朝向误差 |ψ* − ψ|（rad，折回 [0, π]）。奖励读的是被截断到 ±c_max 的 cmd[2]，所以误差超过 c_max 后曲线是水平线 exp(−c_max²/σ²)（默认 e⁻¹ ≈ 0.37），没有梯度。"
+            ]
+          }
+        },
+        {
+          "id": "head_pose_tracking",
+          "canonical": "head_pose",
+          "group": "A",
+          "label": "头姿跟踪",
+          "weight": 0,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\frac{1}{4}\\sum_{j=1}^{4}\\exp\\!\\left(-e_j^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.5
+          },
+          "desc": "e_j = 实测颈/头关节相对 HOME 的增量 − 头姿指令；四个关节各过一个高斯核再取均值。",
+          "note": "与 Velocity 是同一个函数。为了不和它互相拉扯，Swizzle 删掉了 neck_joint_pos_l2，并把 pose 限定在 10 个腿关节。指令通过 head_command 观测项真实输入（不再零填充）。初值 0；课程 head_pose_tracking_weight（src/mjlab_microduck/tasks/microduck_velocity_swizzle_env_cfg.py:161-172）：iter 2250 起 2.0，iter 3000 起 4.0。同一窗口里 head_pose_range 课程（src/mjlab_microduck/tasks/microduck_velocity_swizzle_env_cfg.py:176-188）把指令范围从 ±0.05/±0.05/±0.07/±0.015 放宽到 iter 2250 的 ±0.55/±0.55/±0.70/±0.15、iter 3000 的 ±1.10/±1.10/±1.40/±0.31 rad。函数：mjlab_microduck.tasks.mdp.head_pose_tracking（mdp.py:5513）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_swizzle_env_cfg.py",
+            "symbol": "head_pose_tracking"
+          }
+        },
+        {
+          "id": "pose",
+          "group": "B",
+          "label": "腿部姿态",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\frac{1}{N}\\sum_{j}e_j^{2}/\\sigma_j^{2}\\right)",
+          "params": {
+            "σ_hip_yaw": 0.3,
+            "σ_hip_roll": 0.6,
+            "σ_hip_pitch": 0.4,
+            "σ_knee": 0.4,
+            "σ_ankle": 0.25,
+            "std_standing": "全部 0.05",
+            "std_running": "hip_yaw 0.5 · hip_roll 0.8 · hip_pitch 0.8 · knee 0.8 · ankle 0.5",
+            "walking_threshold": 0.01,
+            "running_threshold": 0.5
+          },
+          "desc": "腿关节相对 HOME 的偏差按各自 σ_j 归一化后取均值再过 exp。上面 σ_* 是行走档；颈和头已从这一项里移出，交给头姿跟踪。",
+          "note": "分档量里的 |cmd[2]| 在 Swizzle 是朝向误差：目标朝向随机抽取、误差没被纠正时（例如前 1750 iter 只保持出生朝向）多半顶在 0.5，于是 s ≥ 0.5、实际取 std_running 的时候最多；σ_* 按 Velocity 的惯例填行走档。函数：mjlab variable_posture。",
+          "source": {
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
+            "symbol": "pose"
+          }
+        },
+        {
+          "id": "upright",
+          "group": "B",
+          "label": "躯干直立",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\lVert g_{xy}\\rVert^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.4472,
+            "σ²": 0.2
+          },
+          "desc": "躯干倾角越小分越高。",
+          "note": "σ² 沿用 mjlab 默认 0.2，比 Velocity 的 0.05 宽得多：倾斜 15° 时 Velocity 约得 0.26，这里约 0.72，给滑行前倾留了余地。权重 1.0 → 2.0 是本任务设置的。函数：mjlab upright。",
+          "source": {
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
+            "symbol": "upright"
+          }
+        },
+        {
+          "id": "com_height_target",
+          "group": "B",
+          "label": "躯干高度区间",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\mathbb{1}\\!\\left[h_{\\min}\\le h\\le h_{\\max}\\right]-(h_{\\min}-h)_{+}^{2}-(h-h_{\\max})_{+}^{2}",
+          "params": {
+            "target_height_min": 0.0935,
+            "target_height_max": 0.1235
+          },
+          "desc": "躯干高度落在 [0.0935, 0.1235] m 内每步 +1，出界按到边界距离的平方扣分。",
+          "note": "函数名里叫 CoM，实际读的是 trunk_base 原点高度（root_link_pos_w），不是质心。出界的平方罚极小，实际效果接近 0/1 的区间奖励。函数：mjlab_microduck.tasks.mdp.com_height_target（mdp.py:1274）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "com_height_target"
+          },
+          "curve": {
+            "x": {
+              "tex": "h",
+              "range": [
+                0.03,
+                0.18
+              ]
+            },
+            "f": "(x>=lo && x<=hi) ? 1 : -((x<lo ? (lo-x)^2 : 0) + (x>hi ? (x-hi)^2 : 0))",
+            "params": [
+              {
+                "id": "lo",
+                "key": "target_height_min",
+                "range": [
+                  0.05,
+                  0.12
+                ]
+              },
+              {
+                "id": "hi",
+                "key": "target_height_max",
+                "range": [
+                  0.09,
+                  0.18
+                ]
+              }
+            ],
+            "notes": [
+              "横轴 h 是 trunk_base 原点离地高度（m），不是质心。区间内恒为 1；区间外的平方罚在厘米尺度只有 10⁻³ 量级，所以曲线看起来几乎是 1 / 0 的方框。"
+            ]
+          }
+        },
+        {
+          "id": "forward_lean",
+          "group": "B",
+          "label": "推进时前倾",
+          "weight": 1.5,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\max(c_x,0)\\cdot\\exp\\!\\left(-(g_x-p^{*})^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "target_pitch": 0.262,
+            "std": 0.1
+          },
+          "desc": "推进（c_x > 0）时奖励躯干前倾约 15°，抵消蹬地带来的后仰力矩；按 c_x 缩放。",
+          "note": "target_pitch 名义上是弧度，但比较对象是 sin θ：峰值在 θ = asin(0.262) ≈ 15.2°。docstring 写 forward_lean = −g_x，代码实际用 +g_x；按 x 轴朝前的约定前倾时 g_x > 0，代码的符号是对的。Swizzle 里只在 c_x > 0（前进）时给分，后退指令不要求前倾。函数：mjlab_microduck.tasks.mdp.forward_lean_reward（mdp.py:5187）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "forward_lean"
+          },
+          "curve": {
+            "x": {
+              "tex": "g^{b}_{x}",
+              "range": [
+                -0.3,
+                0.7
+              ]
+            },
+            "f": "max(c,0)*exp(-((x-p)^2)/(s*s))",
+            "params": [
+              {
+                "id": "p",
+                "key": "target_pitch",
+                "range": [
+                  0,
+                  0.6
+                ]
+              },
+              {
+                "id": "s",
+                "key": "std",
+                "range": [
+                  0.025,
+                  0.4
+                ],
+                "log": true
+              }
+            ],
+            "held": [
+              {
+                "id": "c",
+                "tex": "c_x",
+                "range": [
+                  -0.5,
+                  0.6
+                ],
+                "value": 0.6
+              }
+            ],
+            "notes": [
+              "横轴 g_x = sin(俯仰角)，前倾为正；油门 c_x 用滑块固定（默认 0.6），c_x ≤ 0 时整项为 0。峰值在 g_x = 0.262，即俯仰约 15.2°。"
+            ]
+          }
+        },
+        {
+          "id": "body_ang_vel",
+          "group": "B",
+          "label": "躯干角速度",
+          "weight": -0.05,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\omega^{\\text{trunk}}_{xy}\\rVert^{2}",
+          "desc": "躯干 roll / pitch 角速度平方和。",
+          "note": "与 Velocity 相同（−0.05）。函数：mjlab body_angular_velocity_penalty。",
+          "source": {
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
+            "symbol": "body_ang_vel"
+          }
+        },
+        {
+          "id": "leg_symmetry",
+          "group": "F",
+          "label": "左右腿镜像",
+          "weight": 2,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "-\\frac{1}{5}\\sum_{j=1}^{5}\\left\\lvert q^{L}_{j}+q^{R}_{j}\\right\\rvert",
+          "desc": "左右腿镜像对称时为 0，不对称按 L1 扣分：swizzle 的两腿要同时对称地张开、收拢。",
+          "note": "用的是绝对关节角之和而不是相对 HOME 的偏差；HOME 本身左右镜像（hip_roll ∓0.0873、hip_pitch ∓0.4579、ankle ±0.4530），所以在 HOME 处为 0。5 对关节的索引在首次调用时缓存于 env._leg_sym_ids。函数：mjlab_microduck.tasks.mdp.leg_symmetry_reward（mdp.py:5035）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_swizzle_env_cfg.py",
+            "symbol": "leg_symmetry"
+          }
+        },
+        {
+          "id": "grounded",
+          "group": "C",
+          "label": "双刀片着地",
+          "weight": 1,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\mathbb{1}\\!\\left[n_c\\ge2\\right]\\cdot\\lvert c_x\\rvert",
+          "desc": "两只刀片都着地时按 |c_x| 给分，前进、后退都算：经典 swizzle 不抬脚。",
+          "note": "是 single_support 的镜像（奖励双支撑），后者在 Swizzle 里被删掉了。函数：mjlab_microduck.tasks.mdp.grounded_reward（mdp.py:5065）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_swizzle_env_cfg.py",
+            "symbol": "grounded"
+          },
+          "curve": {
+            "x": {
+              "tex": "c_x",
+              "range": [
+                -0.6,
+                0.6
+              ]
+            },
+            "f": "(round(n)>=2 ? 1 : 0)*abs(x)",
+            "held": [
+              {
+                "id": "n",
+                "tex": "n_c",
+                "range": [
+                  0,
+                  2
+                ],
+                "value": 2,
+                "int": true
+              }
+            ],
+            "notes": [
+              "横轴是油门 c_x；着地刀片数 n_c 用滑块固定（默认 2）。两只刀片都着地时值为 |c_x|，否则为 0。"
+            ]
+          }
+        },
+        {
+          "id": "feet_flat",
+          "group": "C",
+          "label": "着地刀片放平",
+          "weight": -2,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{f}\\lVert g^{\\text{site}}_{f,xy}\\rVert^{2}\\cdot\\mathbb{1}\\!\\left[\\text{contact}_f\\right]",
+          "desc": "只罚着地刀片的倾斜（sin²θ），让轮子贴地抓牢；腾空的脚可以随意倾斜。",
+          "note": "沿用 Rollers 的配置。Swizzle 两只刀片多数时间都着地，两只脚都会被计入。单脚最大值是 1（docstring 写的约 2.0 不对）。函数：mjlab_microduck.tasks.mdp.feet_flat_penalty（mdp.py:1605）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "feet_flat"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\theta_f",
+              "range": [
+                0,
+                1.5708
+              ]
+            },
+            "f": "k*sin(x)^2",
+            "held": [
+              {
+                "id": "k",
+                "tex": "k",
+                "range": [
+                  0,
+                  2
+                ],
+                "value": 1,
+                "int": true
+              }
+            ],
+            "notes": [
+              "横轴 θ_f 是足端 site 的 z 轴相对竖直的倾角（rad），‖g_xy‖² = sin²θ_f；k 是「着地且倾斜 θ_f」的刀片数（0–2），默认 1。腾空的脚不计入，所以 k 只数着地的脚。单脚最大值 1。"
+            ]
+          }
+        },
+        {
+          "id": "angular_momentum",
+          "group": "D",
+          "label": "角动量",
+          "weight": -0.02,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert L\\rVert^{2}",
+          "desc": "全身角动量模的平方。",
+          "note": "与 Velocity 相同（−0.02）。函数：mjlab angular_momentum_penalty。",
+          "source": {
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
+            "symbol": "angular_momentum"
+          }
+        },
+        {
+          "id": "action_rate_l2",
+          "canonical": "action_rate",
+          "group": "D",
+          "label": "动作变化率",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a_t-a_{t-1}\\rVert^{2}",
+          "desc": "相邻两步动作之差的平方和，压抖动。",
+          "note": "上游把它当作「动作更少、更小、更慢」的主杠杆：起点 −1.0 就是 Velocity 起点 −0.1 的 10 倍。函数：mjlab action_rate_l2。课程 action_rate_weight（src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py:567-577，Swizzle 原样继承）：iter 250 起 −1.5，iter 500 起 −2.0（reward_weight 在 common_step_counter > 250·24 / 500·24 时切换，src/mjlab_microduck/tasks/mdp.py:3584）。",
+          "source": {
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
+            "symbol": "action_rate_l2"
+          }
+        },
+        {
+          "id": "neck_action_rate_l2",
+          "group": "D",
+          "label": "颈部动作变化率",
+          "weight": -0.5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a^{\\text{neck}}_t-a^{\\text{neck}}_{t-1}\\rVert^{2}",
+          "desc": "颈、头 4 个动作的相邻步差平方和，在 action_rate_l2 之外对头部再加一层平滑。",
+          "note": "与 action_rate_l2 重叠：头部动作的变化同时被两项惩罚。函数：mjlab_microduck.tasks.mdp.neck_action_rate_l2（mdp.py:437）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "neck_action_rate_l2"
+          }
+        },
+        {
+          "id": "joint_torques_l2",
+          "group": "D",
+          "label": "执行器力矩",
+          "weight": -0.001,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\tau\\rVert^{2}",
+          "desc": "执行器输出平方和，鼓励省力。",
+          "note": "本仓库 mdp.py 自己的 joint_torques_l2，不是 mjlab 同名函数（后者按 asset_cfg.actuator_ids 取子集）；这里两者结果相同。函数：mjlab_microduck.tasks.mdp.joint_torques_l2（mdp.py:1721）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "joint_torques_l2"
+          }
+        },
+        {
+          "id": "self_collisions",
+          "canonical": "self_collision",
+          "group": "E",
+          "label": "自碰撞",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "N_{\\text{self-contact}}",
+          "desc": "机身内部（腿与电池架等 self_collision_only 几何）的接触计数。",
+          "note": "传感器定义与权重都与 Velocity 相同。函数：mjlab self_collision_cost（无 force_history，走 found 计数分支）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "self_collisions"
+          }
+        },
+        {
+          "id": "action_over_limit",
+          "group": "E",
+          "label": "指令越限",
+          "weight": -0.5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{j}\\left[\\max(0,\\hat q_j-q^{\\text{hi}}_{j}-\\delta)+\\max(0,q^{\\text{lo}}_{j}-\\delta-\\hat q_j)\\right]",
+          "params": {
+            "overshoot": 0.3
+          },
+          "desc": "罚关节位置指令越过「硬限位 ± 0.3 rad」的部分；罚的是指令，不是关节实际位置。",
+          "note": "动机：hip_roll 硬限位 ±0.384 rad，但 ctrlrange 有 ±10 rad，低 kp 舵机能被指令远超限位、以最大力矩撞限位——只在仿真里成立的取巧。罚指令而不罚 qpos，关节仍能用满行程；也没有在环境里裁剪动作（部署端不裁剪，避免 sim/real 不一致）。本任务删掉了 mjlab 的 dof_pos_limits，由这一项代替。函数：mjlab_microduck.tasks.mdp.action_over_limit_penalty（mdp.py:5152）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_velocity_rollers_env_cfg.py",
+            "symbol": "action_over_limit"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\hat q_{\\text{hip\\_roll}}",
+              "range": [
+                -1.2,
+                1.2
+              ]
+            },
+            "f": "max(0, x-(hi+d)) + max(0, (lo-d)-x)",
+            "params": [
+              {
+                "id": "d",
+                "key": "overshoot",
+                "range": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "held": [
+              {
+                "id": "lo",
+                "tex": "q^{\\text{lo}}",
+                "range": [
+                  -1.6,
+                  0
+                ],
+                "value": -0.384
+              },
+              {
+                "id": "hi",
+                "tex": "q^{\\text{hi}}",
+                "range": [
+                  0,
+                  1.6
+                ],
+                "value": 0.384
+              }
+            ],
+            "notes": [
+              "画的是单个动作维度的贡献，以 hip_roll 为例：横轴是指令目标 q̂ = raw·scale + offset（rad），硬限位默认取 XML 的 ±0.384 rad（可拖）。[q_lo − δ, q_hi + δ] 之内一分不罚，越出按距离线性罚（L1）。罚的是指令，不是关节实际角度。"
+            ]
+          }
+        }
+      ]
     }
   }
 }

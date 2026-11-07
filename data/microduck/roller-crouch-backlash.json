@@ -3,7 +3,7 @@
   "name": "RollerCrouch · Backlash",
   "subtitle": "轮滑下蹲 + 齿隙",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "每个伺服关节串联 ±1° 齿隙（共 2°）的被动铰链；编码器与关节观测读穿齿隙（BacklashEncoderBamActuator）。观测/动作维度不变，ONNX 与真机运行时无需改动。",
+  "diffSummary": "每个伺服关节串联 ±1° 齿隙（共 2°）的被动铰链；编码器与关节观测读穿齿隙（BacklashEncoderBamActuator）。观测/动作维度不变，ONNX 与真机运行时无需改动。奖励按上游 microduck_roller_crouch_env_cfg.py 逐项核对，共 12 项。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-RollerCrouch-Flat-Backlash-MicroDuck",
   "links": {
@@ -18,7 +18,8 @@
       "facts": {
         "任务 ID": "Mjlab-RollerCrouch-Flat-Backlash-MicroDuck",
         "齿隙": "±1°/关节 · 观测读穿齿隙",
-        "碰撞模型": "robot_allcollisions_rollers_backlash.xml"
+        "碰撞模型": "robot_allcollisions_rollers_backlash.xml",
+        "奖励项": "12 项手写奖励（microduck_roller_crouch_env_cfg.py）"
       },
       "nodes": {
         "a.bam": {
@@ -26,7 +27,343 @@
           "sub": "BacklashEncoderBamActuator",
           "desc": "执行器与 joint_pos/joint_vel 观测均读 qpos[servo]+qpos[backlash]，匹配真机编码器在齿隙输出侧的位置。"
         }
-      }
+      },
+      "rewards-": [
+        "track_lin",
+        "track_ang",
+        "head_pose",
+        "air_time",
+        "pose",
+        "upright",
+        "foot_clear",
+        "foot_swing",
+        "foot_slip",
+        "self_col",
+        "body_ang",
+        "ang_mom",
+        "action_rate",
+        "head_bias",
+        "dof_pos_limits"
+      ],
+      "rewards+": [
+        {
+          "id": "crouch_glide_pose",
+          "group": "A",
+          "label": "相位姿态跟踪",
+          "weight": 6,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\frac{1}{14}\\sum_{j=1}^{14}\\exp\\!\\left(-e_j^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.4,
+            "std": 0.4,
+            "descent_end": 0.1,
+            "hold_end": 0.5,
+            "rise_end": 0.6,
+            "period_s": 5,
+            "joints": "14 个舵机关节（按名字解析）"
+          },
+          "desc": "按相位在站姿与蹲姿之间线性插值出 14 个关节的目标角，每个关节的误差各过 σ = 0.4 rad 的高斯核再取均值：下蹲、蹲住滑行、起身都按同一条目标轨迹打分。",
+          "note": "主奖励。e_j = q_j − q*_j(φ)。站姿端用 STAND_POSE（上游注释：真机 read_pose.py 读数），没有用仿真 HOME；蹲姿 CROUCH_POSE 同样是真机读数。上游注释：起身与下蹲按同一方式奖励，对称。一个 5 s 周期内 0.5 s 下蹲、2 s 蹲住、0.5 s 起身、2 s 站立；回合 20 s，约 4 个周期。函数：mjlab_microduck.tasks.mdp.crouch_glide_pose_by_phase（mdp.py:1478）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_crouch_env_cfg.py",
+            "symbol": "crouch_glide_pose"
+          }
+        },
+        {
+          "id": "crouch_glide_pose_l1",
+          "group": "A",
+          "label": "相位姿态 L1",
+          "weight": 2,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "-\\frac{1}{14}\\sum_{j=1}^{14}\\left\\lvert e_j\\right\\rvert",
+          "params": {
+            "descent_end": 0.1,
+            "hold_end": 0.5,
+            "rise_end": 0.6,
+            "joints": "14 个舵机关节（按名字解析）"
+          },
+          "desc": "同一条相位目标轨迹的 L1 版：14 个关节绝对误差的均值取负。",
+          "note": "上游注释：L1 启动项——远离目标时高斯核已饱和，这一项仍给恒定梯度。⚠ 函数返回值 ≤ 0、权重为正，实际是惩罚。函数：mjlab_microduck.tasks.mdp.crouch_glide_pose_l1（mdp.py:1502）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_crouch_env_cfg.py",
+            "symbol": "crouch_glide_pose_l1"
+          }
+        },
+        {
+          "id": "forward_speed",
+          "group": "A",
+          "label": "保持前向速度",
+          "weight": 1,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\tanh\\!\\left(\\max(v_x,\\,0)/v_{\\text{ref}}\\right)",
+          "params": {
+            "vel_ref": 0.2
+          },
+          "desc": "奖励躯干保持向前滑行的速度，tanh 饱和，后退时为 0。",
+          "note": "上游注释：保住入场冲量、不要刹车；与指令无关（twist 指令通道装的是相位，不是速度）。入场速度由 reset_base 的 velocity_range x ∈ [0.2, 0.5] m/s 注入（cfg:256）。函数：mjlab_microduck.tasks.mdp.forward_speed_reward（mdp.py:1400）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_crouch_env_cfg.py",
+            "symbol": "forward_speed"
+          },
+          "curve": {
+            "x": {
+              "tex": "v_x",
+              "range": [
+                -0.2,
+                1
+              ]
+            },
+            "f": "tanh(max(x, 0) / vref)",
+            "params": [
+              {
+                "id": "vref",
+                "key": "vel_ref",
+                "range": [
+                  0.05,
+                  0.8
+                ],
+                "log": true
+              }
+            ],
+            "notes": [
+              "横轴是机体系前向速度 v_x（m/s）。v_x ≤ 0 时为 0；v_x = v_ref 时为 tanh(1) ≈ 0.76，再快就趋于饱和 1。"
+            ]
+          }
+        },
+        {
+          "id": "crouch_forward_lean",
+          "group": "B",
+          "label": "下蹲前倾",
+          "weight": 1,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "b(\\phi)\\cdot\\exp\\!\\left(-(g_x-\\theta^{*})^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "target_pitch": 0.08,
+            "σ": 0.1,
+            "std": 0.1,
+            "descent_end": 0.1,
+            "hold_end": 0.5,
+            "rise_end": 0.6
+          },
+          "desc": "只在下蹲、蹲住、起身阶段生效：奖励躯干略微前倾约 0.08（≈ 4.6°）。",
+          "note": "上游注释：真机快速下蹲时观察到向后翻，用轻微前倾抵消；由与姿态项相同的混合系数 b(φ) 门控，站立段不偏置（注释说“下蹲 + 蹲住段为 1”，代码里下蹲段实际是 0→1 线性爬升）。函数：mjlab_microduck.tasks.mdp.crouch_forward_lean（mdp.py:1524）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_crouch_env_cfg.py",
+            "symbol": "crouch_forward_lean"
+          },
+          "curve": {
+            "x": {
+              "tex": "g_x",
+              "range": [
+                -0.2,
+                0.4
+              ]
+            },
+            "f": "b * exp(-((x - th) ^ 2) / (s * s))",
+            "params": [
+              {
+                "id": "th",
+                "key": "target_pitch",
+                "range": [
+                  0,
+                  0.3
+                ]
+              },
+              {
+                "id": "s",
+                "key": "std",
+                "range": [
+                  0.025,
+                  0.4
+                ],
+                "log": true
+              }
+            ],
+            "held": [
+              {
+                "id": "b",
+                "tex": "b(\\phi)",
+                "range": [
+                  0,
+                  1
+                ],
+                "value": 1
+              }
+            ],
+            "notes": [
+              "横轴是躯干系投影重力的 x 分量 g_x（前倾为正，约等于俯仰角的正弦）。相位门控 b(φ) 用滑块固定，默认 1（蹲住段）；站立段 b = 0，整项为 0，下蹲 / 起身段 b 在 0 与 1 之间线性变化。"
+            ]
+          }
+        },
+        {
+          "id": "upright",
+          "group": "B",
+          "label": "躯干直立",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\lVert g_{xy}\\rVert^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.4472,
+            "σ²": 0.2
+          },
+          "desc": "g 是躯干系下的投影重力（单位向量），‖g_xy‖ = sin(倾角)。",
+          "note": "σ 沿用 mjlab 基础配置的 √0.2（velocity_env_cfg.py:290）——Velocity 收紧到 √0.05，这里没改；只把权重从 1.0 改为 2.0、body 设为 trunk_base（cfg:156–157）。函数：mjlab upright。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_crouch_env_cfg.py",
+            "symbol": "upright"
+          }
+        },
+        {
+          "id": "body_ang_vel",
+          "group": "B",
+          "label": "躯干角速度",
+          "weight": -0.05,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\omega^{\\text{trunk}}_{xy}\\rVert^{2}",
+          "desc": "躯干角速度的 x、y 分量平方和，不罚 yaw。",
+          "note": "权重 −0.05，与 Velocity 相同（cfg:158–159）。函数：mjlab body_angular_velocity_penalty（基础权重 0.0，由任务覆盖）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_crouch_env_cfg.py",
+            "symbol": "body_ang_vel"
+          }
+        },
+        {
+          "id": "angular_momentum",
+          "group": "D",
+          "label": "角动量",
+          "weight": -0.02,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert L\\rVert^{2}",
+          "params": {
+            "sensor_name": "robot/root_angmom"
+          },
+          "desc": "全身角动量的模的平方。",
+          "note": "权重 −0.02，与 Velocity 相同。函数：mjlab angular_momentum_penalty。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_crouch_env_cfg.py",
+            "symbol": "angular_momentum"
+          }
+        },
+        {
+          "id": "action_rate_l2",
+          "canonical": "action_rate",
+          "group": "D",
+          "label": "动作变化率",
+          "weight": -0.5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a_t-a_{t-1}\\rVert^{2}",
+          "desc": "相邻两步动作之差的平方和，压抖动。",
+          "note": "−0.5 是课程第 0 阶段的值，最终升到 −1.0（与配置写的值相同）。函数：mjlab action_rate_l2。RewardTermCfg 里写的是 −1.0（microduck_roller_crouch_env_cfg.py:161），但 action_rate_weight 课程（同文件 :403–413，函数 mdp.reward_weight，mdp.py:3584）在第一次 env reset（common_step_counter > 0，训练开头几步内）就写入第 0 阶段的 −0.5；之后 iter 250（step > 250×24）→ −0.8，iter 500（step > 500×24）→ −1.0。课程只在 reset 时执行，判断是严格大于。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_crouch_env_cfg.py",
+            "symbol": "action_rate_l2"
+          }
+        },
+        {
+          "id": "feet_flat",
+          "group": "C",
+          "label": "着地脚放平",
+          "weight": -2,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{f}\\lVert g^{f}_{xy}\\rVert^{2}\\cdot\\mathbb{1}\\!\\left[t^{\\text{contact}}_{f}>0\\right]",
+          "params": {
+            "sensor_name": "feet_ground_contact",
+            "sites": "left_foot, right_foot"
+          },
+          "desc": "着地的冰刀（足底 site）要与地面平行：倾斜越多罚得越多，腾空的那只脚不管。",
+          "note": "配置与 Rollers 的 feet_flat 相同（带 sensor_name 门控、权重 −2.0）。函数 docstring 写“每只脚最大约 2.0”，与代码不符：单位向量的 xy 平方和最大为 1，两只脚合计最大 2。函数：mjlab_microduck.tasks.mdp.feet_flat_penalty（mdp.py:1605）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_crouch_env_cfg.py",
+            "symbol": "feet_flat"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\theta_f",
+              "range": [
+                0,
+                1.5708
+              ]
+            },
+            "f": "sin(x) ^ 2",
+            "notes": [
+              "画的是单只着地脚的贡献：横轴是足底 site 的 z 轴与竖直方向的夹角 θ_f（rad），‖g_xy‖² = sin²θ_f。腾空的脚这一项为 0；两只脚都着地时两项相加，最大为 2。"
+            ]
+          }
+        },
+        {
+          "id": "self_collisions",
+          "canonical": "self_collision",
+          "group": "E",
+          "label": "自碰撞",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "N_{\\text{self-contact}}",
+          "params": {
+            "sensor_name": "self_collision"
+          },
+          "desc": "自碰撞传感器这一步检测到的接触计数。",
+          "note": "权重 −1.0；传感器定义与 Velocity 相同（cfg:132-139），但机器人换成带轮模型 MICRODUCK_WALK_ROLLERS_ROBOT_CFG（collisions=()，碰撞几何沿用 XML 默认），实际能产生哪些自接触未编译模型核实。函数：mjlab self_collision_cost（force_threshold 只在有力历史时使用，这里不起作用）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_crouch_env_cfg.py",
+            "symbol": "self_collisions"
+          }
+        },
+        {
+          "id": "neck_action_rate_l2",
+          "group": "D",
+          "label": "颈部动作变化率",
+          "weight": -0.5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a^{\\text{neck}}_{t}-a^{\\text{neck}}_{t-1}\\rVert^{2}",
+          "params": {
+            "action_indices": "5–8（neck_pitch, head_pitch, head_yaw, head_roll）"
+          },
+          "desc": "只看颈 / 头 4 维动作的相邻两步差的平方和，单独加重对头部抖动的惩罚。",
+          "note": "与 action_rate_l2 叠加：这 4 维动作的变化会被罚两次。函数：mjlab_microduck.tasks.mdp.neck_action_rate_l2（mdp.py:437）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_crouch_env_cfg.py",
+            "symbol": "neck_action_rate_l2"
+          }
+        },
+        {
+          "id": "joint_torques_l2",
+          "group": "D",
+          "label": "关节力矩",
+          "weight": -0.001,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\tau\\rVert^{2}",
+          "desc": "全部执行器输出力矩的平方和，鼓励省力。",
+          "note": "注意是 microduck 自己的 joint_torques_l2（mdp.py），不是 mjlab envs/mdp 里的同名函数（后者按 asset_cfg.actuator_ids 取子集）。函数：mjlab_microduck.tasks.mdp.joint_torques_l2（mdp.py:1721）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_crouch_env_cfg.py",
+            "symbol": "joint_torques_l2"
+          }
+        }
+      ]
     }
   }
 }
