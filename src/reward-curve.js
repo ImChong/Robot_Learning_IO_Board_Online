@@ -511,38 +511,30 @@ const FAMILIES = [
     // −Σ max(0, x − 阈值)²：SONIC 的防抖项。
     id: "deadzone",
     match(f, params) {
-      const m = f.match(/^-\\sum_(?:\{(?:[^{}]|\{[^{}]*\})*\}|\w)\s*\\max\(0,\s*(.+?)-([\d.]+)\)\^\{2\}$/);
+      // 符号可正可负（Isaac Lab 习惯是正值函数 × 负权重），也可以是均值 \\frac{1}{n}\\sum。
+      const m = f.match(
+        new RegExp(String.raw`^(-)?\s*(?:\\frac\{1\}\{(\d+)\}\s*)?\\sum${SUB}\s*\\max\(0,\s*(.+?)-([\d.]+)\)\^\{2\}$`),
+      );
       if (!m) return null;
-      const fallback = Number(m[2]);
+      const sign = m[1] ? -1 : 1;
+      const n = m[2] ? Number(m[2]) : null;
+      const fallback = Number(m[4]);
       const th = param("th", "\\text{threshold}", pick(params, ["threshold", "阈值"]), fallback, [
         0,
         2 * fallback,
       ]);
       return {
-        xTex: m[1],
+        xTex: m[3],
         x: [0, 2.5 * fallback],
         params: [th],
-        f: (x, v) => -(Math.max(0, x - v.th) ** 2),
+        f: (x, v) => sign * Math.max(0, x - v.th) ** 2,
         marks: (v) => [{ x: v.th, label: "阈值" }],
-        notes: ["画的是单个连杆的贡献：阈值以内完全不罚，超出部分按平方罚。"],
-      };
-    },
-  },
-  {
-    // −Σ clip(q − q_lim, 0, ∞)²：关节越限惩罚。
-    id: "clip",
-    match(f) {
-      const m = f.match(
-        /^-\\sum_(?:\{(?:[^{}]|\{[^{}]*\})*\}|\w)\s*\\operatorname\{clip\}\((.+?),\s*0,\s*\\infty\)\^\{2\}$/,
-      );
-      if (!m) return null;
-      return {
-        xTex: m[1],
-        x: [-0.5, 0.5],
-        params: [],
-        f: (x) => -(Math.max(0, x) ** 2),
-        marks: () => [{ x: 0, label: "限位" }],
-        notes: ["画的是单个关节的贡献：没越限一分不罚。", NOTE_SKETCH],
+        notes: [
+          n
+            ? `公式对 ${n} 个连杆取均值：${n} 个连杆都是这个值时就等于这条曲线，只有一个超阈值时是它的 1/${n}。`
+            : "画的是单个连杆的贡献。",
+          "阈值以内完全不罚，超出部分按平方算。",
+        ],
       };
     },
   },

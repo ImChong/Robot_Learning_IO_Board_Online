@@ -194,6 +194,11 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
     if (reward.direction === "negative" && reward.weight > 0 && !negativeForm) {
       fail(at, `标为 negative 但权重是 ${reward.weight}（若函数本身取负值，form 要以负号开头）`);
     }
+    // 反过来：负权重配负值公式，两个负号相乘其实是奖励。上游真这么写时 direction 要明写 positive，
+    // 否则多半是把惩罚的负号在公式和权重里各写了一遍（曾在 BeyondMimic / SONIC 的数据里出现过）。
+    if (reward.weight < 0 && negativeForm && reward.direction !== "positive") {
+      fail(at, `权重 ${reward.weight} 与以负号开头的 form 相乘是正的；惩罚的负号只能写在一处`);
+    }
 
     // 学习式奖励（判别器 / 编码器 / 生成先验）没有可列表的分项权重，
     // 信息量在 model 里：吃什么、正样本是什么、怎么变成标量、有哪些正则。
