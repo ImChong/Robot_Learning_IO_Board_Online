@@ -5,7 +5,7 @@
  * 列出的几个数学函数，别的一概报错——数据写错了在校验脚本里就炸，不会变成任意代码。
  *
  * 语法：数字、标识符（x、参数 id、held id、pi）、+ - * / ^、一元负号、括号、
- * 比较 < <= > >=、逻辑 && ||（真为 1、假为 0）、条件 c ? a : b、函数调用。^ 右结合，优先级高于
+ * 比较 < <= > >= == !=、逻辑 && ||（真为 1、假为 0）、条件 c ? a : b、函数调用。^ 右结合，优先级高于
  * 一元负号（-x^2 = -(x^2)）。
  */
 
@@ -21,6 +21,8 @@ const FUNCS = {
   min: Math.min,
   max: Math.max,
   pow: Math.pow,
+  sign: Math.sign,
+  round: Math.round,
   /** clamp(v, lo, hi) */
   clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
   /** (v)₊ */
@@ -60,7 +62,7 @@ function tokenize(src) {
       const m = src.slice(i).match(/^[A-Za-z_][A-Za-z0-9_]*/);
       out.push({ t: "id", v: m[0] });
       i += m[0].length;
-    } else if (["<=", ">=", "&&", "||"].some((op) => src.startsWith(op, i))) {
+    } else if (["<=", ">=", "==", "!=", "&&", "||"].some((op) => src.startsWith(op, i))) {
       out.push({ t: "op", v: src.slice(i, i + 2) });
       i += 2;
     } else if ("+-*/^(),<>?:".includes(ch)) {
@@ -112,7 +114,7 @@ export function parseExpr(src) {
   }
   function cmp() {
     let node = add();
-    while (peek() && ["<", "<=", ">", ">="].includes(peek().v)) {
+    while (peek() && ["<", "<=", ">", ">=", "==", "!="].includes(peek().v)) {
       const op = tokens[pos++].v;
       node = { op, a: node, b: add() };
     }
@@ -228,6 +230,10 @@ export function evaluate(tree, env) {
       return a > b ? 1 : 0;
     case ">=":
       return a >= b ? 1 : 0;
+    case "==":
+      return a === b ? 1 : 0;
+    case "!=":
+      return a !== b ? 1 : 0;
     default:
       throw new Error(`未知运算「${tree.op}」`);
   }

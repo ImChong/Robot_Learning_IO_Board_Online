@@ -402,7 +402,7 @@
             "sensor_name": "feet_ground_contact"
           },
           "desc": "左右脚底触地就给分，两只都着地拿满 1；全程开启。",
-          "note": "只管接触，不管脚是否放平（那是 feet_flat）。found 是接触点计数：若一只脚底同时有 ≥ 2 个接触点，单脚着地也可能拿满（见 openQuestions）。函数：mjlab_microduck.tasks.mdp.feet_grounded_reward（mdp.py:1767）。",
+          "note": "只管接触，不管脚是否放平（那是 feet_flat）。found 是接触点计数：若一只脚底同时有 ≥ 2 个接触点，单脚着地也可能拿满。函数：mjlab_microduck.tasks.mdp.feet_grounded_reward（mdp.py:1767）。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_ground_pick_env_cfg.py",

@@ -118,7 +118,18 @@ vendor/katex/         本地自带的 KaTeX 0.16.11（MIT），不依赖 CDN
 
 ### 奖励曲线怎么来的
 
-不另写数据：`src/reward-curve.js` 认 `form` 的 TeX 写法，常数取自 `params`（键名如 `σ`、`scale`、`threshold`、`阈值`、`*_scale`），`params` 里没有的就用公式里写死的那个数。认不出的写法不画（校验脚本给提示），绝不按名字猜一个函数。新项目想有曲线，就把公式写成已有的几类写法之一，常数放进 `params`；真是新写法，就在 `FAMILIES` 里加一类。为了画成一维做的取舍（横轴取均方误差的平方根、多元公式固定其余量为 0、无参数项的横轴范围只是示意）都会写在曲线下方。
+两条路，优先第一条：
+
+1. **认公式**：`src/reward-curve.js` 认 `form` 的 TeX 写法（高斯核、exp(−s·误差)、阈值阶跃、死区平方、饱和斜坡、−log(1 − D) 等），常数取自 `params`（键名如 `σ`、`scale`、`threshold`、`阈值`、`*_scale`），`params` 里没有的就用公式里写死的那个数。认不出的写法不画（校验脚本给提示），绝不按名字猜一个函数。
+2. **数据里写画法**：上游函数是一次性的形状（平滑门控、几个因子相乘、带符号的限速……）时，在奖励项上加 `curve`：横轴（`x.tex` / `x.range` / `x.unit`）、一行算式 `f`、哪些 `params` 键做成滑块（`params[].key`，数值仍从 `params` 读，不另存一份）、为画成一维而固定的量（`held`）、参考线与说明。算式只认白名单语法（四则、乘方、比较、`&& || ?:`、`exp log sqrt abs min max clamp smoothstep tanh cos …`，见 `src/curve-expr.js`），不走 `eval`。画不出连续曲线的项（带记忆的 0 / 1 项、接触计数）写 `noCurve: "理由"`。
+
+校验脚本对每条曲线检查算式里的名字都有定义、在数据值与每根滑块两端求值没有 NaN。为了画成一维做的取舍（横轴取均方误差的平方根、多元公式固定其余量、无参数项的横轴范围只是示意）都写在曲线下方。
+
+惩罚通常写成「正值函数 × 负权重」；上游也有写成「负值函数 × 正权重」的（Microduck 的坐站、起身任务），这时 `form` 以负号开头、`direction` 写 `negative`，页面与校验脚本以 `direction` 为准。
+
+### Microduck 的奖励从哪来
+
+33 个 Microduck 项目由 `scripts/generate-microduck.mjs` 生成。Velocity 的 15 项写在脚本里；其余 12 个任务族的奖励组合在 `scripts/microduck-rewards.json`，逐项对照上游源码（`microduck_rl@bae39f5`、`mjlab==1.3.0`）核对：最终权重、课程、参数、函数真实返回值（含门控）与出处行号。生成时用它替换变体从 Velocity 继承来的那 15 项，齿隙版共用同一组（`backlash.py` 只收窄 `dof_pos_limits` 与 `pose` 的关节范围）。改完跑 `node scripts/generate-microduck.mjs && node scripts/validate.mjs`。
 
 ### 学习式奖励
 

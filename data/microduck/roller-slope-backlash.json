@@ -3,7 +3,7 @@
   "name": "RollerSlope · Backlash",
   "subtitle": "坡面滑行 + 齿隙",
   "inherits": "microduck-velocity-flat",
-  "diffSummary": "每个伺服关节串联 ±1° 齿隙（共 2°）的被动铰链；编码器与关节观测读穿齿隙（BacklashEncoderBamActuator）。观测/动作维度不变，ONNX 与真机运行时无需改动。奖励注意：上游这个任务在 Velocity 的基础上增删改了多项奖励，下方奖励面板暂沿用 Velocity 的 15 项，尚未按这个任务逐项核对。",
+  "diffSummary": "每个伺服关节串联 ±1° 齿隙（共 2°）的被动铰链；编码器与关节观测读穿齿隙（BacklashEncoderBamActuator）。观测/动作维度不变，ONNX 与真机运行时无需改动。奖励按上游 microduck_roller_slope_env_cfg.py 逐项核对，共 9 项。",
   "verifiedAt": "2026-09-01",
   "verifiedRef": "pollen-robotics/microduck_rl@main · Mjlab-RollerSlope-Flat-Backlash-MicroDuck",
   "links": {
@@ -19,7 +19,8 @@
         "任务 ID": "Mjlab-RollerSlope-Flat-Backlash-MicroDuck",
         "齿隙": "±1°/关节 · 观测读穿齿隙",
         "地形": "斜坡",
-        "碰撞模型": "robot_allcollisions_rollers_backlash.xml"
+        "碰撞模型": "robot_allcollisions_rollers_backlash.xml",
+        "奖励项": "9 项手写奖励（microduck_roller_slope_env_cfg.py）"
       },
       "nodes": {
         "a.bam": {
@@ -27,7 +28,255 @@
           "sub": "BacklashEncoderBamActuator",
           "desc": "执行器与 joint_pos/joint_vel 观测均读 qpos[servo]+qpos[backlash]，匹配真机编码器在齿隙输出侧的位置。"
         }
-      }
+      },
+      "rewards-": [
+        "track_lin",
+        "track_ang",
+        "head_pose",
+        "air_time",
+        "pose",
+        "upright",
+        "foot_clear",
+        "foot_swing",
+        "foot_slip",
+        "self_col",
+        "body_ang",
+        "ang_mom",
+        "action_rate",
+        "head_bias",
+        "dof_pos_limits"
+      ],
+      "rewards+": [
+        {
+          "id": "wheel_glide",
+          "group": "A",
+          "label": "顺坡滚动",
+          "weight": 2,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\operatorname{clip}\\!\\left(\\bar\\omega r,\\,0,\\,v_{\\text{cap}}\\right)",
+          "params": {
+            "cap_speed": 0.35,
+            "wheel_radius": 0.0175
+          },
+          "desc": "奖励轮子向前滚动的线速度，封顶 0.35 m/s：鼓励顺坡滑下，而不是加速冲刺。",
+          "note": "看轮子而不是躯干速度：推着躯干「跑」下去而轮子不滚拿不到分；轮子倒转（往回爬）为 0。上游注释：没有这一项，最优解是站着不动。函数：mjlab_microduck.tasks.mdp.wheel_glide_reward（mdp.py:1235）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_slope_env_cfg.py",
+            "symbol": "wheel_glide"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\bar\\omega r",
+              "range": [
+                -0.2,
+                0.7
+              ]
+            },
+            "f": "min(max(x,0),cap)",
+            "params": [
+              {
+                "id": "cap",
+                "key": "cap_speed",
+                "range": [
+                  0.05,
+                  1
+                ]
+              }
+            ],
+            "notes": [
+              "横轴是轮子的滚动线速度 ω̄r（m/s）。倒转为 0，0 到 v_cap 线性上升，超过 v_cap 封顶：没有继续加速的动机。"
+            ]
+          }
+        },
+        {
+          "id": "alive",
+          "group": "A",
+          "label": "存活",
+          "weight": 1,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "1",
+          "desc": "每活一步给 1，配合倒地 / 掉出地形的终止条件，鼓励撑过整段下坡。",
+          "note": "微鸭的 is_alive 直接返回全 1，不是 IsaacLab 那种 1 − 1[terminated]。函数：mjlab_microduck.tasks.mdp.is_alive（mdp.py:1261）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_slope_env_cfg.py",
+            "symbol": "alive"
+          }
+        },
+        {
+          "id": "heading_hold",
+          "group": "A",
+          "label": "保持出生朝向",
+          "weight": 1.5,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-\\Delta\\psi^{2}/\\sigma^{2}\\right)",
+          "params": {
+            "σ": 0.4,
+            "σ²": 0.16
+          },
+          "desc": "奖励 yaw 角保持在出生朝向附近（走直线）；偏了可以自己转回来拿回分数。",
+          "note": "出生 yaw 固定为 0（SPAWN_YAW = (0, 0)），即正对下坡方向，所以这一项就是「沿坡直下」。函数：mjlab_microduck.tasks.mdp.heading_hold_reward（mdp.py:5117）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_slope_env_cfg.py",
+            "symbol": "heading_hold"
+          }
+        },
+        {
+          "id": "upright",
+          "canonical": "body_upright_gaussian",
+          "group": "B",
+          "label": "躯干直立（四元数）",
+          "weight": 3,
+          "direction": "positive",
+          "confidence": "verified",
+          "form": "\\exp\\!\\left(-(1-\\cos\\theta)/\\sigma^{2}\\right)",
+          "params": {
+            "std": 0.2
+          },
+          "desc": "躯干越接近竖直分越高；相对世界竖直，而不是坡面法向。",
+          "note": "与 Rollers / Velocity 的 mjlab upright 不是同一个函数（那个是 exp(−sin²θ/σ²)），所以 canonical 单列为 body_upright_gaussian。本任务删掉了全身 pose，只用这一项和终止条件管平衡，让策略自己找重心。函数：mjlab_microduck.tasks.mdp.body_upright_gaussian（mdp.py:852）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_slope_env_cfg.py",
+            "symbol": "upright"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\theta",
+              "range": [
+                0,
+                1.5708
+              ]
+            },
+            "f": "exp(-(1-cos(x))/(s*s))",
+            "params": [
+              {
+                "id": "s",
+                "key": "std",
+                "range": [
+                  0.05,
+                  0.8
+                ],
+                "log": true
+              }
+            ],
+            "notes": [
+              "横轴是躯干倾角 θ（rad）。1 − cos θ ≈ θ²/2，所以小角度时等效于 θ 上 σ√2 ≈ 0.28 rad（约 16°）的高斯。"
+            ]
+          }
+        },
+        {
+          "id": "feet_flat",
+          "group": "C",
+          "label": "着地刀片放平",
+          "weight": -2,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\sum_{f}\\lVert g^{\\text{site}}_{f,xy}\\rVert^{2}\\cdot\\mathbb{1}\\!\\left[\\text{contact}_f\\right]",
+          "desc": "只罚着地刀片的倾斜（sin²θ），让轮子贴地抓牢；腾空的脚可以随意倾斜。",
+          "note": "与 Rollers 同一配置（按着地门控）。单脚最大值是 1（docstring 写的约 2.0 不对）。函数：mjlab_microduck.tasks.mdp.feet_flat_penalty（mdp.py:1605）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_slope_env_cfg.py",
+            "symbol": "feet_flat"
+          },
+          "curve": {
+            "x": {
+              "tex": "\\theta_f",
+              "range": [
+                0,
+                1.5708
+              ]
+            },
+            "f": "k*sin(x)^2",
+            "held": [
+              {
+                "id": "k",
+                "tex": "k",
+                "range": [
+                  0,
+                  2
+                ],
+                "value": 1,
+                "int": true
+              }
+            ],
+            "notes": [
+              "横轴 θ_f 是足端 site 的 z 轴相对竖直的倾角（rad），‖g_xy‖² = sin²θ_f；k 是「着地且倾斜 θ_f」的刀片数（0–2），默认 1。腾空的脚不计入，所以 k 只数着地的脚。单脚最大值 1。"
+            ]
+          }
+        },
+        {
+          "id": "neck_joint_pos_l2",
+          "group": "B",
+          "label": "颈头回 HOME",
+          "weight": -0.75,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert q_{\\text{neck}}-q^{\\text{home}}_{\\text{neck}}\\rVert^{2}",
+          "desc": "颈、头 4 个关节偏离 HOME 的平方和：让头保持在默认姿态。",
+          "note": "比 Rollers 的 −0.5 重：本任务删掉了全身 pose（腿自由找平衡），之前头会乱跑，这一项只约束颈 / 头。函数：mjlab_microduck.tasks.mdp.neck_joint_pos_l2（mdp.py:1697）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_slope_env_cfg.py",
+            "symbol": "neck_joint_pos_l2"
+          }
+        },
+        {
+          "id": "action_rate_l2",
+          "canonical": "action_rate",
+          "group": "D",
+          "label": "动作变化率",
+          "weight": -1,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a_t-a_{t-1}\\rVert^{2}",
+          "desc": "相邻两步动作之差的平方和，压抖动。",
+          "note": "唯一从 Rollers 保留下来的奖励项（src/mjlab_microduck/tasks/microduck_roller_slope_env_cfg.py:127-130）。roller_slope 删除了继承的全部课程（src/mjlab_microduck/tasks/microduck_roller_slope_env_cfg.py:219-220），只加了地形课程，所以权重固定 −1.0，没有 Rollers 的 −1.5 / −2.0 阶段。函数：mjlab action_rate_l2。",
+          "source": {
+            "repo": "mujocolab/mjlab",
+            "path": "src/mjlab/tasks/velocity/velocity_env_cfg.py",
+            "symbol": "action_rate_l2"
+          }
+        },
+        {
+          "id": "neck_action_rate_l2",
+          "group": "D",
+          "label": "颈部动作变化率",
+          "weight": -0.5,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert a^{\\text{neck}}_t-a^{\\text{neck}}_{t-1}\\rVert^{2}",
+          "desc": "颈、头 4 个动作的相邻步差平方和，在 action_rate_l2 之外对头部再加一层平滑。",
+          "note": "与 action_rate_l2 重叠：头部动作的变化同时被两项惩罚。函数：mjlab_microduck.tasks.mdp.neck_action_rate_l2（mdp.py:437）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_slope_env_cfg.py",
+            "symbol": "neck_action_rate_l2"
+          }
+        },
+        {
+          "id": "joint_torques_l2",
+          "group": "D",
+          "label": "执行器力矩",
+          "weight": -0.001,
+          "direction": "negative",
+          "confidence": "verified",
+          "form": "\\lVert\\tau\\rVert^{2}",
+          "desc": "执行器输出平方和，鼓励省力。",
+          "note": "本仓库 mdp.py 自己的 joint_torques_l2，不是 mjlab 同名函数（后者按 asset_cfg.actuator_ids 取子集）；这里两者结果相同。函数：mjlab_microduck.tasks.mdp.joint_torques_l2（mdp.py:1721）。",
+          "source": {
+            "repo": "pollen-robotics/microduck_rl",
+            "path": "src/mjlab_microduck/tasks/microduck_roller_slope_env_cfg.py",
+            "symbol": "joint_torques_l2"
+          }
+        }
+      ]
     }
   }
 }

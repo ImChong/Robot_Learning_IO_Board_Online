@@ -60,7 +60,7 @@
             "target_overrides": "None（目标 = HOME）"
           },
           "desc": "腿关节相对 HOME 站姿的误差各过 σ = 0.5 rad 的高斯核再取均值；颈与头不在这里，由 neck_joint_pos_l2 负责。",
-          "note": "上游注释：趴着时腿也能摆在 HOME，这一项几乎白拿（实测 +7.72/8），要靠 height_stand_l1 让“留在地上”净为负。mdp.py 里 pose_target_match 定义了两次（:2201 与 :2538），导入后生效的是后者，两者公式相同。⚠ joint_indices = [0–4, 11–15] 是按含被动轮的 18 关节顺序写的（cfg:94-109，test_roller_standup_cfg.py:122 也按这个顺序验证），但 HEAD 的函数先取 _servo_joint_pos（mdp.py:191，去掉 passive_* 后只剩 14 列）再按这组下标索引：11–13 落到 right_hip_pitch / right_knee / right_ankle，14、15 越界。见 openQuestions。函数：mjlab_microduck.tasks.mdp.pose_target_match（mdp.py:2538）。",
+          "note": "上游注释：趴着时腿也能摆在 HOME，这一项几乎白拿（实测 +7.72/8），要靠 height_stand_l1 让“留在地上”净为负。mdp.py 里 pose_target_match 定义了两次（:2201 与 :2538），导入后生效的是后者，两者公式相同。⚠ joint_indices = [0–4, 11–15] 是按含被动轮的 18 关节顺序写的（cfg:94-109，test_roller_standup_cfg.py:122 也按这个顺序验证），但 HEAD 的函数先取 _servo_joint_pos（mdp.py:191，去掉 passive_* 后只剩 14 列）再按这组下标索引：11–13 落到 right_hip_pitch / right_knee / right_ankle，14、15 越界。函数：mjlab_microduck.tasks.mdp.pose_target_match（mdp.py:2538）。推断（只读代码、没跑过）：越界的下标会让训练在第一次算奖励时就报错，这一项按配置注释的本意（10 个腿关节、目标 HOME）画。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
@@ -80,7 +80,7 @@
             "target_overrides": "None（目标 = HOME）"
           },
           "desc": "腿关节到 HOME 的平均绝对误差取负：L1 梯度恒定，离 HOME 很远时也有拉力。",
-          "note": "上游注释：L1 启动项，高斯核饱和时仍有梯度。⚠ 函数返回值 ≤ 0、权重为正，实际是惩罚。⚠ joint_indices = [0–4, 11–15] 是按含被动轮的 18 关节顺序写的（cfg:94-109，test_roller_standup_cfg.py:122 也按这个顺序验证），但 HEAD 的函数先取 _servo_joint_pos（mdp.py:191，去掉 passive_* 后只剩 14 列）再按这组下标索引：11–13 落到 right_hip_pitch / right_knee / right_ankle，14、15 越界。见 openQuestions。函数：mjlab_microduck.tasks.mdp.pose_l1_penalty（mdp.py:2563）。",
+          "note": "上游注释：L1 启动项，高斯核饱和时仍有梯度。⚠ 函数返回值 ≤ 0、权重为正，实际是惩罚。⚠ joint_indices = [0–4, 11–15] 是按含被动轮的 18 关节顺序写的（cfg:94-109，test_roller_standup_cfg.py:122 也按这个顺序验证），但 HEAD 的函数先取 _servo_joint_pos（mdp.py:191，去掉 passive_* 后只剩 14 列）再按这组下标索引：11–13 落到 right_hip_pitch / right_knee / right_ankle，14、15 越界。函数：mjlab_microduck.tasks.mdp.pose_l1_penalty（mdp.py:2563）。推断（只读代码、没跑过）：越界的下标会让训练在第一次算奖励时就报错，这一项按配置注释的本意（10 个腿关节、目标 HOME）画。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
@@ -375,7 +375,7 @@
             "target_overrides": "None（目标 = HOME）"
           },
           "desc": "高度、直立、腿部姿态三个高斯相乘的综合分：三项必须同时达标才拿得到，打破“高度对了但躯干歪着”这类加法奖励允许的折中。",
-          "note": "上游注释：σ 故意放宽（高度 4 cm、直立 0.4、姿态 0.4 rad），起身途中也有可见梯度；之前用窄 σ 时分数约 5e-5，等于没有梯度。直立因子里 2(q_x² + q_y²) = 1 − cos θ，e⁻¹ 点约在 θ ≈ 33°。⚠ joint_indices = [0–4, 11–15] 是按含被动轮的 18 关节顺序写的（cfg:94-109，test_roller_standup_cfg.py:122 也按这个顺序验证），但 HEAD 的函数先取 _servo_joint_pos（mdp.py:191，去掉 passive_* 后只剩 14 列）再按这组下标索引：11–13 落到 right_hip_pitch / right_knee / right_ankle，14、15 越界。见 openQuestions。函数：mjlab_microduck.tasks.mdp.standing_composite_score（mdp.py:952）。",
+          "note": "上游注释：σ 故意放宽（高度 4 cm、直立 0.4、姿态 0.4 rad），起身途中也有可见梯度；之前用窄 σ 时分数约 5e-5，等于没有梯度。直立因子里 2(q_x² + q_y²) = 1 − cos θ，e⁻¹ 点约在 θ ≈ 33°。⚠ joint_indices = [0–4, 11–15] 是按含被动轮的 18 关节顺序写的（cfg:94-109，test_roller_standup_cfg.py:122 也按这个顺序验证），但 HEAD 的函数先取 _servo_joint_pos（mdp.py:191，去掉 passive_* 后只剩 14 列）再按这组下标索引：11–13 落到 right_hip_pitch / right_knee / right_ankle，14、15 越界。函数：mjlab_microduck.tasks.mdp.standing_composite_score（mdp.py:952）。推断（只读代码、没跑过）：越界的下标会让训练在第一次算奖励时就报错，这一项按配置注释的本意（10 个腿关节、目标 HOME）画。",
           "source": {
             "repo": "pollen-robotics/microduck_rl",
             "path": "src/mjlab_microduck/tasks/microduck_roller_standup_env_cfg.py",
