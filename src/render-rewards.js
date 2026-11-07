@@ -1,6 +1,8 @@
 /** 奖励面板：按六类折叠，权重用对数刻度条，公式走 KaTeX。 */
 
 import { el, clear, queueMath } from "./dom.js";
+import { curveFor } from "./reward-curve.js";
+import { renderCurve } from "./render-curve.js";
 
 // 权重条的对数定义域。取 10^-4 ~ 10^1：上界覆盖 joint_limit 的 -10，
 // 下界不取更小是因为跨度一拉大，0.5 与 1.0 这类常用权重就几乎一样长了；
@@ -53,6 +55,14 @@ export function renderRewards({ container, graph, taxonomy, project }) {
   const intro =
     `${project.name} 训练期的全部奖励项，按「替谁说话」分六类。正向权重合计 ${positive.toFixed(1)}，` +
     `总奖励是加权和 r = Σ wᵢ rᵢ。`;
+  const plotted = rewards.filter((r) => curveFor(r)?.kind === "curve").length;
+  const formless = rewards.filter((r) => !r.form).length;
+  const curveNote = plotted
+    ? `有 ${plotted} 项画出了奖励值随误差 / 状态量变化的曲线，可调参数配了滑块，虚线是数据里的原值。` +
+      (formless ? `另有 ${formless} 项数据里只记了名字与权重、没写公式，画不了曲线。` : "")
+    : formless
+      ? `这个项目的奖励项数据里只记了名字与权重、没写公式，所以画不了曲线。`
+      : "";
   const learnedNote = learned.length
     ? `其中 ${learned.length} 项不是手写公式，而是网络算出来的——这类项没有可以逐条列出的分项权重，` +
       `weight 是它在总奖励里的混合系数，真正的信息在「吃什么 · 正样本 · 怎么变成标量」这三行里。`
@@ -62,6 +72,7 @@ export function renderRewards({ container, graph, taxonomy, project }) {
     el("div", { class: "section-head" }, [
       el("h2", { text: `奖励函数 · ${rewards.length} 项` }),
       el("p", { text: intro }),
+      curveNote ? el("p", { text: curveNote }) : null,
       learnedNote ? el("p", { class: "sh-learned", text: learnedNote }) : null,
     ])
   );
@@ -144,6 +155,19 @@ function buildItem(reward, group, project) {
   if (reward.model) body.append(buildModelCard(reward));
   if (reward.note) body.append(el("p", { class: "ri-note", text: reward.note }));
 
+  // 能画的项：文字与曲线左右并排（窄屏上下排）；只有 0 / 1 的项说一句为什么没有曲线。
+  const curve = curveFor(reward);
+  let main = body;
+  if (curve?.kind === "curve") {
+    main = el("div", { class: "ri-body has-curve" }, [
+      body,
+      el("div", { class: "ri-curve" }, [renderCurve({ spec: curve, reward })]),
+    ]);
+    body.className = "ri-text";
+  } else if (curve?.kind === "none") {
+    body.append(el("p", { class: "ri-nocurve", text: `没有曲线：${curve.reason}` }));
+  }
+
   const learned = isLearned(reward);
   return el(
     "div",
@@ -177,7 +201,7 @@ function buildItem(reward, group, project) {
         bar,
         learned ? el("div", { class: "ri-weight-hint", text: "混合系数" }) : null,
       ]),
-      body,
+      main,
     ]
   );
 }

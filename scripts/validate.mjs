@@ -15,6 +15,7 @@ import { dirname, join } from "node:path";
 import { isInherited, mergeProject } from "../src/inherit.js";
 import { buildTour } from "../src/tour.js";
 import { buildIndexMap, concatSources, namedCount } from "../src/index-map.js";
+import { curveFor, defaults, sample } from "../src/reward-curve.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DATA = join(ROOT, "data");
@@ -24,6 +25,7 @@ const warnings = [];
 
 const fail = (where, msg) => errors.push(`${where}: ${msg}`);
 const indexStats = { vectors: 0, indices: 0, named: 0 };
+const curveStats = { curve: 0, none: 0, formless: 0 };
 const warn = (where, msg) => warnings.push(`${where}: ${msg}`);
 
 const readJson = async (name) => JSON.parse(await readFile(join(DATA, name), "utf8"));
@@ -241,8 +243,44 @@ function checkGraph(project, modeId, graph, taxo, sourceIndex) {
 
   checkTour(where, graph, nodes);
   checkIndexMaps(where, graph, nodes);
+  checkRewardCurves(where, graph);
 
   return nodes.size;
+}
+
+/**
+ * 奖励曲线（奖励面板里的折线图与滑块）：有公式的项要么能画，要么明说为什么没有曲线
+ * （只取 0 / 1、常数）。认不出的写法只是提示——页面会不画，不会画错。能画的项在
+ * 数据值与每个参数滑块的两端各求一遍值，曲线上不能出现 NaN。
+ */
+function checkRewardCurves(where, graph) {
+  for (const reward of graph.rewards ?? []) {
+    const at = `${where}/reward[${reward.id}]`;
+    const curve = curveFor(reward);
+    if (!curve) {
+      curveStats.formless += 1;
+      continue;
+    }
+    if (curve.kind === "none") {
+      curveStats.none += 1;
+      continue;
+    }
+    if (curve.kind === "unknown") {
+      warn(at, "form 的写法 src/reward-curve.js 认不出，奖励面板里不画曲线");
+      continue;
+    }
+    curveStats.curve += 1;
+    const base = defaults(curve);
+    const trials = [base];
+    for (const p of curve.params) trials.push({ ...base, [p.id]: p.min }, { ...base, [p.id]: p.max });
+    for (const values of trials) {
+      const bad = sample(curve, values, 60).find(([, y]) => Number.isNaN(y));
+      if (bad) {
+        fail(at, `奖励曲线在横轴 ${bad[0]} 处求值为 NaN（参数 ${JSON.stringify(values)}）`);
+        break;
+      }
+    }
+  }
 }
 
 /**
@@ -513,6 +551,9 @@ async function main() {
   }
   console.log(
     `\n校验通过：${label(registry.projects.length, "个项目")}，${label(totalNodes, "个节点")}，${label(totalRewards, "个奖励项")}。`
+  );
+  console.log(
+    `奖励曲线：${curveStats.curve} 项可画，${curveStats.none} 项只取 0 / 1 或常数，${curveStats.formless} 项数据里没有公式。`
   );
   console.log(
     `维度地图：${indexStats.vectors} 个带维度的模块共 ${indexStats.indices} 个 index，其中 ${indexStats.named} 个能落到数据里写明的分量名。`
