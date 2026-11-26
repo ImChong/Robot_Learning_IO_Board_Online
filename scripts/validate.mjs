@@ -552,6 +552,15 @@ async function main() {
     }
 
     for (const [modeId, graph] of modes) {
+      if (entry.group === "microduck" && ["train", "deploy"].includes(modeId)) {
+        const concat = graph.nodes?.find((node) => node.id === "n.concat");
+        const sources = concat && concatSources(concat, graph);
+        // 两个输入都是 3 维；检查来源身份和顺序，而不只检查维度。
+        const expected = ["o.ang_vel", "o.gravity"];
+        if (!sources || !expected.every((id, i) => sources[i]?.id === id && sources[i]?.dim === 3)) {
+          fail(`${entry.file}/${modeId}/n.concat`, "Microduck actor: index 0–2 必须为角速度，3–5 必须为投影重力");
+        }
+      }
       totalNodes += checkGraph(project, modeId, graph, taxo, sourceIndex);
       totalRewards += (graph.rewards ?? []).length;
     }
