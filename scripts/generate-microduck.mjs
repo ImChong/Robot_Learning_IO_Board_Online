@@ -19,6 +19,17 @@ const JOINT_LAYOUT =
 
 const CMD_LAYOUT = "[twist(3) | head_pose(4) | body_pose(6)]——速度指令 · 头姿增量 · 躯干位姿增量";
 
+const ACTOR_OBS_ORDER = [
+  "o.ang_vel",
+  "o.gravity",
+  "o.joint_pos",
+  "o.joint_vel",
+  "o.last_action",
+  "o.cmd_twist",
+  "o.cmd_head",
+  "o.cmd_body",
+];
+
 const COMMON_LINKS = {
   "microduck_rl 代码": REPO_URL,
   "Microduck 真机运行时": "https://github.com/pollen-robotics/microduck",
@@ -137,7 +148,7 @@ function buildTrainGraph({ summary, facts, rewards, extraNodes = [], extraEdges 
       sub: "61 维 · 经验归一化",
       dim: 61,
       dimExpr: "3 + 3 + 14 + 14 + 14 + 3 + 4 + 6",
-      dimLayout: `本体 48 维 + 指令 13 维：投影重力 3 · 角速度 3 · 关节位置 14 · 关节速度 14 · 上一动作 14 · ${CMD_LAYOUT}`,
+      dimLayout: `本体 48 维 + 指令 13 维：角速度 3 · 投影重力 3 · 关节位置 14 · 关节速度 14 · 上一动作 14 · ${CMD_LAYOUT}`,
       checkSum: true,
       desc: "所有策略共享的 61 维观测契约，使运行时可在 walk/recover/trick 策略间热切换。",
       source: { repo: REPO, path: "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py", symbol: "observations.actor" },
@@ -224,17 +235,6 @@ function buildTrainGraph({ summary, facts, rewards, extraNodes = [], extraEdges 
     ...extraNodes,
   ];
 
-  const obsToConcat = [
-    "o.gravity",
-    "o.ang_vel",
-    "o.joint_pos",
-    "o.joint_vel",
-    "o.last_action",
-    "o.cmd_twist",
-    "o.cmd_head",
-    "o.cmd_body",
-  ];
-
   const edges = [
     { from: "s.scene", to: "e.sim", kind: "flow" },
     { from: "s.dr", to: "e.sim", kind: "init", style: "dashed" },
@@ -247,7 +247,7 @@ function buildTrainGraph({ summary, facts, rewards, extraNodes = [], extraEdges 
     { from: "e.sim", to: "o.joint_vel", kind: "obs" },
     { from: "e.sim", to: "p.base_lin_vel", kind: "obs", style: "dashed" },
     { from: "a.bam", to: "o.last_action", kind: "feedback", style: "dashed" },
-    ...obsToConcat.map((id) => ({ from: id, to: "n.concat", kind: "obs" })),
+    ...ACTOR_OBS_ORDER.map((id) => ({ from: id, to: "n.concat", kind: "obs" })),
     { from: "n.concat", to: "n.actor", kind: "obs", label: "61" },
     { from: "n.concat", to: "n.critic", kind: "obs", style: "dashed" },
     { from: "p.base_lin_vel", to: "n.critic", kind: "obs", style: "dashed" },
@@ -346,14 +346,7 @@ function buildDeployGraph() {
       { from: "e.robot", to: "o.ang_vel", kind: "obs" },
       { from: "e.robot", to: "o.joint_pos", kind: "obs" },
       { from: "e.robot", to: "o.joint_vel", kind: "obs" },
-      { from: "o.gravity", to: "n.concat", kind: "obs" },
-      { from: "o.ang_vel", to: "n.concat", kind: "obs" },
-      { from: "o.joint_pos", to: "n.concat", kind: "obs" },
-      { from: "o.joint_vel", to: "n.concat", kind: "obs" },
-      { from: "o.last_action", to: "n.concat", kind: "obs" },
-      { from: "o.cmd_twist", to: "n.concat", kind: "obs" },
-      { from: "o.cmd_head", to: "n.concat", kind: "obs" },
-      { from: "o.cmd_body", to: "n.concat", kind: "obs" },
+      ...ACTOR_OBS_ORDER.map((id) => ({ from: id, to: "n.concat", kind: "obs" })),
       { from: "n.concat", to: "n.actor", kind: "obs", label: "61" },
       { from: "n.actor", to: "a.raw", kind: "action", label: "14" },
       { from: "a.raw", to: "a.bam", kind: "action" },

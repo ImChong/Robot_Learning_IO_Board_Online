@@ -308,7 +308,7 @@
           "sub": "61 维 · 经验归一化",
           "dim": 61,
           "dimExpr": "3 + 3 + 14 + 14 + 14 + 3 + 4 + 6",
-          "dimLayout": "本体 48 维 + 指令 13 维：投影重力 3 · 角速度 3 · 关节位置 14 · 关节速度 14 · 上一动作 14 · [twist(3) | head_pose(4) | body_pose(6)]——速度指令 · 头姿增量 · 躯干位姿增量",
+          "dimLayout": "本体 48 维 + 指令 13 维：角速度 3 · 投影重力 3 · 关节位置 14 · 关节速度 14 · 上一动作 14 · [twist(3) | head_pose(4) | body_pose(6)]——速度指令 · 头姿增量 · 躯干位姿增量",
           "checkSum": true,
           "desc": "所有策略共享的 61 维观测契约，使运行时可在 walk/recover/trick 策略间热切换。",
           "source": {
@@ -484,12 +484,12 @@
           "style": "dashed"
         },
         {
-          "from": "o.gravity",
+          "from": "o.ang_vel",
           "to": "n.concat",
           "kind": "obs"
         },
         {
-          "from": "o.ang_vel",
+          "from": "o.gravity",
           "to": "n.concat",
           "kind": "obs"
         },
@@ -1123,12 +1123,12 @@
           "kind": "obs"
         },
         {
-          "from": "o.gravity",
+          "from": "o.ang_vel",
           "to": "n.concat",
           "kind": "obs"
         },
         {
-          "from": "o.ang_vel",
+          "from": "o.gravity",
           "to": "n.concat",
           "kind": "obs"
         },
